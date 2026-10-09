@@ -66,7 +66,7 @@ The package handoff uses <code>clipstrike-core</code> from public [ClipStrike](h
 
 ## Advanced reference import
 
-A separate reference-import adapter remains available for local comparison with the earlier CsThrowBack raw-facts workflow. It requires a user-supplied Node runtime, extractor script, and matching <code>@laihoe/demoparser2</code> module. The desktop UI can take the paths through <code>DEMOSTRIKE_NODE_PATH</code> and <code>DEMOSTRIKE_EXTRACTOR_SCRIPT</code>. None of that extractor code or its output is bundled in this repository, and it is not required for the native Rust grenade path. [Source attribution](ATTRIBUTION.md) records the private Rust-module provenance.
+A separate reference-import adapter remains available for local comparison with the earlier raw-facts workflow. It requires a user-supplied Node runtime, extractor script, and matching <code>@laihoe/demoparser2</code> module. The desktop UI can take the paths through <code>DEMOSTRIKE_NODE_PATH</code> and <code>DEMOSTRIKE_EXTRACTOR_SCRIPT</code>. None of that extractor code or its output is bundled in this repository, and it is not required for the native Rust grenade path. [Source attribution](ATTRIBUTION.md) records the private Rust-module provenance.
 
 ## What remains to build
 

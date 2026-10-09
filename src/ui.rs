@@ -269,7 +269,7 @@ impl eframe::App for DemoStrikeApp {
                     }
                 });
                 ui.horizontal(|ui| {
-                    ui.label("CsThrowBack extractor");
+                    ui.label("DemoStrike reference extractor script");
                     ui.text_edit_singleline(&mut self.extractor_path);
                     if ui.button("Browse").clicked() {
                         if let Some(path) = rfd::FileDialog::new().add_filter("JavaScript module", &["mjs"]).pick_file() {

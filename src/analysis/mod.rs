@@ -753,7 +753,8 @@ mod tests {
 
     #[test]
     fn acceptance_raw_demo_reports_coverage_when_requested() {
-        let Some(path) = std::env::var_os("CSTHROWBACK_ACCEPTANCE_RAW") else {
+        let Some(path) = std::env::var_os("DEMOSTRIKE_ACCEPTANCE_RAW")
+            .or_else(|| std::env::var_os("CSTHROWBACK_ACCEPTANCE_RAW")) else {
             return;
         };
         let raw: RawDemo = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();

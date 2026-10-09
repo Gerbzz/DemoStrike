@@ -1,6 +1,6 @@
-//! Real `.dem` import seam for the native UI. CsThrowBack's raw-facts schema,
-//! analysis, and SQLite transactions stay in Rust. Its current extractor is an
-//! optional transitional backend until a Rust parser matches the event corpus.
+//! Real `.dem` import seam for the native UI. DemoStrike keeps raw-facts
+//! analysis and SQLite transactions in Rust. The optional external extractor
+//! preserves import of the richer raw-facts schema while native coverage grows.
 
 use crate::analysis::{AnalyzedMatch, build_match, validate_import};
 pub use crate::domain::ParserCapabilities;
@@ -57,7 +57,7 @@ impl ExternalExtractor {
             return Err(format!("Node runtime is missing: {}", self.node.display()));
         }
         if !self.script.is_file() {
-            return Err(format!("CsThrowBack extractor script is missing: {}", self.script.display()));
+            return Err(format!("configured DemoStrike reference extractor script is missing: {}", self.script.display()));
         }
         let module = self.script.parent().unwrap_or_else(|| Path::new("."))
             .join("node_modules/@laihoe/demoparser2/package.json");
@@ -69,7 +69,7 @@ impl ExternalExtractor {
         ).map_err(|error| format!("invalid parser package metadata: {error}"))?;
         let version = package.get("version").and_then(|value| value.as_str()).unwrap_or("unknown");
         if version != "0.41.3" {
-            return Err(format!("CsThrowBack extractor requires @laihoe/demoparser2 0.41.3; found {version}"));
+            return Err(format!("DemoStrike reference import requires @laihoe/demoparser2 0.41.3; found {version}"));
         }
         Ok(())
     }
