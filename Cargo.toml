@@ -1,0 +1,27 @@
+[package]
+name = "demostrike"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[features]
+default = []
+native-ui = ["dep:eframe", "dep:rfd"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+tempfile = "3"
+source2-demo = { version = "=0.5.9", default-features = false, features = ["cs2"] }
+sha2 = "0.10"
+clipstrike-core = { git = "https://github.com/Gerbzz/Clipstrike.git", rev = "f5dd0a3dceeb5ee1196e654210cc7af0ca5ee97a" }
+eframe = { version = "0.30", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "glow"], optional = true }
+rfd = { version = "0.15", optional = true }
+
+[[bin]]
+name = "demostrike"
+path = "src/main.rs"
+required-features = ["native-ui"]
