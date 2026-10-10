@@ -12,9 +12,9 @@ This local prototype reuses the following Rust modules from Neil's private
 - `src-tauri/src/error.rs` -> `src/error.rs`
 
 The source repository has no root LICENSE or NOTICE file in this checkout.
-This repository is private. No license is inferred for copied project
-code. Audit source ownership, dependency and asset licenses before any
-repository migration or distribution. The original private repository remains the provenance reference.
+No license is inferred or granted here for copied project code. The original
+private repository remains the provenance reference. Review source ownership
+and third-party licenses before distributing compiled releases.
 
 The DemoStrike Rust UI is new code. The original Tauri/React/TypeScript UI
 has not been copied into it.

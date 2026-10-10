@@ -72,4 +72,4 @@ A separate reference-import adapter remains available for local comparison with 
 
 The parser needs validation on a broader, redistributable demo corpus before it can accept general matches. Combat, flash, kill, assist, and economy capabilities need their own independently validated native extraction. Capture assembly, audible audio review, visible UI review, and clean-machine packaging also remain open. These are planned directions, not features available in this checkout.
 
-The project source is private and has no public license grant. Third-party dependencies retain their own licenses; see [attribution](ATTRIBUTION.md) for reused project code.
+The project source has no public license grant. Third-party dependencies retain their own licenses; see [attribution](ATTRIBUTION.md) for reused project code.
