@@ -23,6 +23,13 @@ fn now_iso() -> String {
 
 // ---------------------------------------------------------------- matches
 
+/// Paths and fingerprints for import identity checks. Old rows have no hash.
+pub fn source_identities(conn: &Connection) -> AppResult<Vec<(i64, String, Option<String>)>> {
+    let mut stmt = conn.prepare("SELECT id, file_path, source_sha256 FROM matches")?;
+    Ok(stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<_, _>>()?)
+}
+
 pub fn insert_match(conn: &mut Connection, file_path: &str, m: &AnalyzedMatch) -> AppResult<i64> {
     insert_match_with_control(conn, file_path, m, || false, || Ok(()))
 }
@@ -44,6 +51,18 @@ pub fn insert_match_with_parser_capability(
     file_path: &str,
     m: &AnalyzedMatch,
     parser_capability: &str,
+    should_cancel: impl Fn() -> bool,
+    begin_commit: impl FnOnce() -> AppResult<()>,
+) -> AppResult<i64> {
+    insert_match_with_source_hash(conn, file_path, m, parser_capability, None, should_cancel, begin_commit)
+}
+
+pub fn insert_match_with_source_hash(
+    conn: &mut Connection,
+    file_path: &str,
+    m: &AnalyzedMatch,
+    parser_capability: &str,
+    source_sha256: Option<&str>,
     should_cancel: impl Fn() -> bool,
     begin_commit: impl FnOnce() -> AppResult<()>,
 ) -> AppResult<i64> {
@@ -73,6 +92,12 @@ pub fn insert_match_with_parser_capability(
             }
         }
     }
+    if let Some(hash) = source_sha256 {
+        if let Some(id) = tx.query_row("SELECT id FROM matches WHERE source_sha256 = ?1",
+            params![hash], |row| row.get::<_, i64>(0)).optional()? {
+            return Err(AppError::Invalid(format!("identical demo bytes are already imported as match {id}; existing annotations were preserved")));
+        }
+    }
 
     let file_name = std::path::Path::new(file_path)
         .file_name()
@@ -81,8 +106,9 @@ pub fn insert_match_with_parser_capability(
 
     tx.execute(
         "INSERT INTO matches (file_path, file_name, map_name, tick_rate, duration_ticks,
-                              rounds_count, score_ct, score_t, imported_at, parser_capability)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                              rounds_count, score_ct, score_t, imported_at, parser_capability, source_sha256,
+                              effect_attribution_version)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 2)",
         params![
             file_path,
             file_name,
@@ -93,7 +119,8 @@ pub fn insert_match_with_parser_capability(
             m.score_ct,
             m.score_t,
             now_iso(),
-            parser_capability
+            parser_capability,
+            source_sha256,
         ],
     )?;
     let match_id = tx.last_insert_rowid();
@@ -140,10 +167,13 @@ pub fn insert_match_with_parser_capability(
                 detonate_tick, detonate_x, detonate_y, detonate_z,
                 land_x, land_y, land_z, trajectory, bounces,
                 blind_enemy_duration, blind_team_duration, enemies_blinded, teammates_blinded,
-                damage_enemy, damage_team, kills, flash_assists, nearby_players, round_winner
+                damage_enemy, damage_team, kills, flash_assists, nearby_players, round_winner,
+                projectile_entity_id, blind_attribution_complete, damage_attribution_complete,
+                kill_attribution_complete, assist_attribution_complete
              ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,
-                       ?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31)",
+                       ?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35,?36)",
         )?;
+        let mut event_ids = Vec::with_capacity(m.events.len());
         for e in &m.events {
             check_cancel()?;
             stmt.execute(params![
@@ -178,7 +208,25 @@ pub fn insert_match_with_parser_capability(
                 e.flash_assists,
                 serde_json::to_string(&e.nearby_players)?,
                 winners.get(&e.round_number).cloned().flatten(),
+                e.projectile_entity_id,
+                e.blind_attribution_complete,
+                e.damage_attribution_complete,
+                e.kill_attribution_complete,
+                e.assist_attribution_complete,
             ])?;
+            event_ids.push(tx.last_insert_rowid());
+        }
+        let mut facts = tx.prepare(
+            "INSERT INTO raw_effect_facts (match_id, fact_kind, source_index, raw_json,
+                resolution, assigned_event_id, candidate_event_ids)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+        )?;
+        for fact in &m.effect_facts {
+            check_cancel()?;
+            let assigned = fact.assigned_event.map(|index| event_ids[index]);
+            let candidates: Vec<i64> = fact.candidate_events.iter().map(|&index| event_ids[index]).collect();
+            facts.execute(params![match_id, fact.kind, fact.source_index as i64,
+                fact.raw_json.to_string(), fact.resolution, assigned, serde_json::to_string(&candidates)?])?;
         }
     }
 
@@ -192,7 +240,11 @@ pub fn list_matches(conn: &Connection) -> AppResult<Vec<MatchSummary>> {
     let mut stmt = conn.prepare(
         "SELECT m.id, m.file_name, m.file_path, m.map_name, m.tick_rate, m.rounds_count,
                 m.score_ct, m.score_t, m.imported_at, m.parser_capability,
-                (SELECT COUNT(*) FROM utility_events e WHERE e.match_id = m.id)
+                (SELECT COUNT(*) FROM utility_events e WHERE e.match_id = m.id),
+                (SELECT COUNT(*) FROM raw_effect_facts f WHERE f.match_id = m.id),
+                (SELECT COUNT(*) FROM raw_effect_facts f WHERE f.match_id = m.id AND f.resolution = 'ambiguous'),
+                (SELECT COUNT(*) FROM raw_effect_facts f WHERE f.match_id = m.id AND f.resolution = 'unresolved'),
+                m.effect_attribution_version
          FROM matches m ORDER BY m.imported_at DESC",
     )?;
     let mut matches: Vec<MatchSummary> = stmt
@@ -210,6 +262,10 @@ pub fn list_matches(conn: &Connection) -> AppResult<Vec<MatchSummary>> {
                 parser_capability: ParserCapabilities::from_key(&row.get::<_, String>(9)?)
                     .ok_or(rusqlite::Error::InvalidQuery)?,
                 event_count: row.get(10)?,
+                effect_fact_count: row.get(11)?,
+                ambiguous_effect_count: row.get(12)?,
+                unresolved_effect_count: row.get(13)?,
+                effect_attribution_version: row.get(14)?,
                 players: Vec::new(),
             })
         })?
@@ -238,13 +294,33 @@ pub fn delete_match(conn: &Connection, match_id: i64) -> AppResult<()> {
     Ok(())
 }
 
+/// Lossless effect source rows, including those whose grenade is ambiguous or unresolved.
+pub fn list_raw_effect_facts(conn: &Connection, match_id: i64) -> AppResult<Vec<RawEffectFact>> {
+    let mut stmt = conn.prepare("SELECT fact_kind, source_index, raw_json, resolution,
+        assigned_event_id, candidate_event_ids FROM raw_effect_facts
+        WHERE match_id = ?1 ORDER BY fact_kind, source_index")?;
+    let rows = stmt.query_map(params![match_id], |row| {
+        let raw_json: String = row.get(2)?;
+        let candidates: String = row.get(5)?;
+        Ok(RawEffectFact {
+            kind: row.get(0)?, source_index: row.get(1)?,
+            raw_json: serde_json::from_str(&raw_json).map_err(|_| rusqlite::Error::InvalidQuery)?,
+            resolution: row.get(3)?, assigned_event_id: row.get(4)?,
+            candidate_event_ids: serde_json::from_str(&candidates).map_err(|_| rusqlite::Error::InvalidQuery)?,
+        })
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
 // ---------------------------------------------------------------- events
 
 const SUMMARY_COLS: &str = "e.id, e.match_id, m.map_name, e.round_number, e.utility_type,
     e.thrower_steamid, e.thrower_name, e.thrower_team, e.throw_tick, e.throw_time,
     e.throw_x, e.throw_y, e.throw_z, e.detonate_x, e.detonate_y, e.detonate_z,
-    e.blind_enemy_duration, e.damage_enemy, e.kills, e.favorite, e.round_winner,
-    e.trajectory, m.parser_capability";
+    v.blind_enemy_duration, v.damage_enemy, v.kills, e.favorite, e.round_winner,
+    e.trajectory, m.parser_capability, m.effect_attribution_version,
+    e.blind_attribution_complete, e.damage_attribution_complete,
+    e.kill_attribution_complete, e.assist_attribution_complete";
 
 fn summary_from_row(row: &Row) -> rusqlite::Result<UtilityEventSummary> {
     let dx: Option<f64> = row.get(13)?;
@@ -257,7 +333,12 @@ fn summary_from_row(row: &Row) -> rusqlite::Result<UtilityEventSummary> {
         .unwrap_or(false);
     let parser_capability = ParserCapabilities::from_key(&row.get::<_, String>(22)?)
         .ok_or(rusqlite::Error::InvalidQuery)?;
-    let combat = parser_capability.supports_combat_and_economy();
+    let attribution_version: Option<i64> = row.get(23)?;
+    let complete = (24..=27).map(|index| row.get::<_, i64>(index))
+        .collect::<rusqlite::Result<Vec<_>>>()?.into_iter().all(|value| value != 0);
+    let effect_attribution_status = if !parser_capability.supports_combat() { "unsupported" }
+        else if attribution_version != Some(2) { "legacy-unverified" }
+        else if !complete { "unavailable" } else { "complete" };
     Ok(UtilityEventSummary {
         id: row.get(0)?,
         match_id: row.get(1)?,
@@ -283,9 +364,10 @@ fn summary_from_row(row: &Row) -> rusqlite::Result<UtilityEventSummary> {
             }),
             _ => None,
         },
-        blind_enemy_duration: if combat { Some(row.get(16)?) } else { None },
-        damage_enemy: if combat { Some(row.get(17)?) } else { None },
-        kills: if combat { Some(row.get(18)?) } else { None },
+        blind_enemy_duration: row.get(16)?,
+        damage_enemy: row.get(17)?,
+        kills: row.get(18)?,
+        effect_attribution_status: effect_attribution_status.into(),
         favorite: row.get::<_, i64>(19)? != 0,
         round_winner: row.get(20)?,
         has_trajectory,
@@ -299,7 +381,7 @@ fn placeholders(n: usize) -> String {
 
 pub fn query_events(conn: &Connection, f: &EventFilter) -> AppResult<Vec<UtilityEventSummary>> {
     let mut sql =
-        format!("SELECT {SUMMARY_COLS} FROM utility_events e JOIN matches m ON m.id = e.match_id");
+        format!("SELECT {SUMMARY_COLS} FROM utility_events e JOIN matches m ON m.id = e.match_id JOIN utility_events_supported v ON v.id = e.id");
     let mut wheres: Vec<String> = Vec::new();
     let mut args: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
@@ -441,28 +523,29 @@ fn attach_tags(conn: &Connection, events: &mut [UtilityEventSummary]) -> AppResu
 pub fn get_event_detail(conn: &Connection, event_id: i64) -> AppResult<UtilityEventDetail> {
     let sql = format!(
         "SELECT {SUMMARY_COLS}, e.detonate_tick, e.land_x, e.land_y, e.land_z,
-                e.trajectory, e.bounces, e.blind_team_duration, e.enemies_blinded,
-                e.teammates_blinded, e.damage_team, e.flash_assists, e.nearby_players,
+                e.trajectory, e.bounces, v.blind_team_duration, v.enemies_blinded,
+                v.teammates_blinded, v.damage_team, v.flash_assists, e.nearby_players,
                 r.end_reason, r.ct_equip_value, r.t_equip_value, m.tick_rate,
                 m.file_path, e.observer_slot
          FROM utility_events e
          JOIN matches m ON m.id = e.match_id
+         JOIN utility_events_supported v ON v.id = e.id
          LEFT JOIN rounds r ON r.match_id = e.match_id AND r.round_number = e.round_number
          WHERE e.id = ?1"
     );
     let mut detail = conn
         .query_row(&sql, params![event_id], |row| {
             let summary = summary_from_row(row)?;
-            let combat = summary.parser_capability.supports_combat_and_economy();
-            let lx: Option<f64> = row.get(24)?;
-            let ly: Option<f64> = row.get(25)?;
-            let lz: Option<f64> = row.get(26)?;
-            let trajectory: String = row.get(27)?;
-            let bounces: String = row.get(28)?;
-            let nearby: String = row.get(34)?;
+            let economy = summary.parser_capability.supports_economy();
+            let lx: Option<f64> = row.get(29)?;
+            let ly: Option<f64> = row.get(30)?;
+            let lz: Option<f64> = row.get(31)?;
+            let trajectory: String = row.get(32)?;
+            let bounces: String = row.get(33)?;
+            let nearby: String = row.get(39)?;
             Ok(UtilityEventDetail {
                 summary,
-                detonate_tick: row.get(23)?,
+                detonate_tick: row.get(28)?,
                 land_pos: match (lx, ly) {
                     (Some(x), Some(y)) => Some(Vec3 {
                         x,
@@ -473,18 +556,18 @@ pub fn get_event_detail(conn: &Connection, event_id: i64) -> AppResult<UtilityEv
                 },
                 trajectory: serde_json::from_str(&trajectory).unwrap_or_default(),
                 bounces: serde_json::from_str(&bounces).unwrap_or_default(),
-                blind_team_duration: if combat { Some(row.get(29)?) } else { None },
-                enemies_blinded: if combat { Some(row.get(30)?) } else { None },
-                teammates_blinded: if combat { Some(row.get(31)?) } else { None },
-                damage_team: if combat { Some(row.get(32)?) } else { None },
-                flash_assists: if combat { Some(row.get(33)?) } else { None },
+                blind_team_duration: row.get(34)?,
+                enemies_blinded: row.get(35)?,
+                teammates_blinded: row.get(36)?,
+                damage_team: row.get(37)?,
+                flash_assists: row.get(38)?,
                 nearby_players: serde_json::from_str(&nearby).unwrap_or_default(),
-                round_end_reason: row.get(35)?,
-                ct_equip_value: row.get(36)?,
-                t_equip_value: row.get(37)?,
-                tick_rate: row.get(38)?,
-                demo_path: row.get(39)?,
-                observer_slot: row.get(40)?,
+                round_end_reason: row.get(40)?,
+                ct_equip_value: if economy { row.get(41)? } else { None },
+                t_equip_value: if economy { row.get(42)? } else { None },
+                tick_rate: row.get(43)?,
+                demo_path: row.get(44)?,
+                observer_slot: row.get(45)?,
             })
         })
         .map_err(|e| match e {
@@ -927,6 +1010,7 @@ mod tests {
                 }),
                 trajectory: vec![[3000.0, 0.0, 0.0, 0.0], [3200.0, 100.0, 50.0, 0.0]],
                 bounces: vec![],
+                projectile_entity_id: Some(1),
                 blind_enemy_duration: 0.0,
                 blind_team_duration: 0.0,
                 enemies_blinded: 0,
@@ -935,8 +1019,13 @@ mod tests {
                 damage_team: 0,
                 kills: 0,
                 flash_assists: 0,
+                blind_attribution_complete: true,
+                damage_attribution_complete: true,
+                kill_attribution_complete: true,
+                assist_attribution_complete: true,
                 nearby_players: vec![],
             }],
+            effect_facts: vec![],
             score_ct: 13,
             score_t: 7,
         }
@@ -963,6 +1052,35 @@ mod tests {
         assert_eq!(detail.ct_equip_value, Some(4000));
         assert_eq!(detail.demo_path, "C:/demos/test.dem");
         assert_eq!(detail.observer_slot, Some(2));
+    }
+
+    #[test]
+    fn ambiguous_effect_is_preserved_and_masked_in_public_queries() {
+        let mut conn = open_in_memory().unwrap();
+        let mut analyzed = sample_match();
+        analyzed.events[0].damage_enemy = 40;
+        analyzed.events[0].damage_attribution_complete = false;
+        analyzed.effect_facts.push(crate::analysis::EffectAttribution {
+            kind: "hurt", source_index: 0,
+            raw_json: serde_json::json!({"tick": 3201, "damage": 40}),
+            resolution: "ambiguous", assigned_event: None, candidate_events: vec![0],
+        });
+        let match_id = insert_match_with_parser_capability(&mut conn, "C:/demos/ambiguous.dem",
+            &analyzed, "native-combat-flash-v1", || false, || Ok(())).unwrap();
+        let match_summary = list_matches(&conn).unwrap().remove(0);
+        assert_eq!((match_summary.effect_fact_count, match_summary.ambiguous_effect_count,
+            match_summary.unresolved_effect_count), (1, 1, 0));
+        let summary = query_events(&conn, &EventFilter::default()).unwrap().remove(0);
+        assert_eq!(summary.effect_attribution_status, "unavailable");
+        assert_eq!(summary.damage_enemy, None);
+        assert_eq!(summary.kills, Some(0));
+        let detail = get_event_detail(&conn, summary.id).unwrap();
+        assert_eq!(detail.damage_team, None);
+        let facts = list_raw_effect_facts(&conn, match_id).unwrap();
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].resolution, "ambiguous");
+        assert_eq!(facts[0].raw_json["damage"], 40);
+        assert_eq!(facts[0].candidate_event_ids, [summary.id]);
     }
 
     #[test]

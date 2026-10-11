@@ -1,0 +1,5 @@
+# Test fixture provenance
+
+The tests published with this source use inline, synthetic records. The capture-project and media-probe tests construct JSON metadata and FFprobe responses in memory to exercise audio/video coverage, rejection, and no-clobber behavior. The receipt test writes a temporary console log for a fictional player and checks identity binding. The CLI and handoff tests create their own temporary inputs. The test SteamID-like strings, map name `de_fixture`, event labels, and ticks are placeholders; they identify no recorded match or player.
+
+No `.dem`, raw match-facts sidecar, SQLite database, capture package, `.cstrike` project, screenshot, audio/video recording, or installed game runtime is included. The local real-media and real-demo regression tests used during development remain outside this public checkout. Their absence limits what a fresh checkout can independently reproduce; the README states the separate bounded verification result without bundling its private inputs.

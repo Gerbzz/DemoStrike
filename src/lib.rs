@@ -1,6 +1,12 @@
 pub mod analysis;
 pub mod db;
 pub mod demo_import;
+pub mod capture_request;
+pub mod capture_project;
+pub mod capture_receipt;
+pub mod capture_preflight;
+pub mod capture_pilot;
+pub mod event_pilot;
 pub mod native_grenade_parser;
 pub mod domain;
 pub mod error;

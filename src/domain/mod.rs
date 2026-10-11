@@ -8,16 +8,20 @@ pub enum ParserCapabilities {
     ReferenceRawFacts,
     #[serde(rename = "grenade-only-v1")]
     GrenadeAnalysisOnlyV1,
+    #[serde(rename = "native-combat-flash-v1")]
+    NativeCombatFlashV1,
 }
 
 impl ParserCapabilities {
     pub fn key(self) -> &'static str {
-        match self { Self::ReferenceRawFacts => "reference-raw-facts", Self::GrenadeAnalysisOnlyV1 => "grenade-only-v1" }
+        match self { Self::ReferenceRawFacts => "reference-raw-facts", Self::GrenadeAnalysisOnlyV1 => "grenade-only-v1", Self::NativeCombatFlashV1 => "native-combat-flash-v1" }
     }
     pub fn from_key(key: &str) -> Option<Self> {
-        match key { "reference-raw-facts" => Some(Self::ReferenceRawFacts), "grenade-only-v1" => Some(Self::GrenadeAnalysisOnlyV1), _ => None }
+        match key { "reference-raw-facts" => Some(Self::ReferenceRawFacts), "grenade-only-v1" => Some(Self::GrenadeAnalysisOnlyV1), "native-combat-flash-v1" => Some(Self::NativeCombatFlashV1), _ => None }
     }
-    pub fn supports_combat_and_economy(self) -> bool { matches!(self, Self::ReferenceRawFacts) }
+    pub fn supports_combat(self) -> bool { matches!(self, Self::ReferenceRawFacts | Self::NativeCombatFlashV1) }
+    pub fn supports_economy(self) -> bool { matches!(self, Self::ReferenceRawFacts) }
+    pub fn is_native(self) -> bool { !matches!(self, Self::ReferenceRawFacts) }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +38,10 @@ pub struct MatchSummary {
     pub imported_at: String,
     pub parser_capability: ParserCapabilities,
     pub event_count: i64,
+    pub effect_fact_count: i64,
+    pub ambiguous_effect_count: i64,
+    pub unresolved_effect_count: i64,
+    pub effect_attribution_version: Option<i64>,
     pub players: Vec<PlayerRef>,
 }
 
@@ -119,6 +127,8 @@ pub struct UtilityEventSummary {
     pub blind_enemy_duration: Option<f64>,
     pub damage_enemy: Option<i64>,
     pub kills: Option<i64>,
+    /// complete, unavailable, unsupported, or legacy-unverified.
+    pub effect_attribution_status: String,
     pub favorite: bool,
     pub round_winner: Option<String>,
     pub has_trajectory: bool,
@@ -167,6 +177,17 @@ pub struct UtilityEventDetail {
     pub tick_rate: f64,
     pub demo_path: String,
     pub observer_slot: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawEffectFact {
+    pub kind: String,
+    pub source_index: i64,
+    pub raw_json: serde_json::Value,
+    pub resolution: String,
+    pub assigned_event_id: Option<i64>,
+    pub candidate_event_ids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

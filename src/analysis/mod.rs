@@ -49,6 +49,7 @@ pub struct AnalyzedEvent {
     pub land_pos: Option<Vec3>,
     pub trajectory: Vec<TrajPoint>,
     pub bounces: Vec<TrajPoint>,
+    pub projectile_entity_id: Option<i64>,
     pub blind_enemy_duration: f64,
     pub blind_team_duration: f64,
     pub enemies_blinded: i64,
@@ -57,7 +58,21 @@ pub struct AnalyzedEvent {
     pub damage_team: i64,
     pub kills: i64,
     pub flash_assists: i64,
+    pub blind_attribution_complete: bool,
+    pub damage_attribution_complete: bool,
+    pub kill_attribution_complete: bool,
+    pub assist_attribution_complete: bool,
     pub nearby_players: Vec<NearbyPlayer>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EffectAttribution {
+    pub kind: &'static str,
+    pub source_index: usize,
+    pub raw_json: serde_json::Value,
+    pub resolution: &'static str,
+    pub assigned_event: Option<usize>,
+    pub candidate_events: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +83,7 @@ pub struct AnalyzedMatch {
     pub players: Vec<RawPlayer>,
     pub rounds: Vec<AnalyzedRound>,
     pub events: Vec<AnalyzedEvent>,
+    pub effect_facts: Vec<EffectAttribution>,
     pub score_ct: i64,
     pub score_t: i64,
 }
@@ -75,7 +91,8 @@ pub struct AnalyzedMatch {
 pub fn build_match(raw: &RawDemo) -> AnalyzedMatch {
     let tick_rate = infer_tick_rate(&raw.header);
     let rounds = build_rounds(raw);
-    let events = build_events(raw, &rounds, tick_rate);
+    let mut events = build_events(raw, &rounds, tick_rate);
+    let effect_facts = attribute_effects(raw, &mut events, tick_rate);
     let score_ct = rounds.iter().filter(|r| r.winner.as_deref() == Some("CT")).count() as i64;
     let score_t = rounds.iter().filter(|r| r.winner.as_deref() == Some("T")).count() as i64;
 
@@ -86,6 +103,7 @@ pub fn build_match(raw: &RawDemo) -> AnalyzedMatch {
         players: raw.players.clone(),
         rounds,
         events,
+        effect_facts,
         score_ct,
         score_t,
     }
@@ -348,7 +366,8 @@ fn build_events(raw: &RawDemo, rounds: &[AnalyzedRound], tick_rate: f64) -> Vec<
             }
         }
 
-        let (trajectory, bounces, land_pos, entity_id) = match best {
+        let matched_trajectory = best.map(|(i, _)| i);
+        let (trajectory, bounces, land_pos) = match best {
             Some((i, _)) => {
                 used_traj[i] = true;
                 let traj = &raw.trajectories[i];
@@ -357,45 +376,47 @@ fn build_events(raw: &RawDemo, rounds: &[AnalyzedRound], tick_rate: f64) -> Vec<
                     downsample(&traj.points, MAX_TRAJ_POINTS),
                     detect_bounces(&traj.points),
                     Some(Vec3 { x: last[1], y: last[2], z: last[3] }),
-                    Some(traj.entity_id),
                 )
             }
-            None => (Vec::new(), Vec::new(), None, None),
+            None => (Vec::new(), Vec::new(), None),
         };
 
-        // ---- match a detonation: entity id first, then thrower + tick proximity
-        let mut det_idx: Option<usize> = None;
-        if let Some(eid) = entity_id {
-            det_idx = raw
-                .detonations
-                .iter()
-                .enumerate()
-                .find(|(i, d)| {
-                    !used_det[*i]
-                        && d.entity_id == Some(eid)
-                        && detonation_matches(&d.kind, utility)
-                })
-                .map(|(i, _)| i);
-        }
-        if det_idx.is_none() {
-            let mut best: Option<(usize, i64)> = None;
-            for (i, d) in raw.detonations.iter().enumerate() {
-                if used_det[i] || !detonation_matches(&d.kind, utility) {
-                    continue;
-                }
-                if d.steamid.as_deref() != Some(steamid) {
-                    continue;
-                }
-                let Some(dtick) = d.tick else { continue };
-                let dt = dtick - tick;
-                if dt >= 0 && dt <= (tick_rate * 10.0) as i64 {
-                    if best.map_or(true, |(_, bd)| dt < bd) {
-                        best = Some((i, dt));
-                    }
-                }
+        // Entity indices are recycled. Ordinary effects use the projectile
+        // entity during its lifetime; fire creates a separate inferno entity
+        // at the projectile's end. Both require owner, round, time and space.
+        let mut best_det: Option<(usize, f64)> = None;
+        for (i, d) in raw.detonations.iter().enumerate() {
+            if used_det[i] || !detonation_matches(&d.kind, utility) { continue; }
+            if d.steamid.as_deref() != Some(steamid) { continue; }
+            // A projectile can ignite just after the next round starts.
+            // The lifetime and position checks below must still prove the link.
+            if d.round.is_some_and(|value| value != round && value != round + 1) { continue; }
+            let Some(dtick) = d.tick else { continue; };
+            if dtick < tick || dtick - tick > (tick_rate * 10.0) as i64 { continue; }
+            let Some(traj_idx) = matched_trajectory else { continue; };
+            let traj = &raw.trajectories[traj_idx];
+            let (Some(x), Some(y), Some(z)) = (d.x, d.y, d.z) else { continue; };
+            let fire = matches!(utility, UtilityType::Molotov | UtilityType::Incendiary);
+            let reference_point = if fire {
+                let last = traj.points.last().unwrap();
+                if (dtick - last[0] as i64).abs() > 2 { continue; }
+                last
+            } else {
+                if d.entity_id != Some(traj.entity_id) { continue; }
+                let first = traj.points.first().unwrap()[0] as i64;
+                let last = traj.points.last().unwrap()[0] as i64;
+                if dtick < first - 8 || dtick > last + 16 { continue; }
+                traj.points.iter().min_by_key(|p| (p[0] as i64 - dtick).abs()).unwrap()
+            };
+            let distance = dist3(Vec3 { x, y, z }, Vec3 {
+                x: reference_point[1], y: reference_point[2], z: reference_point[3],
+            });
+            if distance > if fire { 256.0 } else { 32.0 } { continue; }
+            if best_det.is_none_or(|(_, best)| distance < best) {
+                best_det = Some((i, distance));
             }
-            det_idx = best.map(|(i, _)| i);
         }
+        let det_idx = best_det.map(|(i, _)| i);
 
         let (detonate_tick, detonate_pos) = match det_idx {
             Some(i) => {
@@ -412,107 +433,6 @@ fn build_events(raw: &RawDemo, rounds: &[AnalyzedRound], tick_rate: f64) -> Vec<
 
         let thrower_team = normalize_team(throw.team.as_deref()).unwrap_or_default();
         let effect_pos = detonate_pos.or(land_pos);
-
-        // ---- blinds (flash only): same attacker, tick at/after detonation
-        let mut blind_enemy = 0.0;
-        let mut blind_team = 0.0;
-        let mut enemies_blinded = 0;
-        let mut teammates_blinded = 0;
-        if utility == UtilityType::Flash {
-            if let Some(dtick) = detonate_tick {
-                for b in &raw.blinds {
-                    if b.attacker_steamid.as_deref() != Some(steamid) {
-                        continue;
-                    }
-                    let Some(btick) = b.tick else { continue };
-                    if (btick - dtick).abs() > 16 {
-                        continue;
-                    }
-                    let is_self = b.victim_steamid.as_deref() == Some(steamid);
-                    if is_self {
-                        continue; // self-blind is visible via team totals elsewhere; skip
-                    }
-                    let Some(victim_team) = normalize_team(b.victim_team.as_deref()) else {
-                        continue; // unknown side — don't guess attribution
-                    };
-                    if victim_team != thrower_team {
-                        blind_enemy += b.duration;
-                        enemies_blinded += 1;
-                    } else {
-                        blind_team += b.duration;
-                        teammates_blinded += 1;
-                    }
-                }
-            }
-        }
-
-        // ---- damage (HE + fire)
-        let mut damage_enemy = 0i64;
-        let mut damage_team = 0i64;
-        if matches!(utility, UtilityType::He | UtilityType::Molotov | UtilityType::Incendiary) {
-            if let Some(dtick) = detonate_tick {
-                let window = if utility == UtilityType::He {
-                    16
-                } else {
-                    (FIRE_WINDOW_SECS * tick_rate) as i64
-                };
-                for h in &raw.hurts {
-                    if h.attacker_steamid.as_deref() != Some(steamid) {
-                        continue;
-                    }
-                    let hurt_matches_utility = match h.weapon.as_deref() {
-                        Some("hegrenade") => utility == UtilityType::He,
-                        Some("inferno") | Some("molotov") | Some("incgrenade") => {
-                            matches!(utility, UtilityType::Molotov | UtilityType::Incendiary)
-                        }
-                        _ => false,
-                    };
-                    if !hurt_matches_utility {
-                        continue;
-                    }
-                    let Some(htick) = h.tick else { continue };
-                    if htick < dtick - 8 || htick > dtick + window {
-                        continue;
-                    }
-                    let victim_team = normalize_team(h.victim_team.as_deref()).unwrap_or_default();
-                    if !victim_team.is_empty() && victim_team == thrower_team {
-                        damage_team += h.damage;
-                    } else {
-                        damage_enemy += h.damage;
-                    }
-                }
-            }
-        }
-
-        // ---- kills + flash assists
-        let mut kills = 0i64;
-        let mut flash_assists = 0i64;
-        if let Some(dtick) = detonate_tick {
-            let kill_window = if utility == UtilityType::He {
-                16
-            } else {
-                (FIRE_WINDOW_SECS * tick_rate) as i64
-            };
-            for d in &raw.deaths {
-                let Some(ktick) = d.tick else { continue };
-                if d.utility_kill
-                    && d.attacker_steamid.as_deref() == Some(steamid)
-                    && weapon_matches_utility(d.weapon.as_deref(), utility)
-                    && ktick >= dtick - 8
-                    && ktick <= dtick + kill_window
-                {
-                    kills += 1;
-                }
-                if utility == UtilityType::Flash
-                    && d.assisted_flash
-                    && d.assister_steamid.as_deref() == Some(steamid)
-                    && ktick >= dtick
-                    && ktick <= dtick + (FLASH_ASSIST_WINDOW_SECS * tick_rate) as i64
-                {
-                    flash_assists += 1;
-                }
-            }
-        }
 
         // ---- nearby players at detonation
         let mut nearby_players = Vec::new();
@@ -559,14 +479,19 @@ fn build_events(raw: &RawDemo, rounds: &[AnalyzedRound], tick_rate: f64) -> Vec<
             land_pos,
             trajectory,
             bounces,
-            blind_enemy_duration: (blind_enemy * 100.0_f64).round() / 100.0,
-            blind_team_duration: (blind_team * 100.0_f64).round() / 100.0,
-            enemies_blinded,
-            teammates_blinded,
-            damage_enemy,
-            damage_team,
-            kills,
-            flash_assists,
+            projectile_entity_id: matched_trajectory.map(|i| raw.trajectories[i].entity_id),
+            blind_enemy_duration: 0.0,
+            blind_team_duration: 0.0,
+            enemies_blinded: 0,
+            teammates_blinded: 0,
+            damage_enemy: 0,
+            damage_team: 0,
+            kills: 0,
+            flash_assists: 0,
+            blind_attribution_complete: true,
+            damage_attribution_complete: true,
+            kill_attribution_complete: true,
+            assist_attribution_complete: true,
             nearby_players,
         });
     }
@@ -585,6 +510,141 @@ fn weapon_matches_utility(weapon: Option<&str>, utility: UtilityType) -> bool {
         Some("smokegrenade") => utility == UtilityType::Smoke,
         _ => false,
     }
+}
+
+#[derive(Clone, Copy)]
+enum EffectCategory { Blind, Damage, Kill, Assist }
+
+fn mark_unavailable(events: &mut [AnalyzedEvent], candidates: &[usize], category: EffectCategory) {
+    for &index in candidates {
+        let event = &mut events[index];
+        match category {
+            EffectCategory::Blind => event.blind_attribution_complete = false,
+            EffectCategory::Damage => event.damage_attribution_complete = false,
+            EffectCategory::Kill => event.kill_attribution_complete = false,
+            EffectCategory::Assist => event.assist_attribution_complete = false,
+        }
+    }
+}
+
+fn record_effect(
+    events: &mut [AnalyzedEvent], ledger: &mut Vec<EffectAttribution>,
+    kind: &'static str, source_index: usize, raw_json: serde_json::Value,
+    candidates: Vec<usize>, category: EffectCategory,
+    apply: impl FnOnce(&mut AnalyzedEvent),
+) {
+    let assigned_event = if candidates.len() == 1 {
+        let index = candidates[0];
+        apply(&mut events[index]);
+        Some(index)
+    } else { None };
+    let resolution = if assigned_event.is_some() { "matched" }
+        else if candidates.is_empty() { "unresolved" } else { "ambiguous" };
+    if candidates.len() > 1 { mark_unavailable(events, &candidates, category); }
+    ledger.push(EffectAttribution { kind, source_index, raw_json, resolution,
+        assigned_event, candidate_events: candidates });
+}
+
+fn record_unresolved(
+    events: &mut [AnalyzedEvent], ledger: &mut Vec<EffectAttribution>,
+    kind: &'static str, source_index: usize, raw_json: serde_json::Value,
+    candidates: Vec<usize>, category: EffectCategory,
+) {
+    mark_unavailable(events, &candidates, category);
+    ledger.push(EffectAttribution { kind, source_index, raw_json, resolution: "unresolved",
+        assigned_event: None, candidate_events: candidates });
+}
+
+fn effect_candidates(
+    events: &[AnalyzedEvent], owner: Option<&str>, round: Option<i64>, tick: Option<i64>,
+    compatible: impl Fn(&AnalyzedEvent, i64, i64) -> bool,
+) -> Vec<usize> {
+    let (Some(owner), Some(round), Some(tick)) = (owner, round, tick) else { return Vec::new() };
+    events.iter().enumerate().filter_map(|(index, event)| {
+        let detonation = event.detonate_tick?;
+        if event.thrower_steamid != owner || !(round == event.round_number || round == event.round_number + 1) {
+            return None;
+        }
+        compatible(event, tick, detonation).then_some(index)
+    }).collect()
+}
+
+/// Each source fact is considered once. An event receives a total only when
+/// the source fact has one causal candidate; ambiguity masks that category.
+fn attribute_effects(raw: &RawDemo, events: &mut [AnalyzedEvent], tick_rate: f64) -> Vec<EffectAttribution> {
+    let mut ledger = Vec::with_capacity(raw.blinds.len() + raw.hurts.len() + raw.deaths.len());
+    for (source_index, blind) in raw.blinds.iter().enumerate() {
+        let raw_json = serde_json::to_value(blind).unwrap();
+        let base = effect_candidates(events, blind.attacker_steamid.as_deref(), blind.round, blind.tick,
+            |event, tick, det| event.utility_type == UtilityType::Flash && (tick - det).abs() <= 16);
+        let candidates: Vec<_> = match blind.entity_id {
+            Some(entity) => base.iter().copied()
+                .filter(|&i| events[i].projectile_entity_id == Some(entity)).collect(),
+            None => base.clone(),
+        };
+        if candidates.is_empty() && !base.is_empty() {
+            record_unresolved(events, &mut ledger, "blind", source_index, raw_json, base, EffectCategory::Blind);
+            continue;
+        }
+        if candidates.len() == 1 && blind.victim_steamid.as_deref() != Some(events[candidates[0]].thrower_steamid.as_str())
+            && normalize_team(blind.victim_team.as_deref()).is_none() {
+            record_unresolved(events, &mut ledger, "blind", source_index, raw_json, candidates, EffectCategory::Blind);
+            continue;
+        }
+        record_effect(events, &mut ledger, "blind", source_index, raw_json, candidates, EffectCategory::Blind, |event| {
+            if blind.victim_steamid.as_deref() == Some(event.thrower_steamid.as_str()) { return; }
+            if normalize_team(blind.victim_team.as_deref()).as_deref() == Some(event.thrower_team.as_str()) {
+                event.blind_team_duration += blind.duration;
+                event.teammates_blinded += 1;
+            } else {
+                event.blind_enemy_duration += blind.duration;
+                event.enemies_blinded += 1;
+            }
+        });
+    }
+    for (source_index, hurt) in raw.hurts.iter().enumerate() {
+        let raw_json = serde_json::to_value(hurt).unwrap();
+        let candidates = effect_candidates(events, hurt.attacker_steamid.as_deref(), hurt.round, hurt.tick,
+            |event, tick, det| {
+                let window = if event.utility_type == UtilityType::He { 16 } else { (FIRE_WINDOW_SECS * tick_rate) as i64 };
+                weapon_matches_utility(hurt.weapon.as_deref(), event.utility_type)
+                    && tick >= det - 8 && tick <= det + window
+            });
+        if candidates.len() == 1 && normalize_team(hurt.victim_team.as_deref()).is_none() {
+            record_unresolved(events, &mut ledger, "hurt", source_index, raw_json, candidates, EffectCategory::Damage);
+            continue;
+        }
+        record_effect(events, &mut ledger, "hurt", source_index, raw_json, candidates, EffectCategory::Damage, |event| {
+            if normalize_team(hurt.victim_team.as_deref()).as_deref() == Some(event.thrower_team.as_str()) {
+                event.damage_team += hurt.damage;
+            } else { event.damage_enemy += hurt.damage; }
+        });
+    }
+    for (source_index, death) in raw.deaths.iter().enumerate() {
+        let raw_json = serde_json::to_value(death).unwrap();
+        if death.utility_kill {
+            let candidates = effect_candidates(events, death.attacker_steamid.as_deref(), death.round, death.tick,
+                |event, tick, det| {
+                    let window = if event.utility_type == UtilityType::He { 16 } else { (FIRE_WINDOW_SECS * tick_rate) as i64 };
+                    weapon_matches_utility(death.weapon.as_deref(), event.utility_type)
+                        && tick >= det - 8 && tick <= det + window
+                });
+            record_effect(events, &mut ledger, "kill", source_index, raw_json.clone(), candidates, EffectCategory::Kill,
+                |event| event.kills += 1);
+        }
+        if death.assisted_flash {
+            let candidates = effect_candidates(events, death.assister_steamid.as_deref(), death.round, death.tick,
+                |event, tick, det| event.utility_type == UtilityType::Flash
+                    && tick >= det && tick <= det + (FLASH_ASSIST_WINDOW_SECS * tick_rate) as i64);
+            record_effect(events, &mut ledger, "flash_assist", source_index, raw_json, candidates, EffectCategory::Assist,
+                |event| event.flash_assists += 1);
+        }
+    }
+    for event in events {
+        event.blind_enemy_duration = (event.blind_enemy_duration * 100.0).round() / 100.0;
+        event.blind_team_duration = (event.blind_team_duration * 100.0).round() / 100.0;
+    }
+    ledger
 }
 
 #[cfg(test)]
@@ -708,6 +768,102 @@ mod tests {
         assert!((ev.throw_time - 15.63).abs() < 0.02);
     }
 
+    fn overlapping_events(utility: UtilityType) -> (RawDemo, Vec<AnalyzedEvent>) {
+        let mut raw = minimal_raw();
+        raw.blinds.clear();
+        let mut first = build_match(&raw).events.remove(0);
+        first.utility_type = utility;
+        first.detonate_tick = Some(3100);
+        first.projectile_entity_id = Some(1);
+        let mut second = first.clone();
+        second.detonate_tick = Some(3104);
+        second.projectile_entity_id = Some(2);
+        (raw, vec![first, second])
+    }
+
+    #[test]
+    fn blind_entity_identity_prevents_overlap_double_count() {
+        let (mut raw, mut events) = overlapping_events(UtilityType::Flash);
+        raw.blinds.push(RawBlind { tick: Some(3105), round: Some(1),
+            attacker_steamid: Some("s1".into()), attacker_team: Some("CT".into()),
+            victim_steamid: Some("s2".into()), victim_name: Some("bob".into()),
+            victim_team: Some("T".into()), duration: 2.5, entity_id: Some(2) });
+        let facts = attribute_effects(&raw, &mut events, 64.0);
+        assert_eq!((events[0].enemies_blinded, events[1].enemies_blinded), (0, 1));
+        assert_eq!(facts[0].assigned_event, Some(1));
+        assert!(events.iter().all(|event| event.blind_attribution_complete));
+
+        raw.blinds[0].entity_id = Some(999);
+        let (_, mut events) = overlapping_events(UtilityType::Flash);
+        let facts = attribute_effects(&raw, &mut events, 64.0);
+        assert_eq!(facts[0].resolution, "unresolved");
+        assert!(events.iter().all(|event| !event.blind_attribution_complete));
+    }
+
+    #[test]
+    fn overlapping_flash_assist_is_preserved_but_unavailable() {
+        let (mut raw, mut events) = overlapping_events(UtilityType::Flash);
+        raw.deaths.push(RawDeath { tick: Some(3110), round: Some(1), weapon: Some("ak47".into()),
+            attacker_steamid: Some("s3".into()), victim_steamid: Some("s2".into()),
+            assister_steamid: Some("s1".into()), assisted_flash: true, utility_kill: false });
+        let facts = attribute_effects(&raw, &mut events, 64.0);
+        assert_eq!(facts[0].resolution, "ambiguous");
+        assert_eq!(facts[0].candidate_events, [0, 1]);
+        assert!(events.iter().all(|event| event.flash_assists == 0 && !event.assist_attribution_complete));
+    }
+
+    #[test]
+    fn overlapping_he_damage_and_kill_are_never_counted_twice() {
+        let (mut raw, mut events) = overlapping_events(UtilityType::He);
+        raw.hurts.push(RawHurt { tick: Some(3105), round: Some(1), weapon: Some("hegrenade".into()),
+            attacker_steamid: Some("s1".into()), attacker_team: Some("CT".into()),
+            victim_steamid: Some("s2".into()), victim_team: Some("T".into()), damage: 40 });
+        raw.deaths.push(RawDeath { tick: Some(3106), round: Some(1), weapon: Some("hegrenade".into()),
+            attacker_steamid: Some("s1".into()), victim_steamid: Some("s2".into()),
+            assister_steamid: None, assisted_flash: false, utility_kill: true });
+        let facts = attribute_effects(&raw, &mut events, 64.0);
+        assert_eq!(facts.iter().map(|f| f.resolution).collect::<Vec<_>>(), ["ambiguous", "ambiguous"]);
+        assert!(events.iter().all(|event| event.damage_enemy == 0 && event.kills == 0
+            && !event.damage_attribution_complete && !event.kill_attribution_complete));
+        let (_, mut events) = overlapping_events(UtilityType::He);
+        events[0].detonate_tick = Some(3000);
+        let facts = attribute_effects(&raw, &mut events, 64.0);
+        assert_eq!(facts.iter().map(|f| f.assigned_event).collect::<Vec<_>>(), [Some(1), Some(1)]);
+        assert_eq!((events[0].damage_enemy, events[1].damage_enemy), (0, 40));
+        assert_eq!((events[0].kills, events[1].kills), (0, 1));
+    }
+
+    #[test]
+    fn next_round_effect_needs_lifetime_and_owner_and_cannot_reach_later_rounds() {
+        let (mut raw, mut events) = overlapping_events(UtilityType::He);
+        events[0].round_number = 1;
+        events[1].round_number = 3;
+        raw.hurts.push(RawHurt { tick: Some(3105), round: Some(2), weapon: Some("hegrenade".into()),
+            attacker_steamid: Some("s1".into()), attacker_team: Some("CT".into()),
+            victim_steamid: Some("s2".into()), victim_team: Some("T".into()), damage: 40 });
+        let facts = attribute_effects(&raw, &mut events, 64.0);
+        assert_eq!(facts[0].assigned_event, Some(0));
+        assert_eq!((events[0].damage_enemy, events[1].damage_enemy), (40, 0));
+        raw.hurts[0].attacker_steamid = Some("other".into());
+        let (_, mut events) = overlapping_events(UtilityType::He);
+        assert_eq!(attribute_effects(&raw, &mut events, 64.0)[0].resolution, "unresolved");
+    }
+
+    #[test]
+    fn unresolved_assist_remains_a_raw_fact_without_a_grenade_total() {
+        let (mut raw, mut events) = overlapping_events(UtilityType::Flash);
+        raw.deaths.push(RawDeath { tick: Some(3110), round: Some(1), weapon: Some("ak47".into()),
+            attacker_steamid: Some("s3".into()), victim_steamid: Some("s2".into()),
+            assister_steamid: Some("missing-owner".into()), assisted_flash: true, utility_kill: false });
+        let facts = attribute_effects(&raw, &mut events, 64.0);
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].kind, "flash_assist");
+        assert_eq!(facts[0].resolution, "unresolved");
+        assert_eq!(facts[0].assigned_event, None);
+        assert_eq!(facts[0].raw_json["assisterSteamid"], "missing-owner");
+        assert!(events.iter().all(|event| event.flash_assists == 0));
+    }
+
     #[test]
     fn import_rejects_grenade_throws_when_every_path_is_missing() {
         let mut raw = minimal_raw();
@@ -776,5 +932,50 @@ mod tests {
         assert_eq!(m.events.len(), 1);
         assert!(m.events[0].detonate_tick.is_none());
         assert!(m.events[0].trajectory.is_empty());
+    }
+
+    #[test]
+    fn reused_projectile_index_never_links_a_past_or_future_detonation() {
+        let raw: RawDemo = serde_json::from_str(r#"{
+            "version":1,"header":{"mapName":"de_ancient","serverName":null,"demoTicks":6400,"playbackTime":100},
+            "throws":[
+                {"tick":100,"round":1,"utility":"smoke","steamid":"123","name":"A","team":"CT","x":0,"y":0,"z":0},
+                {"tick":1000,"round":2,"utility":"smoke","steamid":"123","name":"A","team":"CT","x":0,"y":0,"z":0}
+            ],
+            "trajectories":[
+                {"entityId":5,"type":"smoke","steamid":"123","points":[[101,0,0,0],[102,1,0,0]]},
+                {"entityId":5,"type":"smoke","steamid":"123","points":[[1001,0,0,0],[1002,1,0,0]]}
+            ],
+            "detonations":[
+                {"kind":"smoke","tick":1003,"round":2,"entityId":5,"steamid":"123","x":1,"y":0,"z":0},
+                {"kind":"smoke","tick":50,"round":1,"entityId":5,"steamid":"123","x":1,"y":0,"z":0},
+                {"kind":"smoke","tick":103,"round":1,"entityId":5,"steamid":"123","x":1,"y":0,"z":0}
+            ]
+        }"#).unwrap();
+        let events = build_match(&raw).events;
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].detonate_tick, Some(103));
+        assert_eq!(events[1].detonate_tick, Some(1003));
+    }
+
+    #[test]
+    fn fire_uses_projectile_endpoint_when_inferno_has_another_entity_id() {
+        let raw: RawDemo = serde_json::from_str(r#"{
+            "version":1,"header":{"mapName":"de_inferno","serverName":null,"demoTicks":6400,"playbackTime":100},
+            "throws":[
+                {"tick":100,"round":1,"utility":"molotov","steamid":"123","name":"A","team":"T","x":0,"y":0,"z":0},
+                {"tick":300,"round":1,"utility":"molotov","steamid":"123","name":"A","team":"T","x":0,"y":0,"z":0}
+            ],
+            "trajectories":[
+                {"entityId":5,"type":"CMolotovProjectile","steamid":"123","points":[[101,0,0,0],[110,10,0,0]]},
+                {"entityId":5,"type":"CMolotovProjectile","steamid":"123","points":[[301,0,0,0],[310,100,0,0]]}
+            ],
+            "detonations":[
+                {"kind":"fire","tick":311,"round":1,"entityId":50,"steamid":"123","x":100,"y":0,"z":0},
+                {"kind":"fire","tick":111,"round":2,"entityId":51,"steamid":"123","x":10,"y":0,"z":0}
+            ]
+        }"#).unwrap();
+        let events = build_match(&raw).events;
+        assert_eq!(events.iter().map(|e| e.detonate_tick).collect::<Vec<_>>(), [Some(111), Some(311)]);
     }
 }

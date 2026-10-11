@@ -1,10 +1,8 @@
-//! Versioned, deliberately narrow CS2 parser. Only hash-bound evaluation
-//! demos are accepted; combat/economy facts are unsupported.
+//! Versioned CS2 native facts parser. Economy and capture facts are unsupported.
 use crate::demo_import::{DemoFactsParser, ImportControl, ParserCapabilities};
 use crate::parser::raw::*;
-use sha2::{Digest, Sha256};
 use source2_demo::prelude::*;
-use source2_demo::proto::CSvcMsgServerInfo;
+use source2_demo::proto::{CMsgPlayerInfo, CSvcMsgServerInfo, Message};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -15,97 +13,114 @@ pub const VALIDATED_ANCIENT_P2_SHA256: &str = "75c464e025350b8a46b7b2808cd55500f
 pub const VALIDATED_NUKE_SHA256: &str = "5c59ee08348a2b7378b8a5dde90f3d4ba3ead21be5b2f74a2cc7f3f8ada39c14";
 pub const PARSER_PROVENANCE: &str = "crates.io source2-demo 0.5.9, cs2 feature";
 
-struct ValidatedDemo {
-    hash: &'static str,
-    map: &'static str,
-    throws: usize,
-    detonations: usize,
-    trajectories: usize,
-    trajectory_points: usize,
-    positions: usize,
-    round_events: usize,
-}
-
-const VALIDATED_DEMOS: [ValidatedDemo; 3] = [
-    ValidatedDemo { hash: VALIDATED_ANCIENT_SHA256, map: "de_ancient", throws: 37,
-        detonations: 37, trajectories: 37, trajectory_points: 23_672, positions: 353,
-        round_events: 11 },
-    ValidatedDemo { hash: VALIDATED_NUKE_SHA256, map: "de_nuke", throws: 65,
-        detonations: 65, trajectories: 65, trajectory_points: 39_618, positions: 583,
-        round_events: 15 },
-    ValidatedDemo { hash: VALIDATED_ANCIENT_P2_SHA256, map: "de_ancient", throws: 449,
-        detonations: 447, trajectories: 449, trajectory_points: 267_400, positions: 4_040,
-        round_events: 52 },
-];
-
 pub struct NativeGrenadeParser;
 
-fn demo_hash(path: &Path, control: &ImportControl) -> Result<String, String> {
+/// Reject broken framing before handing bytes to source2-demo. That library
+/// seeks to the file-info offset from the header without checking it first.
+fn validate_format(path: &Path, control: &ImportControl) -> Result<(), String> {
     let mut file = File::open(path).map_err(|e| e.to_string())?;
-    let mut hash = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        if control.is_cancelled() { return Err("demo import cancelled while hashing".into()); }
-        let n = file.read(&mut buffer).map_err(|e| e.to_string())?;
-        if n == 0 { break }
-        hash.update(&buffer[..n]);
+    let length = file.metadata().map_err(|e| e.to_string())?.len();
+    if length < 24 { return Err("truncated CS2 demo header (less than 24 bytes)".into()); }
+    let mut header = [0_u8; 16];
+    file.read_exact(&mut header).map_err(|e| format!("could not read CS2 header: {e}"))?;
+    if &header[..8] != b"PBDEMS2\0" { return Err("not a CS2 PBDEMS2 demo".into()); }
+    let info_offset = u32::from_le_bytes(header[8..12].try_into().unwrap()) as u64;
+    if info_offset < 16 || info_offset >= length.saturating_sub(8) {
+        return Err(format!("unsupported or truncated CS2 file-info offset {info_offset} in {length}-byte demo"));
     }
-    Ok(format!("{:x}", hash.finalize()))
+    if control.is_cancelled() { return Err("demo import cancelled".into()); }
+    Ok(())
 }
 
 impl DemoFactsParser for NativeGrenadeParser {
-    fn capabilities(&self) -> ParserCapabilities { ParserCapabilities::GrenadeAnalysisOnlyV1 }
+    fn capabilities(&self) -> ParserCapabilities { ParserCapabilities::NativeCombatFlashV1 }
 
     fn parse(&self, path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
         let path = path.to_path_buf();
         let control = control.clone();
         std::thread::Builder::new().name("source2-demo-0.5.9".into())
             .stack_size(16 * 1024 * 1024)
-            .spawn(move || parse_validated_demo(&path, &control))
+            .spawn(move || parse_demo(&path, &control))
             .map_err(|e| format!("could not start native demo parser: {e}"))?
             .join().map_err(|_| "native demo parser worker panicked".to_string())?
     }
 }
 
-fn parse_validated_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
-        let hash = demo_hash(path, control)?;
-        let validated = VALIDATED_DEMOS.iter().find(|demo| demo.hash == hash)
-            .ok_or_else(|| format!("Rust grenade analysis accepts only three hash-validated Ancient/Nuke evaluation demos; this demo is SHA-256 {hash}"))?;
+fn parse_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
+        validate_format(path, control)?;
         let mut parser = Parser::from_reader(BufReader::new(File::open(path).map_err(|e| e.to_string())?))
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("unsupported or damaged CS2 file-info record: {e}"))?;
         let ticks = parser.replay_info().playback_ticks.map(i64::from);
         let seconds = parser.replay_info().playback_time.map(f64::from);
+        if !matches!((ticks, seconds), (Some(t), Some(s)) if t > 0 && s.is_finite() && s > 0.0 && (1.0..=1024.0).contains(&(t as f64 / s))) {
+            return Err(format!("unsupported CS2 replay timing: ticks={ticks:?}, seconds={seconds:?}"));
+        }
+        if let Some(expected) = ticks.and_then(|t| u32::try_from(t).ok()) { control.set_expected_ticks(expected); }
         let observer = parser.register_observer::<GrenadeObserver>();
         observer.borrow_mut().control = Some(control.clone());
-        parser.run_to_end().map_err(|e| e.to_string())?;
+        parser.run_to_end().map_err(|e| format!("CS2 stream could not be fully decoded: {e}"))?;
         if control.is_cancelled() { return Err("demo import cancelled".into()); }
+        validate_combat_event_schema(parser.context())?;
         let state = observer.borrow();
-        if !state.errors.is_empty() { return Err(format!("native grenade facts incomplete: {}", state.errors.join("; "))); }
-        validate_round_outcome_events(&state.round_events, &state.bomb_defused_ticks,
+        if !state.errors.is_empty() { return Err(format!("native CS2 facts incomplete: {}", state.errors.join("; "))); }
+        let round_events = state.round_events.clone();
+        validate_round_outcome_events(&round_events, &state.bomb_defused_ticks,
             &state.bomb_exploded_ticks, &state.ct_death_ticks)?;
-        let map_name = state.map_name.clone().ok_or("native demo had no server map name")?;
+        let map_name = state.map_name.clone().filter(|s| !s.trim().is_empty()).ok_or("unsupported CS2 schema: no server map name")?;
         let trajectories = state.trajectories.clone();
         let points: usize = trajectories.iter().map(|t| t.points.len()).sum();
-        if map_name != validated.map || state.throws.len() != validated.throws || state.detonations.len() != validated.detonations
-            || trajectories.len() != validated.trajectories || points != validated.trajectory_points || state.positions.len() != validated.positions
-            || state.round_events.len() != validated.round_events || state.detonations.iter().any(|d| d.steamid.is_none())
-            || trajectories.iter().any(|t| t.steamid.is_none() || t.points.len() < 2) {
-            return Err(format!("native grenade facts failed validated-demo coverage gate: map={map_name} throws={} detonations={} trajectories={} points={points} positions={} rounds={} missing_detonation_owner={} missing_trajectory_owner={}",
-                state.throws.len(), state.detonations.len(), trajectories.len(), state.positions.len(), state.round_events.len(),
-                state.detonations.iter().filter(|d| d.steamid.is_none()).count(), trajectories.iter().filter(|t| t.steamid.is_none()).count()));
-        }
+        validate_coverage(&state, &map_name, &trajectories, points)?;
         Ok(RawDemo {
             version: 1,
             header: RawHeader { map_name, server_name: state.server_name.clone(), demo_ticks: ticks, playback_time: seconds },
             players: state.players.values().cloned().collect(),
-            round_events: state.round_events.clone(),
+            round_events,
             throws: state.throws.clone(),
             detonations: state.detonations.clone(),
-            blinds: Vec::new(), hurts: Vec::new(), deaths: Vec::new(),
+            blinds: state.blinds.clone(), hurts: state.hurts.clone(), deaths: state.deaths.clone(),
             trajectories,
             trajectory_stats: RawTrajectoryStats { total_rows: points, valid_rows: points, skipped_rows: 0 },
             economy: Vec::new(), positions: state.positions.clone(),
         })
+}
+
+fn validate_coverage(state: &GrenadeObserver, map: &str, trajectories: &[RawTrajectory], points: usize) -> Result<(), String> {
+    if state.round_events.is_empty() {
+        return Err("unsupported CS2 GameRules schema: no round transitions decoded".into());
+    }
+    if state.last_start_count.is_none() {
+        return Err("unsupported CS2 GameRules schema: round-start counter unavailable".into());
+    }
+    if state.throws.is_empty() {
+        return Err("no grenade releases decoded; grenade analysis cannot establish coverage for this demo".into());
+    }
+    let orphan_trajectories = trajectories.iter().filter(|t| t.steamid.is_none() || t.name.is_none() || t.points.len() < 2).count();
+    let orphan_detonations = state.detonations.iter().filter(|d| d.steamid.is_none()).count();
+    let invalid_points = trajectories.iter().any(|t| t.points.iter().any(|p| p.iter().any(|v| !v.is_finite()))
+        || t.points.windows(2).any(|w| w[0][0] > w[1][0]));
+    let invalid_positions = state.positions.iter().any(|p| [p.x,p.y,p.z].iter().any(|v| !v.is_some_and(f64::is_finite)));
+    let invalid_releases = state.throws.iter().any(|t| [t.x,t.y,t.z].iter().any(|v| !v.is_some_and(f64::is_finite)));
+    let invalid_detonations = state.detonations.iter().any(|d| [d.x,d.y,d.z].iter().any(|v| !v.is_some_and(f64::is_finite)));
+    if trajectories.len() != state.throws.len() || orphan_trajectories != 0 || orphan_detonations != 0
+        || invalid_points || invalid_positions || invalid_releases || invalid_detonations {
+        // This is diagnostic only. A nearby release is not proof of causality;
+        // persisted links are validated separately by the analysis pipeline.
+        let unexplained_paths: Vec<_> = trajectories.iter().filter(|path| {
+            let Some(first_tick) = path.points.first().map(|point| point[0]) else { return true };
+            !state.throws.iter().any(|release| {
+                release.steamid == path.steamid && release.tick.is_some_and(|tick| {
+                    (0.0..=32.0).contains(&(first_tick - tick as f64))
+                })
+            })
+        }).take(5).map(|path| format!("entity {} class {} first tick {:?} owner {:?}",
+            path.entity_id, path.grenade_type.as_deref().unwrap_or("unknown"),
+            path.points.first().map(|point| point[0] as i64), path.steamid)).collect();
+        return Err(format!("native grenade coverage incomplete on {map}: releases={}, trajectories={}, samples={points}, detonations={}, positions={}, unowned/short trajectories={orphan_trajectories}, unowned detonations={orphan_detonations}, invalid coordinates={}; paths without nearby same-owner releases (diagnostic only): [{}]; no match was saved",
+            state.throws.len(), trajectories.len(), state.detonations.len(), state.positions.len(),
+            invalid_points || invalid_positions || invalid_releases || invalid_detonations,
+            unexplained_paths.join("; ")));
+    }
+    Ok(())
 }
 
 fn origin(entity: &Entity) -> Option<[f64; 3]> {
@@ -150,6 +165,16 @@ fn controller_identity(controller: &Entity) -> Option<(String, String, String)> 
     Some((steam, name, side))
 }
 
+/// The event's userid is accepted as a POV candidate only when the live
+/// userinfo table independently binds that index to the same Steam account.
+fn userinfo_slot(ctx: &Context, user: i32, steam: &str) -> Option<i64> {
+    let row = ctx.string_tables().get_by_name("userinfo").ok()?
+        .get_row(usize::try_from(user).ok()?).ok()?;
+    let info = CMsgPlayerInfo::decode(row.value()?).ok()?;
+    (info.userid == Some(user) && info.steamid?.to_string() == steam)
+        .then_some(i64::from(user))
+}
+
 fn pawn_of<'a>(ctx: &'a Context, controller: &Entity) -> Option<&'a Entity> {
     let handle = match controller.get_property("m_hPlayerPawn").ok()? { FieldValue::Unsigned32(v) => *v, _ => return None };
     ctx.entities().iter().find(|e| e.handle() == handle && e.class().name().contains("PlayerPawn"))
@@ -164,6 +189,35 @@ fn event_float(event: &GameEvent, name: &str) -> Option<f64> {
 fn event_string<'a>(event: &'a GameEvent, name: &str) -> Option<&'a str> {
     match event.get_value(name).ok()? { EventValue::String(v) => Some(v.as_str()), _ => None }
 }
+fn event_bool(event: &GameEvent, name: &str) -> Option<bool> {
+    match event.get_value(name).ok()? { EventValue::Bool(v) => Some(*v), _ => None }
+}
+
+fn warmup(ctx: &Context) -> Option<bool> {
+    let rules = ctx.entities().iter().find(|e| e.class().name().contains("GameRules"))?;
+    match rules.get_property("m_pGameRules.m_bWarmupPeriod").ok()? {
+        FieldValue::Boolean(v) => Some(*v), _ => None,
+    }
+}
+
+fn validate_combat_event_schema(ctx: &Context) -> Result<(), String> {
+    let definitions: BTreeMap<_, _> = ctx.game_events().iter()
+        .map(|(_, definition)| (definition.name(), definition)).collect();
+    for (event, fields) in [
+        ("player_blind", &[("userid", "short"), ("attacker", "short"), ("entityid", "short"), ("blind_duration", "float")][..]),
+        ("player_hurt", &[("userid", "short"), ("attacker", "short"), ("weapon", "string"), ("dmg_health", "short")][..]),
+        ("player_death", &[("userid", "short"), ("attacker", "short"), ("assister", "short"), ("assistedflash", "bool"), ("weapon", "string")][..]),
+    ] {
+        let definition = definitions.get(event).ok_or_else(|| format!("unsupported CS2 combat schema: missing {event} descriptor"))?;
+        let available: BTreeMap<_, _> = definition.keys().map(|key| (key.name(), key.type_name())).collect();
+        for (field, expected_type) in fields {
+            if available.get(field) != Some(expected_type) {
+                return Err(format!("unsupported CS2 combat schema: {event}.{field} must be {expected_type}; found {:?}", available.get(field)));
+            }
+        }
+    }
+    Ok(())
+}
 
 fn round_outcome(win: i32, reason: i32) -> Option<(&'static str, &'static str)> {
     match (win, reason) {
@@ -171,6 +225,8 @@ fn round_outcome(win: i32, reason: i32) -> Option<(&'static str, &'static str)> 
         // Nuke p1 has bomb_defused game events at the exact ticks where
         // Source 2 GameRules reports win=3, reason=7.
         (3, 7) => Some(("CT", "bomb_defused")),
+        // Confirmed at matching ticks in the local Inferno and Vertigo sidecars.
+        (3, 12) => Some(("CT", "time_ran_out")),
         (2, 1) => Some(("T", "bomb_exploded")),
         (2, 9) => Some(("T", "ct_killed")),
         _ => None,
@@ -200,8 +256,13 @@ fn validate_round_outcome_events(rounds: &[RawRoundEvent], defused: &BTreeSet<u3
         return Err(format!("bomb_defused game-event ticks {defused:?} do not match round outcomes {mapped_defused:?}"));
     }
     let mapped_exploded = ticks_for("bomb_exploded");
-    if &mapped_exploded != exploded {
-        return Err(format!("bomb_exploded game-event ticks {exploded:?} do not match round outcomes {mapped_exploded:?}"));
+    let unmatched_exploded: Vec<_> = exploded.difference(&mapped_exploded).copied().collect();
+    let post_round_explosion = |tick: u32| rounds.iter()
+        .filter(|r| r.tick.is_some_and(|t| t <= i64::from(tick)))
+        .max_by_key(|r| r.tick)
+        .is_some_and(|r| r.kind == "round_end");
+    if !mapped_exploded.is_subset(exploded) || unmatched_exploded.iter().any(|t| !post_round_explosion(*t)) {
+        return Err(format!("bomb_exploded game-event ticks {exploded:?} do not match in-round outcomes {mapped_exploded:?}; unmatched post-round explosions may be ignored"));
     }
     let missing_ct_death: Vec<_> = ticks_for("ct_killed").difference(ct_deaths).copied().collect();
     if !missing_ct_death.is_empty() {
@@ -230,18 +291,22 @@ struct GrenadeObserver {
     map_name: Option<String>, server_name: Option<String>,
     players: BTreeMap<String, RawPlayer>,
     throws: Vec<RawThrow>, detonations: Vec<RawDetonation>,
+    blinds: Vec<RawBlind>, hurts: Vec<RawHurt>, deaths: Vec<RawDeath>,
     trajectories: Vec<RawTrajectory>, active_projectiles: BTreeMap<u32, usize>,
     projectile_owners: BTreeMap<u32, (String, String)>,
     positions: Vec<RawPosition>, detonation_ticks: BTreeSet<u32>,
     bomb_defused_ticks: BTreeSet<u32>, bomb_exploded_ticks: BTreeSet<u32>, ct_death_ticks: BTreeSet<u32>,
     dead_users_on_tick: BTreeMap<u32, BTreeSet<i32>>,
+    dead_users_until_spawn: BTreeSet<i32>,
     round_events: Vec<RawRoundEvent>, last_rules: Option<(i32, bool, i32)>,
+    last_start_count: Option<u8>,
     errors: Vec<String>,
 }
 
 #[observer]
 #[uses_entities]
 #[uses_game_events]
+#[uses_string_tables]
 impl GrenadeObserver {
     #[on_message]
     fn on_server_info(&mut self, msg: CSvcMsgServerInfo) -> ObserverResult {
@@ -257,6 +322,7 @@ impl GrenadeObserver {
         if matches!(name, "player_death" | "player_spawn") {
             if let Some(user) = event_int(event, "userid") {
                 update_same_tick_deaths(self.dead_users_on_tick.entry(ctx.tick()).or_default(), name, user);
+                update_same_tick_deaths(&mut self.dead_users_until_spawn, name, user);
                 if name == "player_death" && controller_by_user(ctx, user).and_then(controller_identity).is_some_and(|(_, _, side)| side == "CT") {
                     self.ct_death_ticks.insert(ctx.tick());
                 }
@@ -277,13 +343,14 @@ impl GrenadeObserver {
                 let user = event_int(event, "userid")?;
                 let controller = controller_by_user(ctx, user)?;
                 let (steam, player_name, side) = controller_identity(controller)?;
+                let slot = userinfo_slot(ctx, user, &steam)?;
                 let [x, y, z] = origin(pawn_of(ctx, controller)?)?;
-                Some((user, steam, player_name, side, x, y, z, game_round(ctx)?))
+                Some((slot, steam, player_name, side, x, y, z, game_round(ctx)?))
             })();
-            if let Some((user, steam, player_name, side, x, y, z, round)) = fact {
+            if let Some((slot, steam, player_name, side, x, y, z, round)) = fact {
                 self.players.entry(steam.clone()).or_insert(RawPlayer { steamid: steam.clone(), name: player_name.clone() });
                 self.throws.push(RawThrow { tick: Some(i64::from(ctx.tick())), round: Some(round), utility: utility.into(),
-                    steamid: Some(steam), name: Some(player_name), team: Some(side), observer_slot: Some(i64::from(user)),
+                    steamid: Some(steam), name: Some(player_name), team: Some(side), observer_slot: Some(slot),
                     x: Some(x), y: Some(y), z: Some(z) });
             } else { self.errors.push(format!("incomplete {utility} release at tick {}", ctx.tick())); }
         }
@@ -305,6 +372,70 @@ impl GrenadeObserver {
                     x: Some(x), y: Some(y), z: Some(z) });
             } else { self.errors.push(format!("incomplete {kind} detonation at tick {}", ctx.tick())); }
         }
+        if matches!(name, "player_blind" | "player_hurt" | "player_death") {
+            match warmup(ctx) {
+                Some(true) => return Ok(()),
+                None => { self.errors.push(format!("warmup GameRules state unavailable for {name} at tick {}", ctx.tick())); return Ok(()); }
+                Some(false) => {}
+            }
+            let round = game_round(ctx);
+            let identity = |key: &str| event_int(event, key)
+                .and_then(|user| controller_by_user(ctx, user))
+                .and_then(controller_identity);
+            match name {
+                "player_blind" => {
+                    let fact = (|| {
+                        let (attacker, _, attacker_team) = identity("attacker")?;
+                        let (victim, victim_name, victim_team) = identity("userid")?;
+                        let duration = event_float(event, "blind_duration")?;
+                        if !duration.is_finite() || duration < 0.0 { return None; }
+                        Some(RawBlind { tick: Some(i64::from(ctx.tick())), round,
+                            attacker_steamid: Some(attacker), attacker_team: Some(attacker_team),
+                            victim_steamid: Some(victim), victim_name: Some(victim_name),
+                            victim_team: Some(victim_team), duration,
+                            entity_id: event_int(event, "entityid").map(i64::from) })
+                    })();
+                    if let Some(fact) = fact { self.blinds.push(fact); }
+                    else { self.errors.push(format!("incomplete player_blind at tick {}", ctx.tick())); }
+                }
+                "player_hurt" => {
+                    let weapon = event_string(event, "weapon");
+                    if matches!(weapon, Some("hegrenade" | "inferno" | "molotov" | "incgrenade")) {
+                        let fact = (|| {
+                            let (attacker, _, attacker_team) = identity("attacker")?;
+                            let (victim, _, victim_team) = identity("userid")?;
+                            let damage = i64::from(event_int(event, "dmg_health")?);
+                            if damage < 0 { return None; }
+                            Some(RawHurt { tick: Some(i64::from(ctx.tick())), round,
+                                weapon: weapon.map(str::to_string), attacker_steamid: Some(attacker),
+                                attacker_team: Some(attacker_team), victim_steamid: Some(victim),
+                                victim_team: Some(victim_team), damage })
+                        })();
+                        if let Some(fact) = fact { self.hurts.push(fact); }
+                        else { self.errors.push(format!("incomplete utility player_hurt at tick {}", ctx.tick())); }
+                    }
+                }
+                "player_death" => {
+                    let weapon = event_string(event, "weapon");
+                    let utility_kill = matches!(weapon, Some("hegrenade" | "inferno" | "molotov" | "incgrenade" | "decoy" | "flashbang" | "smokegrenade"));
+                    let assisted_flash = event_bool(event, "assistedflash");
+                    if utility_kill || assisted_flash == Some(true) {
+                        let victim = identity("userid");
+                        let attacker = identity("attacker");
+                        let assister = identity("assister");
+                        if victim.is_none() || (utility_kill && attacker.is_none()) || (assisted_flash == Some(true) && assister.is_none()) {
+                            self.errors.push(format!("incomplete utility player_death at tick {}", ctx.tick()));
+                        } else {
+                            self.deaths.push(RawDeath { tick: Some(i64::from(ctx.tick())), round,
+                                weapon: weapon.map(str::to_string),
+                                attacker_steamid: attacker.map(|v| v.0), victim_steamid: victim.map(|v| v.0),
+                                assister_steamid: assister.map(|v| v.0), assisted_flash: assisted_flash.unwrap_or(false), utility_kill });
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
         Ok(())
     }
 
@@ -319,6 +450,9 @@ impl GrenadeObserver {
             let total = get_i32("m_totalRoundsPlayed");
             let frozen = match entity.get_property("m_pGameRules.m_bFreezePeriod") { Ok(FieldValue::Boolean(v)) => Some(*v), _ => None };
             let win = get_i32("m_iRoundWinStatus");
+            let start_count = match entity.get_property("m_pGameRules.m_nRoundStartCount") {
+                Ok(FieldValue::Unsigned8(v)) => Some(*v), _ => None,
+            };
             if let (Some(total), Some(frozen), Some(win)) = (total, frozen, win) {
                 let prior = self.last_rules;
                 if prior != Some((total, frozen, win)) {
@@ -331,14 +465,27 @@ impl GrenadeObserver {
                                 None => { self.errors.push(format!("unsupported round outcome ({win}, {reason:?}) at {}", ctx.tick())); (None, None) }
                             }
                         } else { (None, None) };
-                        self.round_events.push(RawRoundEvent { kind: kind.into(), tick: Some(i64::from(ctx.tick())),
-                            round: Some(i64::from(total) + 1), winner, reason });
+                        if !self.round_events.iter().any(|r| r.kind == kind && r.tick == Some(i64::from(ctx.tick()))) {
+                            self.round_events.push(RawRoundEvent { kind: kind.into(), tick: Some(i64::from(ctx.tick())),
+                                round: Some(i64::from(total) + 1), winner, reason });
+                        }
                     }
                     self.last_rules = Some((total, frozen, win));
+                }
+                if let Some(count) = start_count {
+                    if self.last_start_count.is_some_and(|old| old != count)
+                        && !self.round_events.iter().any(|r| r.kind == "round_start" && r.tick == Some(i64::from(ctx.tick()))) {
+                        self.round_events.push(RawRoundEvent { kind: "round_start".into(), tick: Some(i64::from(ctx.tick())),
+                            round: Some(i64::from(total) + 1), winner: None, reason: None });
+                    }
+                    self.last_start_count = Some(count);
                 }
             }
         }
         if event == EntityEvents::Created && entity.class().name().contains("Projectile") {
+            // Entity indices are reused. Never inherit a prior projectile's
+            // thrower when the new lifetime lacks a decodable owner.
+            self.projectile_owners.remove(&entity.index());
             if let Ok(FieldValue::Unsigned32(handle)) = entity.get_property("m_hThrower") {
                 if let Some(controller) = controller_by_pawn(ctx, *handle) {
                     if let Some((steam, name, _)) = controller_identity(controller) {
@@ -369,6 +516,7 @@ impl GrenadeObserver {
 
     #[on_tick_end]
     fn on_tick_end(&mut self, ctx: &Context) -> ObserverResult {
+        if let Some(control) = &self.control { control.set_parsed_tick(ctx.tick()); }
         if self.control.as_ref().is_some_and(ImportControl::is_cancelled) {
             return Err(ParserError::IoError("demo import cancelled".into()).into());
         }
@@ -386,7 +534,7 @@ impl GrenadeObserver {
             for controller in ctx.entities().iter().filter(|e| e.class().name().contains("PlayerController")) {
                 let Some(user) = controller.index().checked_sub(1).and_then(|v| i32::try_from(v).ok()) else { continue };
                 let alive_flag = matches!(controller.get_property("m_bPawnIsAlive"), Ok(FieldValue::Boolean(true)));
-                if !include_position(alive_flag, dead_this_tick.contains(&user)) { continue }
+                if !include_position(alive_flag, dead_this_tick.contains(&user) || self.dead_users_until_spawn.contains(&user)) { continue }
                 let Some((steam, name, side)) = controller_identity(controller) else { continue };
                 let Some([x, y, z]) = pawn_of(ctx, controller).and_then(origin) else { continue };
                 self.positions.push(RawPosition { tick: Some(i64::from(ctx.tick())), steamid: Some(steam),
@@ -402,9 +550,28 @@ mod round_tests {
     use super::*;
 
     #[test]
+    fn malformed_and_cancelled_headers_fail_before_decode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("broken.dem");
+        std::fs::write(&path, b"PBDEMS2\0").unwrap();
+        assert!(validate_format(&path, &ImportControl::new()).unwrap_err().contains("truncated"));
+        let mut header = [0_u8; 32];
+        header[..8].copy_from_slice(b"PBDEMS2\0");
+        header[8..12].copy_from_slice(&u32::MAX.to_le_bytes());
+        std::fs::write(&path, header).unwrap();
+        assert!(validate_format(&path, &ImportControl::new()).unwrap_err().contains("file-info offset"));
+        header[8..12].copy_from_slice(&16_u32.to_le_bytes());
+        std::fs::write(&path, header).unwrap();
+        let cancelled = ImportControl::new();
+        cancelled.request_cancel();
+        assert!(validate_format(&path, &cancelled).unwrap_err().contains("cancelled"));
+    }
+
+    #[test]
     fn maps_only_observed_round_outcomes() {
         assert_eq!(round_outcome(3, 8), Some(("CT", "t_killed")));
         assert_eq!(round_outcome(3, 7), Some(("CT", "bomb_defused")));
+        assert_eq!(round_outcome(3, 12), Some(("CT", "time_ran_out")));
         assert_eq!(round_outcome(2, 9), Some(("T", "ct_killed")));
         assert_eq!(round_outcome(2, 1), Some(("T", "bomb_exploded")));
         assert_eq!(round_outcome(2, 7), None);
@@ -439,6 +606,16 @@ mod round_tests {
         assert!(validate_round_outcome_events(&rounds, &BTreeSet::new(), &BTreeSet::new(), &BTreeSet::from([52_063])).is_err());
         assert!(validate_round_outcome_events(&rounds, &BTreeSet::new(), &BTreeSet::from([45_707]), &BTreeSet::new()).is_err());
     }
+
+    #[test]
+    fn explosion_after_a_completed_round_does_not_create_another_outcome() {
+        let rounds = [RawRoundEvent { kind: "round_end".into(), tick: Some(100), round: Some(1),
+            winner: Some("T".into()), reason: Some("ct_killed".into()) }];
+        assert!(validate_round_outcome_events(&rounds, &BTreeSet::new(), &BTreeSet::from([101]), &BTreeSet::from([100])).is_ok());
+        let active = [rounds[0].clone(), RawRoundEvent { kind: "round_start".into(), tick: Some(110), round: Some(2), winner: None, reason: None }];
+        assert!(validate_round_outcome_events(&active, &BTreeSet::new(), &BTreeSet::from([111]), &BTreeSet::from([100])).is_err());
+    }
+
 
     #[test]
     fn same_tick_death_overrides_stale_alive_flag_for_position_sampling() {

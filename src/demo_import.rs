@@ -6,11 +6,12 @@ use crate::analysis::{AnalyzedMatch, build_match, validate_import};
 pub use crate::domain::ParserCapabilities;
 use crate::db::{self, queries};
 use crate::parser::raw::RawDemo;
+use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,21 +24,31 @@ const COMPLETE: u8 = 3;
 
 /// Cancellation is accepted only before the database commit boundary.
 #[derive(Default, Clone)]
-pub struct ImportControl(Arc<AtomicU8>);
+pub struct ImportControl {
+    state: Arc<AtomicU8>,
+    parsed_tick: Arc<AtomicU32>,
+    expected_tick: Arc<AtomicU32>,
+}
 
 impl ImportControl {
-    pub fn new() -> Self { Self(Arc::new(AtomicU8::new(ACTIVE))) }
-    pub fn is_cancelled(&self) -> bool { self.0.load(Ordering::Acquire) == CANCELLED }
-    pub fn can_cancel(&self) -> bool { self.0.load(Ordering::Acquire) == ACTIVE }
+    pub fn new() -> Self { Self::default() }
+    pub fn is_cancelled(&self) -> bool { self.state.load(Ordering::Acquire) == CANCELLED }
+    pub fn can_cancel(&self) -> bool { self.state.load(Ordering::Acquire) == ACTIVE }
     pub fn request_cancel(&self) -> bool {
-        self.0.compare_exchange(ACTIVE, CANCELLED, Ordering::AcqRel, Ordering::Acquire).is_ok()
+        self.state.compare_exchange(ACTIVE, CANCELLED, Ordering::AcqRel, Ordering::Acquire).is_ok()
     }
+    pub fn parsing_progress(&self) -> Option<(u32, u32)> {
+        let expected = self.expected_tick.load(Ordering::Relaxed);
+        (expected > 0).then(|| (self.parsed_tick.load(Ordering::Relaxed).min(expected), expected))
+    }
+    pub(crate) fn set_expected_ticks(&self, expected: u32) { self.expected_tick.store(expected, Ordering::Relaxed); }
+    pub(crate) fn set_parsed_tick(&self, tick: u32) { self.parsed_tick.store(tick, Ordering::Relaxed); }
     fn begin_finalizing(&self) -> Result<(), String> {
-        self.0.compare_exchange(ACTIVE, FINALIZING, Ordering::AcqRel, Ordering::Acquire)
+        self.state.compare_exchange(ACTIVE, FINALIZING, Ordering::AcqRel, Ordering::Acquire)
             .map(|_| ())
             .map_err(|_| "demo import cancelled before database commit".to_string())
     }
-    fn complete(&self) { self.0.store(COMPLETE, Ordering::Release); }
+    fn complete(&self) { self.state.store(COMPLETE, Ordering::Release); }
 }
 
 pub trait DemoFactsParser: Send + Sync {
@@ -136,6 +147,48 @@ pub fn validate_demo_file(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn source_hash(path: &Path, control: &ImportControl) -> Result<String, String> {
+    let mut file = File::open(path).map_err(|e| format!("cannot identify {}: {e}", path.display()))?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        if control.is_cancelled() { return Err("demo import cancelled while identifying source".into()); }
+        let count = file.read(&mut buffer).map_err(|e| format!("cannot hash {}: {e}", path.display()))?;
+        if count == 0 { break; }
+        digest.update(&buffer[..count]);
+    }
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+/// Parse a private byte snapshot so a mutable source path cannot mix versions
+/// during decoding. Keep the snapshot alive through the database commit.
+fn snapshot_source(path: &Path, control: &ImportControl) -> Result<(tempfile::TempDir, PathBuf, String), String> {
+    let temp = tempfile::tempdir().map_err(|e| format!("cannot create demo snapshot: {e}"))?;
+    let snapshot = temp.path().join("source.dem");
+    let mut source = File::open(path).map_err(|e| format!("cannot snapshot {}: {e}", path.display()))?;
+    let mut target = File::create(&snapshot).map_err(|e| format!("cannot create demo snapshot: {e}"))?;
+    let mut digest = Sha256::new();
+    // Windows CLI main threads can have a 1 MiB stack; keep copy buffers on
+    // the heap so import works outside the larger test/UI worker stacks.
+    let mut buffer = vec![0_u8; 1024 * 1024];
+    loop {
+        if control.is_cancelled() { return Err("demo import cancelled while identifying source".into()); }
+        let count = source.read(&mut buffer).map_err(|e| format!("cannot read source snapshot: {e}"))?;
+        if count == 0 { break; }
+        target.write_all(&buffer[..count]).map_err(|e| format!("cannot write demo snapshot: {e}"))?;
+        digest.update(&buffer[..count]);
+    }
+    target.flush().map_err(|e| format!("cannot finish demo snapshot: {e}"))?;
+    drop(target);
+    Ok((temp, snapshot, format!("{:x}", digest.finalize())))
+}
+
+fn source_path_identity(path: &Path) -> Option<String> {
+    let text = std::fs::canonicalize(path).ok()?.to_string_lossy().into_owned();
+    #[cfg(windows)] { Some(text.to_lowercase()) }
+    #[cfg(not(windows))] { Some(text) }
+}
+
 #[derive(Debug)]
 pub struct ImportedMatch {
     pub analyzed: AnalyzedMatch,
@@ -152,21 +205,56 @@ pub fn import_demo(
 ) -> Result<ImportedMatch, String> {
     validate_demo_file(path)?;
     if control.is_cancelled() { return Err("demo import cancelled".into()); }
+    report_stage("Identifying source");
+    let (_snapshot_dir, snapshot, fingerprint) = snapshot_source(path, control)?;
+    if source_hash(path, control)? != fingerprint {
+        return Err("demo bytes changed while creating the import snapshot; no match was saved".into());
+    }
+    let connection = db::open(database).map_err(|error| error.to_string())?;
+    let canonical = source_path_identity(path);
+    for (id, old_path, stored_hash) in queries::source_identities(&connection).map_err(|error| error.to_string())? {
+        if old_path == path.to_string_lossy() {
+            return Err(format!("demo is already imported as match {id}; existing annotations were preserved"));
+        }
+        if canonical.is_some() && source_path_identity(Path::new(&old_path)) == canonical {
+            return Err(format!("demo is already imported as match {id} through an equivalent source path; existing annotations were preserved"));
+        }
+        let old_hash = match stored_hash {
+            Some(hash) => Some(hash),
+            None if Path::new(&old_path).is_file() => Some(source_hash(Path::new(&old_path), control)?),
+            None => None,
+        };
+        if old_hash.as_deref() == Some(fingerprint.as_str()) {
+            return Err(format!("identical demo bytes are already imported as match {id}; existing annotations were preserved"));
+        }
+    }
+    drop(connection);
     report_stage("Parsing demo");
-    let raw = parser.parse(path, control)?;
+    let raw = parser.parse(&snapshot, control)?;
     let capabilities = parser.capabilities();
     if control.is_cancelled() { return Err("demo import cancelled".into()); }
+    report_stage("Verifying source");
+    if source_hash(&snapshot, control)? != fingerprint {
+        return Err("demo snapshot changed during import; no match was saved".into());
+    }
     if raw.version != 1 { return Err(format!("raw demo version {} is unsupported", raw.version)); }
     report_stage("Analyzing utility events");
     let analyzed = build_match(&raw);
-    validate_import(&raw, &analyzed).map_err(|error| error.to_string())?;
+    let summary = validate_import(&raw, &analyzed).map_err(|error| error.to_string())?;
+    if capabilities.is_native() && summary.path_count != summary.throw_count {
+        return Err(format!("native grenade analysis linked only {} of {} releases to usable trajectories; no match was saved",
+            summary.path_count, summary.throw_count));
+    }
     if control.is_cancelled() { return Err("demo import cancelled".into()); }
     report_stage("Saving match");
     let mut connection = db::open(database).map_err(|error| error.to_string())?;
-    let match_id = queries::insert_match_with_parser_capability(
-        &mut connection, &path.to_string_lossy(), &analyzed, capabilities.key(),
+    let match_id = queries::insert_match_with_source_hash(
+        &mut connection, &path.to_string_lossy(), &analyzed, capabilities.key(), Some(&fingerprint),
         || control.is_cancelled(),
-        || { control.begin_finalizing().map_err(crate::error::AppError::Invalid)?;
+        || { if source_hash(path, control).map_err(crate::error::AppError::Invalid)? != fingerprint {
+                return Err(crate::error::AppError::Invalid("demo bytes changed before database commit; no match was saved".into()));
+            }
+            control.begin_finalizing().map_err(crate::error::AppError::Invalid)?;
             report_stage("Finalizing match"); Ok(()) },
     )
         .map_err(|error| error.to_string())?;
@@ -192,6 +280,18 @@ mod tests {
     }
 
     #[test]
+    fn parsing_progress_is_shared_with_ui_control() {
+        let control = ImportControl::new();
+        let worker = control.clone();
+        assert_eq!(control.parsing_progress(), None);
+        worker.set_expected_ticks(100);
+        worker.set_parsed_tick(60);
+        assert_eq!(control.parsing_progress(), Some((60, 100)));
+        worker.set_parsed_tick(120);
+        assert_eq!(control.parsing_progress(), Some((100, 100)));
+    }
+
+    #[test]
     fn validates_real_cs2_header_and_rejects_mislabeled_files() {
         let dir = tempfile::tempdir().unwrap();
         let demo = dir.path().join("sample.dem");
@@ -213,15 +313,24 @@ mod tests {
         let imported = import_demo(&demo, &database, &FixtureParser { cancel_after_parse: false },
             &cancelled, |stage| stages.push(stage)).unwrap();
         assert_eq!(imported.analyzed.map_name, "de_train");
-        assert_eq!(stages, ["Parsing demo", "Analyzing utility events", "Saving match", "Finalizing match", "Complete"]);
+        assert_eq!(stages, ["Identifying source", "Parsing demo", "Verifying source", "Analyzing utility events", "Saving match", "Finalizing match", "Complete"]);
         assert_eq!(db::queries::list_matches(&db::open(&database).unwrap()).unwrap().len(), 1);
+        let other_demo = dir.path().join("other-source.dem");
+        std::fs::write(&other_demo, b"PBDEMS2\0different fixture").unwrap();
         let second_control = ImportControl::new();
-        let failed = import_demo(&demo, &database, &FixtureParser { cancel_after_parse: true },
+        let failed = import_demo(&other_demo, &database, &FixtureParser { cancel_after_parse: true },
             &second_control, |_| {});
         assert!(failed.unwrap_err().contains("cancelled"));
         let matches = db::queries::list_matches(&db::open(&database).unwrap()).unwrap();
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].map_name, "de_train");
+
+        let copied = dir.path().join("same-bytes.dem");
+        std::fs::copy(&demo, &copied).unwrap();
+        let error = import_demo(&copied, &database, &FixtureParser { cancel_after_parse: false },
+            &ImportControl::new(), |_| {}).unwrap_err();
+        assert!(error.contains("identical demo bytes"));
+        assert_eq!(db::queries::list_matches(&db::open(&database).unwrap()).unwrap().len(), 1);
     }
 
     #[test]
@@ -251,6 +360,22 @@ mod tests {
         assert!(finalizing_seen);
         assert!(!late.request_cancel());
         assert_eq!(db::queries::list_matches(&db::open(&database).unwrap()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn source_mutation_at_saving_match_rolls_back_snapshot_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let demo = dir.path().join("fixture.dem");
+        let database = dir.path().join("matches.sqlite");
+        std::fs::write(&demo, b"PBDEMS2\0original bytes").unwrap();
+        let result = import_demo(&demo, &database,
+            &FixtureParser { cancel_after_parse: false }, &ImportControl::new(), |stage| {
+                if stage == "Saving match" {
+                    std::fs::write(&demo, b"PBDEMS2\0changed bytes").unwrap();
+                }
+            });
+        assert!(result.unwrap_err().contains("changed before database commit"));
+        assert!(db::queries::list_matches(&db::open(&database).unwrap()).unwrap().is_empty());
     }
 
     #[test]

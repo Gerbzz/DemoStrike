@@ -1,15 +1,16 @@
 # DemoStrike
 
-**A native Rust workbench for reviewing CS2 utility events and preparing clip handoffs.** DemoStrike turns supported demo data into a searchable local match database, then keeps the event context available while a creator selects and packages recorded takes. The current native parser is deliberately narrow: it analyzes grenade evidence from three hash-validated evaluation demos, rather than claiming general CS2 demo support.
+**A native Rust workbench for reviewing CS2 utility events and preparing editable clip handoffs.** DemoStrike turns supported demo data into a searchable local match database, then keeps event context available while a creator captures, reviews, and imports recorded takes. Its native parser has a bounded grenade, combat, and flash subset; it does not claim general CS2 demo support.
 
-> **Development status:** The native Rust grenade path and desktop UI compile and pass headless tests. No demo files, extracted match facts, footage, or installer are distributed here. Visible window review, a broad parser corpus, and production capture acceptance are still open.
+> **Development status:** This is an alpha source build. A local source checkpoint passed 71 non-UI and 75 native-feature tests; independent probes covered media timing and project import, and one bounded reimport, edit, and shared-compositor export decoded successfully. This public packaging uses a pinned public ClipStrike dependency and synthetic test metadata; the native window has not had pointer, visible-layout, or audible-speaker acceptance. No demo, match database, footage, private project, installer, or finished guide is distributed here.
 
 ## From demo to editable clips
 
-1. Import one of the three validated Ancient/Nuke demos with the Rust parser. DemoStrike checks its hash before analysis.
-2. Review grenade releases, trajectories, detonations, round transitions, and nearby-player positions. Imported events carry a capability marker so unavailable combat and economy data are not shown as zeroes.
+1. Import a supported CS2 demo with the Rust parser. It validates stream framing, event schemas, source identity, and coverage before committing a match.
+2. Review grenade releases, trajectories, detonations, round transitions, nearby-player positions, and supported blind, utility-hurt, kill, and assist facts. Imported events carry a capability marker so unavailable or ambiguous fields are not shown as measured zeroes.
 3. Keep results in a local SQLite match database. The domain and query layer includes event detail, filters, favorites, tags, collections, and render-job records; the current UI concentrates on browsing analyzed utility events and their detail.
-4. After recording separate takes elsewhere, prepare a capture draft and produce a versioned package. A compatible editor can import each packaged take as a separate editable clip.
+4. Plan a source-bound capture request, record separate camera takes with external CS2/HLAE tools, and seal a reviewer-approved package with source, identity, video, and audio checks.
+5. Import an accepted package into a new editable `.cstrike` project. The same native window can open the shared ClipStrike editor for edits, preview, save, and export.
 
 DemoStrike does not record the game, replace HLAE, or manufacture footage from a demo.
 
@@ -17,19 +18,20 @@ DemoStrike does not record the game, replace HLAE, or manufacture footage from a
 
 | Area | Current behavior | Limit |
 | --- | --- | --- |
-| Native demo parser | Rust <code>source2-demo</code> 0.5.9 adapter with hash and coverage checks for three specific demos | Other demo hashes are rejected; combat damage, flash effects, kills, assists, and economy are unavailable |
-| Local analysis | Utility events, trajectories, nearby players, round information, SQLite persistence, and transactional import | Coverage reflects the grenade-only parser capability |
-| Desktop UI | First-party Rust egui/eframe window with import progress, cancellation, match/event review, and capture-draft controls | The visible native window has not passed acceptance review |
-| Capture package | Separate media files, SHA-256 provenance, partial-stage recovery, and validation of a versioned manifest | Stream headers are not proof of audible sound or capture origin |
-| CLI | Demo inspection/import, raw-facts analysis, media probing, package creation, and recovery | Some commands need separately supplied demos, footage, or external tools |
+| Native demo parser | Rust <code>source2-demo</code> 0.5.9 adapter with framing, schema, coverage, and source checks | The tested corpus is bounded; unsupported layouts fail, and economy is unavailable |
+| Local analysis | Utility, supported combat and flash facts, nearby players, round information, SQLite persistence, and transactional import | Ambiguous effect attribution stays unavailable rather than becoming a total |
+| Desktop UI | First-party Rust egui/eframe window with import progress, cancellation, event review, capture requests, project import, and same-window shared editor | Native pointer, visible-layout, and audible playback acceptance are open |
+| Capture handoff | Source-bound request, external three-role recording pilot, reviewed receipt, hash/identity/full-decode checks, and versioned package | Capture is not a supervised background worker in the normal UI; stream checks do not replace human camera review |
+| Editable project | Accepted package becomes a new ClipStrike project with independently checked video coverage | Requires integer constant-frame-rate video and audio covering the full picture; prior projects need reimport or manual trim |
+| CLI | Native demo import, capture planning/preflight/pilot/seal, media probing, package import, and older raw-facts tools | User supplies demos, media, CS2/HLAE, FFmpeg/FFprobe, and the configured native SDK |
 
-The normal package command requires a muxed MP4 with video and audio stream headers and invokes <code>ffprobe</code> on the local machine. <code>package-structural</code> is a metadata-only handoff experiment; its output is explicitly labeled structural and should not be treated as validated media. See the [capture package v1 specification](docs/CAPTURE_PACKAGE_V1.md).
+The ordinary package command requires a muxed MP4 with video and audio stream headers and invokes local `ffprobe`. `package-structural` is a metadata-only handoff experiment, not accepted media. The source-bound capture route additionally requires a reviewed receipt, matching live identity/tick evidence, full media decoding, and visual review of each role. See the [capture package v1 specification](docs/CAPTURE_PACKAGE_V1.md).
 
 ## Why the native parser has a gate
 
-The parser reads Source 2 demo bytes through a pinned crates.io library and builds its own grenade facts. It does not substitute a saved sidecar for the demo. The current validation set binds three exact file hashes to expected map and coverage counts. An unknown file returns an explicit unsupported-demo error rather than a plausible-looking partial analysis.
+The parser reads Source 2 demo bytes through a pinned crates.io library and builds its own facts. It does not substitute a saved sidecar for the demo. Before import it checks PBDEMS2 framing, file-info offset, replay timing, event field schemas, owned projectile paths and detonations, round outcomes, and finite coordinates. Unknown or incomplete layouts fail without committing a plausible-looking partial match. Three original hashes remain regression anchors, not an allowlist for every file the parser can read.
 
-Grenade-only results include release and detonation events, sampled flight paths, selected nearby-player positions, and supported round transitions. The importer records <code>grenade-only-v1</code> in SQLite. Screens and queries can then distinguish “not available” from a measured zero for combat and economy fields. The wider raw-facts schema is retained for compatibility with the separate reference path, but the Rust mode does not claim that wider coverage.
+Native results include release and detonation events, sampled flight paths, nearby-player positions, supported round transitions, and a bounded set of blind, utility hurt, relevant death, and flash-assist facts. The importer records `native-combat-flash-v1` in SQLite. Attribution is unique-or-unavailable; older `grenade-only-v1` rows retain unavailable combat/flash fields. Economy remains unavailable. The wider raw-facts schema is retained for compatibility with the separate reference path.
 
 Import work runs in a background worker with progress updates and cancellation. The SQLite write is transactional, and an already imported canonical source path is rejected so a repeat import does not replace prior event IDs or annotations.
 
@@ -39,9 +41,13 @@ A package is assembled from a draft that points to existing recorded takes. Each
 
 Stream probing checks headers before and after copying a normal package. It cannot hear the audio, establish where a video was recorded, or approve a take for publication. A structural package performs weaker checks and is labeled accordingly. The receiving editor must keep the media files available because the handoff links to them.
 
+For source-bound capture, a request freezes the selected event and three planned camera roles. Local `preflight-capture` checks supplied CS2, HLAE, FFmpeg, and FFprobe paths without launching them; CLI pilot commands can stage and launch a bounded offline recording with a task-owned runtime. The reviewer must verify actual camera identity and pixels before `seal-capture` will accept a receipt. DemoStrike does not bundle or install those external tools or automate a finished narrated guide.
+
+`import-capture-package` uses FFprobe to inspect independent stream durations and every video-frame timestamp before writing a new editable project. It currently accepts a continuous single video stream at constant integer FPS and one audio stream that covers the full picture. Fractional FPS, timestamp gaps, short audio, missing durations, and unsupported stream layouts fail explicitly. Editor clips end at the validated picture endpoint while the package's original capture facts remain intact. Projects imported before this video-coverage rule need reimport or a deliberate manual trim; they are not silently rewritten.
+
 ## Build and run
 
-This is a Windows-tested source checkout. Use a Rust toolchain with edition 2024 support. The desktop app uses native Rust UI crates; the optional media probe calls an external FFprobe executable. The public ClipStrike core dependency is pinned to an exact Git commit in both <code>Cargo.toml</code> and <code>Cargo.lock</code>.
+This is a Windows-tested source checkout. Use a Rust toolchain with edition 2024 support. The desktop app uses native Rust UI crates and the GStreamer MSVC SDK required by its ClipStrike editor integration; see [ClipStrike local setup](https://github.com/Gerbzz/Clipstrike/blob/fdf2f6ac8828374b803577ae1f6b310b73860075/docs/LOCAL_SETUP.md). Cargo pins the public ClipStrike core, UI, and media crates to the same exact Git commit in `Cargo.toml` and `Cargo.lock`, with no sibling checkout or absolute source path required. Capture and package commands additionally need user-supplied CS2/HLAE and FFmpeg/FFprobe tools. No installer or clean-machine build is verified.
 
 ~~~powershell
 cargo test --locked --features native-ui
@@ -52,17 +58,19 @@ cargo run --locked --features native-ui --bin demostrike
 The CLI is a separate binary:
 
 ~~~powershell
-cargo run --locked --bin demostrike-cli -- inspect-demo <demo.dem>
-cargo run --locked --bin demostrike-cli -- import-grenades <validated-demo.dem> <matches.sqlite>
+cargo run --locked --bin demostrike-cli -- probe-demo <demo.dem>
+cargo run --locked --bin demostrike-cli -- import-demo <supported-demo.dem> <matches.sqlite>
+cargo run --locked --bin demostrike-cli -- plan-capture <matches.sqlite> <event-id> <new-request.json>
+cargo run --locked --bin demostrike-cli -- import-capture-package <accepted-package-folder> <new-project.cstrike>
 ~~~
 
-The first command checks a CS2 demo header; it does not parse events. The second imports only an exact supported demo. The three files and their raw reference facts are not included in this repository. For package and probe commands, run the CLI without arguments to see its complete usage.
+The first command parses a demo without saving a match; the second imports only when its supported schemas and coverage validate. No evaluation demo or raw reference facts are included. Run the CLI without arguments for the remaining preflight, pilot, seal, and probe commands.
 
 ## Data and interoperability
 
 The match database is SQLite and defaults in the desktop UI to the user's local application-data folder. A capture package contains <code>manifest.json</code> plus per-take files under <code>clips/</code>. It keeps demo/event provenance and media hashes, while the actual recorded files remain separate from the database.
 
-The package handoff uses <code>clipstrike-core</code> from public [ClipStrike](https://github.com/Gerbzz/Clipstrike) at commit <code>f5dd0a3dceeb5ee1196e654210cc7af0ca5ee97a</code>. ClipStrike can import the package into a <code>.cstrike</code> project. That relationship is a format handoff, not a promise of accepted video or audio quality.
+The package and embedded editor use public [ClipStrike](https://github.com/Gerbzz/Clipstrike) at commit `fdf2f6ac8828374b803577ae1f6b310b73860075`. One bounded accepted-package reimport, saved/reopened chronological edit, and 6.2-second shared-compositor H.264/AAC export produced a fully decoded file with SHA-256 `E32FB0F447925F42F16E791F38C402E2FE75D687A04D929901B640836419DD01`. Neither that media nor its private project is in this repository; the result does not establish broad capture, editing, or audible quality.
 
 ## Advanced reference import
 
@@ -70,6 +78,6 @@ A separate reference-import adapter remains available for local comparison with 
 
 ## What remains to build
 
-The parser needs validation on a broader, redistributable demo corpus before it can accept general matches. Combat, flash, kill, assist, and economy capabilities need their own independently validated native extraction. Capture assembly, audible audio review, visible UI review, and clean-machine packaging also remain open. These are planned directions, not features available in this checkout.
+The parser needs a broader redistributable corpus before it can claim general matches. Economy extraction, a supervised in-window capture worker, native pointer and visible-layout review, audible speaker review, repeated export reliability, and clean-machine packaging remain open. This source does not produce a finished automatic narrated guide.
 
 The project source has no public license grant. Third-party dependencies retain their own licenses; see [attribution](ATTRIBUTION.md) for reused project code.

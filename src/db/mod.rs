@@ -2,7 +2,7 @@
 
 pub mod queries;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use rusqlite::Connection;
 use std::path::Path;
 
@@ -122,6 +122,75 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE matches ADD COLUMN parser_capability TEXT NOT NULL DEFAULT 'reference-raw-facts';
     "#,
+    // v4 - source bytes identify copies at different paths without replacing annotations.
+    // Legacy imports have NULL until explicitly reimported; their paths remain intact.
+    r#"
+    ALTER TABLE matches ADD COLUMN source_sha256 TEXT;
+    CREATE UNIQUE INDEX matches_source_sha256_unique ON matches(source_sha256)
+        WHERE source_sha256 IS NOT NULL;
+    "#,
+    // v5 - public SQL read surface: unavailable native combat and flash facts
+    // are NULL, including rows written by older builds with storage defaults.
+    r#"
+    CREATE VIEW utility_events_supported AS
+    SELECT e.id, e.match_id, m.parser_capability, e.round_number, e.utility_type,
+           e.thrower_steamid, e.thrower_name, e.thrower_team, e.observer_slot,
+           e.throw_tick, e.throw_time, e.throw_x, e.throw_y, e.throw_z,
+           e.detonate_tick, e.detonate_x, e.detonate_y, e.detonate_z,
+           e.land_x, e.land_y, e.land_z, e.trajectory, e.bounces,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' THEN NULL ELSE e.blind_enemy_duration END AS blind_enemy_duration,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' THEN NULL ELSE e.blind_team_duration END AS blind_team_duration,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' THEN NULL ELSE e.enemies_blinded END AS enemies_blinded,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' THEN NULL ELSE e.teammates_blinded END AS teammates_blinded,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' THEN NULL ELSE e.damage_enemy END AS damage_enemy,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' THEN NULL ELSE e.damage_team END AS damage_team,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' THEN NULL ELSE e.kills END AS kills,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' THEN NULL ELSE e.flash_assists END AS flash_assists,
+           e.nearby_players, e.round_winner, e.favorite
+    FROM utility_events e JOIN matches m ON m.id = e.match_id;
+    "#,
+    // v6 - old independently attributed totals are not trustworthy. Keep
+    // storage and annotations, but mask them until a versioned global pass
+    // records complete or ambiguous attribution per metric category.
+    r#"
+    ALTER TABLE matches ADD COLUMN effect_attribution_version INTEGER;
+    ALTER TABLE utility_events ADD COLUMN projectile_entity_id INTEGER;
+    ALTER TABLE utility_events ADD COLUMN blind_attribution_complete INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE utility_events ADD COLUMN damage_attribution_complete INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE utility_events ADD COLUMN kill_attribution_complete INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE utility_events ADD COLUMN assist_attribution_complete INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE raw_effect_facts (
+        id INTEGER PRIMARY KEY,
+        match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+        fact_kind TEXT NOT NULL,
+        source_index INTEGER NOT NULL,
+        raw_json TEXT NOT NULL,
+        resolution TEXT NOT NULL CHECK (resolution IN ('matched','ambiguous','unresolved')),
+        assigned_event_id INTEGER REFERENCES utility_events(id) ON DELETE SET NULL,
+        candidate_event_ids TEXT NOT NULL,
+        UNIQUE(match_id, fact_kind, source_index)
+    );
+    CREATE INDEX raw_effect_facts_match_resolution ON raw_effect_facts(match_id, resolution);
+    DROP VIEW utility_events_supported;
+    CREATE VIEW utility_events_supported AS
+    SELECT e.id, e.match_id, m.parser_capability, m.effect_attribution_version,
+           e.round_number, e.utility_type, e.thrower_steamid, e.thrower_name, e.thrower_team,
+           e.observer_slot, e.throw_tick, e.throw_time, e.throw_x, e.throw_y, e.throw_z,
+           e.detonate_tick, e.detonate_x, e.detonate_y, e.detonate_z,
+           e.land_x, e.land_y, e.land_z, e.trajectory, e.bounces, e.projectile_entity_id,
+           e.blind_attribution_complete, e.damage_attribution_complete,
+           e.kill_attribution_complete, e.assist_attribution_complete,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.blind_attribution_complete != 1 THEN NULL ELSE e.blind_enemy_duration END AS blind_enemy_duration,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.blind_attribution_complete != 1 THEN NULL ELSE e.blind_team_duration END AS blind_team_duration,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.blind_attribution_complete != 1 THEN NULL ELSE e.enemies_blinded END AS enemies_blinded,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.blind_attribution_complete != 1 THEN NULL ELSE e.teammates_blinded END AS teammates_blinded,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.damage_attribution_complete != 1 THEN NULL ELSE e.damage_enemy END AS damage_enemy,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.damage_attribution_complete != 1 THEN NULL ELSE e.damage_team END AS damage_team,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.kill_attribution_complete != 1 THEN NULL ELSE e.kills END AS kills,
+           CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.assist_attribution_complete != 1 THEN NULL ELSE e.flash_assists END AS flash_assists,
+           e.nearby_players, e.round_winner, e.favorite
+    FROM utility_events e JOIN matches m ON m.id = e.match_id;
+    "#,
 ];
 
 pub fn open(path: &Path) -> AppResult<Connection> {
@@ -151,11 +220,16 @@ fn configure(conn: &Connection) -> AppResult<()> {
 
 fn migrate(conn: &Connection) -> AppResult<()> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    if version > MIGRATIONS.len() as i64 {
+        return Err(AppError::Invalid(format!("DemoStrike database schema {version} is newer than this build supports")));
+    }
     for (i, sql) in MIGRATIONS.iter().enumerate() {
         let target = (i + 1) as i64;
         if version < target {
-            conn.execute_batch(sql)?;
-            conn.execute_batch(&format!("PRAGMA user_version = {target};"))?;
+            let tx = conn.unchecked_transaction()?;
+            tx.execute_batch(sql)?;
+            tx.pragma_update(None, "user_version", target)?;
+            tx.commit()?;
         }
     }
     Ok(())
@@ -164,6 +238,15 @@ fn migrate(conn: &Connection) -> AppResult<()> {
 #[cfg(test)]
 mod capability_migration_tests {
     use super::*;
+
+    #[test]
+    fn newer_database_schema_is_not_opened_as_an_older_one() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA user_version = 99;").unwrap();
+        assert!(migrate(&conn).unwrap_err().to_string().contains("newer"));
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, 99);
+    }
 
     #[test]
     fn v2_match_and_annotation_survive_capability_migration() {
@@ -176,11 +259,24 @@ mod capability_migration_tests {
         conn.execute("INSERT INTO utility_events (id,match_id,round_number,utility_type,thrower_steamid,thrower_name,thrower_team,throw_tick,throw_x,throw_y,throw_z,favorite) VALUES (9,7,1,'smoke','123','player','CT',100,1,2,3,1)", []).unwrap();
         migrate(&conn).unwrap();
         let capability: String = conn.query_row("SELECT parser_capability FROM matches WHERE id=7", [], |r| r.get(0)).unwrap();
+        let source_hash: Option<String> = conn.query_row("SELECT source_sha256 FROM matches WHERE id=7", [], |r| r.get(0)).unwrap();
         let favorite: i64 = conn.query_row("SELECT favorite FROM utility_events WHERE id=9", [], |r| r.get(0)).unwrap();
         assert_eq!(capability, "reference-raw-facts");
+        assert_eq!(source_hash, None);
         assert_eq!(favorite, 1);
         let events = queries::query_events(&conn, &Default::default()).unwrap();
         assert_eq!(events[0].parser_capability, crate::domain::ParserCapabilities::ReferenceRawFacts);
-        assert_eq!(events[0].damage_enemy, Some(0));
+        assert_eq!(events[0].damage_enemy, None);
+        let legacy_damage: Option<i64> = conn.query_row("SELECT damage_enemy FROM utility_events_supported WHERE id=9", [], |r| r.get(0)).unwrap();
+        assert_eq!(legacy_damage, None);
+        conn.execute("UPDATE matches SET parser_capability='grenade-only-v1' WHERE id=7", []).unwrap();
+        let native_damage: Option<i64> = conn.query_row("SELECT damage_enemy FROM utility_events_supported WHERE id=9", [], |r| r.get(0)).unwrap();
+        assert_eq!(native_damage, None);
+        conn.execute("UPDATE matches SET parser_capability='native-combat-flash-v1' WHERE id=7", []).unwrap();
+        let measured_damage: Option<i64> = conn.query_row("SELECT damage_enemy FROM utility_events_supported WHERE id=9", [], |r| r.get(0)).unwrap();
+        assert_eq!(measured_damage, None);
+        let detail = queries::get_event_detail(&conn, 9).unwrap();
+        assert_eq!(detail.damage_team, None);
+        assert_eq!(detail.ct_equip_value, None);
     }
 }

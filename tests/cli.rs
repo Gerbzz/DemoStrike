@@ -15,6 +15,19 @@ fn inspects_demo_header_without_claiming_event_import() {
 }
 
 #[test]
+fn native_probe_rejects_a_truncated_cs2_header_without_crashing() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("truncated.dem");
+    fs::write(&path, b"PBDEMS2\0").unwrap();
+    for command in ["probe-demo", "probe-grenades"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_demostrike-cli"))
+            .arg(command).arg(&path).output().unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("truncated CS2 demo header"));
+    }
+}
+
+#[test]
 fn analyzes_existing_raw_facts_from_command_line() {
     let dir = tempfile::TempDir::new().unwrap();
     let raw_path = dir.path().join("raw.json");

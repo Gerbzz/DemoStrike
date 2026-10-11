@@ -1,6 +1,6 @@
-//! Raw extractor JSON contract. Must match `resources/extractor/extract_demo.mjs`.
+//! Raw extractor JSON contract, including older reference JSON files.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -104,7 +104,7 @@ pub struct RawDetonation {
     pub z: Option<f64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RawBlind {
     pub tick: Option<i64>,
@@ -118,7 +118,7 @@ pub struct RawBlind {
     pub entity_id: Option<i64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RawHurt {
     pub tick: Option<i64>,
@@ -131,7 +131,7 @@ pub struct RawHurt {
     pub damage: i64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RawDeath {
     pub tick: Option<i64>,
