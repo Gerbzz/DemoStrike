@@ -157,3 +157,4 @@ fn run() -> Result<(), String> {
         _ => Err("usage: demostrike-cli probe-demo <demo.dem> | import-demo <demo.dem> <matches.sqlite> | plan-capture <matches.sqlite> <event-id> <new-request.json> | preflight-capture <request.json> <cs2.exe> <HLAE.exe> <ffmpeg.exe> <ffprobe.exe> | stage-pov-pilot/stage-event-pilot <request.json> <cs2.exe> <HLAE.exe> <ffmpeg.exe> <ffprobe.exe> <new-folder> | launch-pov-pilot/launch-event-pilot <manifest.json> | seal-capture <request.json> <reviewed-receipt.json> <new-package-folder> | import-capture-package <accepted-package-folder> <new-project.cstrike> | inspect-demo <demo.dem> | analyze <raw-demo-facts.json> | package <draft.json> <new-package-folder> | package-structural <draft.json> <new-package-folder> | probe-pair <video.mp4> <audio.wav> | recover <package-folder>".into()),
     }
 }
+

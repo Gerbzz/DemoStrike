@@ -1,4 +1,7 @@
 /target/
+/target-*/
+/bin/
+/capture-runtime/
 *.dem
 *.raw.json
 *.sqlite
@@ -7,5 +10,12 @@
 *.mp4
 *.mov
 *.wav
+*.png
 *.exe
+*.dll
+*.pdb
 *.log
+/*.cstrike
+/*.fcproj
+.env
+.env.*

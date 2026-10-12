@@ -937,7 +937,7 @@ mod tests {
     #[test]
     fn reused_projectile_index_never_links_a_past_or_future_detonation() {
         let raw: RawDemo = serde_json::from_str(r#"{
-            "version":1,"header":{"mapName":"de_ancient","serverName":null,"demoTicks":6400,"playbackTime":100},
+            "version":1,"header":{"mapName":"de_train","serverName":null,"demoTicks":6400,"playbackTime":100},
             "throws":[
                 {"tick":100,"round":1,"utility":"smoke","steamid":"123","name":"A","team":"CT","x":0,"y":0,"z":0},
                 {"tick":1000,"round":2,"utility":"smoke","steamid":"123","name":"A","team":"CT","x":0,"y":0,"z":0}

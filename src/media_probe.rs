@@ -163,7 +163,7 @@ fn run_probe_command_bounded(
 }
 
 fn probe_with_cancel(path: &Path, should_cancel: impl Fn() -> bool) -> Result<ProbeResult, PackageError> {
-    let mut command = Command::new("ffprobe");
+    let mut command = Command::new(crate::media_tools::ffprobe_program());
     command.args(["-v", "error", "-show_entries", "stream=codec_type,width,height,avg_frame_rate,r_frame_rate,sample_rate,channels,start_time,duration,duration_ts,time_base,nb_frames:format=duration", "-of", "json"])
         .arg(path);
     let bytes = run_probe_command(&mut command, should_cancel)?;
@@ -175,7 +175,7 @@ fn probe_video_frames_with_cancel(
     path: &Path,
     should_cancel: impl Fn() -> bool,
 ) -> Result<FrameProbeResult, PackageError> {
-    let mut command = Command::new("ffprobe");
+    let mut command = Command::new(crate::media_tools::ffprobe_program());
     command.args(["-v", "error", "-select_streams", "v:0", "-show_frames",
         "-show_entries", "frame=best_effort_timestamp_time", "-of", "json"])
         .arg(path);
@@ -513,6 +513,19 @@ mod tests {
     use std::process::Command;
     use std::time::{Duration, Instant};
 
+    #[cfg(windows)]
+    #[test]
+    fn selected_probe_executable_runs_with_no_path_lookup() {
+        let program = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32/whoami.exe");
+        let stdout = crate::media_tools::with_selected_media_tools(&program, &program, || {
+            let mut command = Command::new(crate::media_tools::ffprobe_program());
+            command.env("PATH", "");
+            run_probe_command(&mut command, || false)
+        }).unwrap().unwrap();
+        assert!(!String::from_utf8_lossy(&stdout).trim().is_empty());
+    }
+
     #[test]
     fn probe_child_fixture() {
         let Some(ready) = std::env::var_os("DEMOSTRIKE_PROBE_TEST_READY") else { return };
@@ -587,13 +600,12 @@ mod tests {
 
     #[test]
     fn editor_coverage_omits_audio_only_tail_without_rewriting_manifest_duration() {
-        // Synthetic stream headers model a video track shorter than its audio track.
         let declared: CaptureClip = serde_json::from_value(serde_json::json!({
-            "clip_id": "fixture-clip", "relative_path": "clips/fixture-clip.mp4",
+            "clip_id": "e6-projectile", "relative_path": "clips/e6-projectile.mp4",
             "sha256": "a".repeat(64), "demo_sha256": "b".repeat(64),
-            "event_id": "fixture-event", "player_steamid64": "76561198000000011",
-            "map": "de_fixture", "round": 1, "utility_type": "he",
-            "start_tick": 100, "end_tick": 200, "camera_role": "projectile",
+            "event_id": "6", "player_steamid64": "76561198000000001",
+            "map": "de_train", "round": 2, "utility_type": "he",
+            "start_tick": 5484, "end_tick": 5660, "camera_role": "projectile",
             "duration_ms": 2740, "width": 1920, "height": 1080,
             "fps_num": 60, "fps_den": 1,
             "audio": {"source": "hlae_wav", "channels": 2,
@@ -623,9 +635,9 @@ mod tests {
         let declared: CaptureClip = serde_json::from_value(serde_json::json!({
             "clip_id": "clip", "relative_path": "clips/clip.mp4",
             "sha256": "a".repeat(64), "demo_sha256": "b".repeat(64),
-            "event_id": "fixture-event", "player_steamid64": "76561198000000011",
-            "map": "de_fixture", "round": 1, "utility_type": "he",
-            "start_tick": 100, "end_tick": 200, "camera_role": "projectile",
+            "event_id": "6", "player_steamid64": "76561198000000001",
+            "map": "de_train", "round": 2, "utility_type": "he",
+            "start_tick": 5484, "end_tick": 5660, "camera_role": "projectile",
             "duration_ms": 2740, "width": 1920, "height": 1080,
             "fps_num": 60, "fps_den": 1,
             "audio": {"source": "hlae_wav", "channels": 2,
@@ -649,9 +661,9 @@ mod tests {
         let declared = serde_json::from_value::<CaptureClip>(serde_json::json!({
             "clip_id": "short-audio", "relative_path": "clips/short-audio.mp4",
             "sha256": "a".repeat(64), "demo_sha256": "b".repeat(64),
-            "event_id": "fixture-event", "player_steamid64": "76561198000000011",
-            "map": "de_fixture", "round": 1, "utility_type": "he",
-            "start_tick": 100, "end_tick": 200, "camera_role": "projectile",
+            "event_id": "6", "player_steamid64": "76561198000000001",
+            "map": "de_train", "round": 2, "utility_type": "he",
+            "start_tick": 5484, "end_tick": 5660, "camera_role": "projectile",
             "duration_ms": 2740, "width": 1920, "height": 1080,
             "fps_num": 60, "fps_den": 1,
             "audio": {"source": "hlae_wav", "channels": 2,
@@ -696,3 +708,7 @@ mod tests {
         assert!(validate_constant_frame_coverage(&probe, &gapped, 66).is_err());
     }
 }
+
+
+
+

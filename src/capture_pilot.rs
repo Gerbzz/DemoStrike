@@ -2,10 +2,13 @@
 //! it does not produce a reviewed capture receipt or claim camera identity.
 use crate::capture_preflight::{CaptureTools, preflight_capture, require_task_owned_pilot_runtime};
 use crate::capture_request::{CAPTURE_REQUEST_VERSION, CaptureRequest, hash_source};
+use crate::owned_capture::{OwnedLaunch, run_owned};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::ffi::OsString;
+use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,9 +127,8 @@ pub fn stage_pov_pilot(request_path: &Path, tools: &CaptureTools,
     Ok(manifest_path)
 }
 
-/// Launches the preflighted local demo in a session-only offline mode. HLAE's
-/// launcher usually exits before CS2; the output is diagnostic, not QC.
-pub fn launch_staged_pilot(manifest_path: &Path) -> Result<String, String> {
+/// Revalidates a staged POV pilot and constructs its task-owned launch spec.
+pub fn pov_launch_spec(manifest_path: &Path) -> Result<OwnedLaunch, String> {
     let manifest: PilotManifest = serde_json::from_slice(&std::fs::read(manifest_path)
         .map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     if manifest.version != 2 || manifest_path != manifest.output_root.join("pilot-manifest.json") {
@@ -147,14 +149,23 @@ pub fn launch_staged_pilot(manifest_path: &Path) -> Result<String, String> {
     if request.demo_sha256 != manifest.source_demo_sha256 { return Err("pilot demo identity changed".into()); }
     let hook = tools.hlae_exe.parent().ok_or("HLAE path has no parent")?.join("x64/AfxHookSource2.dll");
     let game_args = format!("-steam -insecure +sv_lan 1 -novid -console -sw -w 1920 -h 1080 -afxDisableSteamStorage +exec demostrike_pov_pilot.cfg +playdemo \"{}\"", request.demo_path.display());
-    let child = Command::new(&tools.hlae_exe)
-        .current_dir(tools.hlae_exe.parent().unwrap())
-        .env("USRLOCALCSGO", &manifest.output_root)
-        .args(["-customLoader", "-noGui", "-autoStart", "-noConfig", "-afxDisableSteamStorage"])
-        .arg("-hookDllPath").arg(&hook)
-        .arg("-programPath").arg(&tools.cs2_exe)
-        .arg("-cmdLine").arg(&game_args)
-        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
-        .spawn().map_err(|e| format!("could not launch offline HLAE: {e}"))?;
-    Ok(format!("launched HLAE PID {}; output remains unreviewed in {}", child.id(), manifest.output_root.display()))
+    Ok(OwnedLaunch {
+        program: tools.hlae_exe.clone(),
+        current_dir: tools.hlae_exe.parent().unwrap().to_path_buf(),
+        environment: vec![(OsString::from("USRLOCALCSGO"), manifest.output_root.into_os_string())],
+        args: [
+            OsString::from("-customLoader"), OsString::from("-noGui"),
+            OsString::from("-autoStart"), OsString::from("-noConfig"),
+            OsString::from("-afxDisableSteamStorage"), OsString::from("-hookDllPath"),
+            hook.into_os_string(), OsString::from("-programPath"),
+            tools.cs2_exe.into_os_string(), OsString::from("-cmdLine"),
+            OsString::from(game_args),
+        ].into(),
+    })
+}
+
+pub fn launch_staged_pilot(manifest_path: &Path) -> Result<String, String> {
+    let launch = pov_launch_spec(manifest_path)?;
+    run_owned(launch, &AtomicBool::new(false), Duration::from_secs(15 * 60), |_| {})?;
+    Ok("POV pilot processes exited; output remains unreviewed".into())
 }

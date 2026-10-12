@@ -255,7 +255,7 @@ mod capability_migration_tests {
         conn.execute_batch(MIGRATIONS[0]).unwrap();
         conn.execute_batch(MIGRATIONS[1]).unwrap();
         conn.execute_batch("PRAGMA user_version = 2;").unwrap();
-        conn.execute("INSERT INTO matches (id,file_path,file_name,map_name,tick_rate,imported_at) VALUES (7,'C:/old.dem','old.dem','de_ancient',64,'2026-10-08')", []).unwrap();
+        conn.execute("INSERT INTO matches (id,file_path,file_name,map_name,tick_rate,imported_at) VALUES (7,'C:/old.dem','old.dem','de_train',64,'2026-10-08')", []).unwrap();
         conn.execute("INSERT INTO utility_events (id,match_id,round_number,utility_type,thrower_steamid,thrower_name,thrower_team,throw_tick,throw_x,throw_y,throw_z,favorite) VALUES (9,7,1,'smoke','123','player','CT',100,1,2,3,1)", []).unwrap();
         migrate(&conn).unwrap();
         let capability: String = conn.query_row("SELECT parser_capability FROM matches WHERE id=7", [], |r| r.get(0)).unwrap();

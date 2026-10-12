@@ -17,8 +17,10 @@ pub struct CaptureTools {
 /// modifying the installed historical runtime. The first real pilot showed
 /// that USRLOCALCSGO alone does not redirect ServerConfig.vdf/boot.vcfg.
 pub fn require_task_owned_pilot_runtime(cs2_exe: &Path, output_root: &Path) -> Result<(), String> {
-    let owned = Path::new(env!("CARGO_MANIFEST_DIR")).canonicalize()
-        .map_err(|e| format!("cannot resolve DemoStrike ownership root: {e}"))?;
+    let workspace = std::env::var_os("DEMOSTRIKE_CAPTURE_WORKSPACE")
+        .ok_or("set DEMOSTRIKE_CAPTURE_WORKSPACE to a verified task-owned runtime root before offline capture")?;
+    let owned = PathBuf::from(workspace).canonicalize()
+        .map_err(|e| format!("cannot resolve DemoStrike capture workspace: {e}"))?;
     let game = cs2_exe.canonicalize()
         .map_err(|e| format!("cannot resolve CS2 executable: {e}"))?;
     let destination_parent = output_root.parent().ok_or("pilot output has no parent")?

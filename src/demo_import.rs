@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -28,6 +28,8 @@ pub struct ImportControl {
     state: Arc<AtomicU8>,
     parsed_tick: Arc<AtomicU32>,
     expected_tick: Arc<AtomicU32>,
+    copied_bytes: Arc<AtomicU64>,
+    source_bytes: Arc<AtomicU64>,
 }
 
 impl ImportControl {
@@ -41,6 +43,12 @@ impl ImportControl {
         let expected = self.expected_tick.load(Ordering::Relaxed);
         (expected > 0).then(|| (self.parsed_tick.load(Ordering::Relaxed).min(expected), expected))
     }
+    pub fn snapshot_progress(&self) -> Option<(u64, u64)> {
+        let total = self.source_bytes.load(Ordering::Relaxed);
+        (total > 0).then(|| (self.copied_bytes.load(Ordering::Relaxed).min(total), total))
+    }
+    fn set_source_bytes(&self, total: u64) { self.source_bytes.store(total, Ordering::Relaxed); }
+    fn set_copied_bytes(&self, copied: u64) { self.copied_bytes.store(copied, Ordering::Relaxed); }
     pub(crate) fn set_expected_ticks(&self, expected: u32) { self.expected_tick.store(expected, Ordering::Relaxed); }
     pub(crate) fn set_parsed_tick(&self, tick: u32) { self.parsed_tick.store(tick, Ordering::Relaxed); }
     fn begin_finalizing(&self) -> Result<(), String> {
@@ -166,17 +174,21 @@ fn snapshot_source(path: &Path, control: &ImportControl) -> Result<(tempfile::Te
     let temp = tempfile::tempdir().map_err(|e| format!("cannot create demo snapshot: {e}"))?;
     let snapshot = temp.path().join("source.dem");
     let mut source = File::open(path).map_err(|e| format!("cannot snapshot {}: {e}", path.display()))?;
+    control.set_source_bytes(source.metadata().map_err(|e| format!("cannot size {}: {e}", path.display()))?.len());
     let mut target = File::create(&snapshot).map_err(|e| format!("cannot create demo snapshot: {e}"))?;
     let mut digest = Sha256::new();
     // Windows CLI main threads can have a 1 MiB stack; keep copy buffers on
     // the heap so import works outside the larger test/UI worker stacks.
     let mut buffer = vec![0_u8; 1024 * 1024];
+    let mut copied = 0_u64;
     loop {
         if control.is_cancelled() { return Err("demo import cancelled while identifying source".into()); }
         let count = source.read(&mut buffer).map_err(|e| format!("cannot read source snapshot: {e}"))?;
         if count == 0 { break; }
         target.write_all(&buffer[..count]).map_err(|e| format!("cannot write demo snapshot: {e}"))?;
         digest.update(&buffer[..count]);
+        copied += count as u64;
+        control.set_copied_bytes(copied);
     }
     target.flush().map_err(|e| format!("cannot finish demo snapshot: {e}"))?;
     drop(target);
@@ -205,8 +217,22 @@ pub fn import_demo(
 ) -> Result<ImportedMatch, String> {
     validate_demo_file(path)?;
     if control.is_cancelled() { return Err("demo import cancelled".into()); }
-    report_stage("Identifying source");
+    // An already imported path can be rejected before copying a multi-GB demo.
+    // The transactional check below still handles a concurrent import race.
+    let connection = db::open(database).map_err(|error| error.to_string())?;
+    let canonical = source_path_identity(path);
+    for (id, old_path, _) in queries::source_identities(&connection).map_err(|error| error.to_string())? {
+        if old_path == path.to_string_lossy() {
+            return Err(format!("demo is already imported as match {id}; existing annotations were preserved"));
+        }
+        if canonical.is_some() && source_path_identity(Path::new(&old_path)) == canonical {
+            return Err(format!("demo is already imported as match {id} through an equivalent source path; existing annotations were preserved"));
+        }
+    }
+    drop(connection);
+    report_stage("Copying source");
     let (_snapshot_dir, snapshot, fingerprint) = snapshot_source(path, control)?;
+    report_stage("Verifying source copy");
     if source_hash(path, control)? != fingerprint {
         return Err("demo bytes changed while creating the import snapshot; no match was saved".into());
     }
@@ -284,6 +310,12 @@ mod tests {
         let control = ImportControl::new();
         let worker = control.clone();
         assert_eq!(control.parsing_progress(), None);
+        assert_eq!(control.snapshot_progress(), None);
+        worker.set_source_bytes(100);
+        worker.set_copied_bytes(60);
+        assert_eq!(control.snapshot_progress(), Some((60, 100)));
+        worker.set_copied_bytes(120);
+        assert_eq!(control.snapshot_progress(), Some((100, 100)));
         worker.set_expected_ticks(100);
         worker.set_parsed_tick(60);
         assert_eq!(control.parsing_progress(), Some((60, 100)));
@@ -313,8 +345,13 @@ mod tests {
         let imported = import_demo(&demo, &database, &FixtureParser { cancel_after_parse: false },
             &cancelled, |stage| stages.push(stage)).unwrap();
         assert_eq!(imported.analyzed.map_name, "de_train");
-        assert_eq!(stages, ["Identifying source", "Parsing demo", "Verifying source", "Analyzing utility events", "Saving match", "Finalizing match", "Complete"]);
+        assert_eq!(stages, ["Copying source", "Verifying source copy", "Parsing demo", "Verifying source", "Analyzing utility events", "Saving match", "Finalizing match", "Complete"]);
         assert_eq!(db::queries::list_matches(&db::open(&database).unwrap()).unwrap().len(), 1);
+        let repeat_control = ImportControl::new();
+        let repeat = import_demo(&demo, &database, &FixtureParser { cancel_after_parse: false },
+            &repeat_control, |_| {}).unwrap_err();
+        assert!(repeat.contains("already imported"));
+        assert_eq!(repeat_control.snapshot_progress(), None, "duplicate path must not be recopied");
         let other_demo = dir.path().join("other-source.dem");
         std::fs::write(&other_demo, b"PBDEMS2\0different fixture").unwrap();
         let second_control = ImportControl::new();
@@ -331,6 +368,21 @@ mod tests {
             &ImportControl::new(), |_| {}).unwrap_err();
         assert!(error.contains("identical demo bytes"));
         assert_eq!(db::queries::list_matches(&db::open(&database).unwrap()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn cancellation_before_snapshot_copy_preserves_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let demo = dir.path().join("fixture.dem");
+        let database = dir.path().join("matches.sqlite");
+        std::fs::write(&demo, b"PBDEMS2\0fixture").unwrap();
+        let control = ImportControl::new();
+        let result = import_demo(&demo, &database, &FixtureParser { cancel_after_parse: false },
+            &control, |stage| {
+                if stage == "Copying source" { assert!(control.request_cancel()); }
+            });
+        assert!(result.unwrap_err().contains("cancelled"));
+        assert!(db::queries::list_matches(&db::open(&database).unwrap()).unwrap().is_empty());
     }
 
     #[test]

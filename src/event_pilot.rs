@@ -2,10 +2,13 @@
 //! account identity, frame content, and muxed audio are independently sealed.
 use crate::capture_preflight::{CaptureTools, preflight_capture, require_task_owned_pilot_runtime};
 use crate::capture_request::{CaptureRequest, CAPTURE_REQUEST_VERSION, hash_source};
+use crate::owned_capture::{OwnedLaunch, run_owned};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::ffi::OsString;
+use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -212,7 +215,7 @@ pub fn stage_event_pilot(request_path: &Path, tools: &CaptureTools,
     Ok(path)
 }
 
-pub fn launch_event_pilot(manifest_path: &Path) -> Result<String, String> {
+pub fn event_launch_spec(manifest_path: &Path) -> Result<OwnedLaunch, String> {
     let manifest: EventPilotManifest = serde_json::from_slice(&std::fs::read(manifest_path)
         .map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     require_task_owned_pilot_runtime(&manifest.cs2_exe, &manifest.output_root)?;
@@ -233,12 +236,24 @@ pub fn launch_event_pilot(manifest_path: &Path) -> Result<String, String> {
     }
     let hook = tools.hlae_exe.parent().ok_or("HLAE parent missing")?.join("x64/AfxHookSource2.dll");
     let game_args = format!("-steam -insecure +sv_lan 1 -novid -console -condebug -conclearlog -sw -w 1920 -h 1080 -afxDisableSteamStorage +exec demostrike_event_pilot.cfg +playdemo \"{}\"", request.demo_path.display());
-    let child = Command::new(&tools.hlae_exe).current_dir(tools.hlae_exe.parent().unwrap())
-        .env("USRLOCALCSGO", &manifest.output_root)
-        .args(["-customLoader", "-noGui", "-autoStart", "-noConfig", "-afxDisableSteamStorage"])
-        .arg("-hookDllPath").arg(&hook).arg("-programPath").arg(&tools.cs2_exe)
-        .arg("-cmdLine").arg(&game_args)
-        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
-        .spawn().map_err(|e| format!("offline HLAE launch failed: {e}"))?;
-    Ok(format!("launched event pilot HLAE PID {}; three takes remain unreviewed", child.id()))
+    Ok(OwnedLaunch {
+        program: tools.hlae_exe.clone(),
+        current_dir: tools.hlae_exe.parent().unwrap().to_path_buf(),
+        environment: vec![(OsString::from("USRLOCALCSGO"), manifest.output_root.into_os_string())],
+        args: [
+            OsString::from("-customLoader"), OsString::from("-noGui"),
+            OsString::from("-autoStart"), OsString::from("-noConfig"),
+            OsString::from("-afxDisableSteamStorage"), OsString::from("-hookDllPath"),
+            hook.into_os_string(), OsString::from("-programPath"),
+            tools.cs2_exe.into_os_string(), OsString::from("-cmdLine"),
+            OsString::from(game_args),
+        ].into(),
+    })
+}
+
+/// CLI entry point: block until the owned process group exits or times out.
+pub fn launch_event_pilot(manifest_path: &Path) -> Result<String, String> {
+    let launch = event_launch_spec(manifest_path)?;
+    run_owned(launch, &AtomicBool::new(false), Duration::from_secs(25 * 60), |_| {})?;
+    Ok("event pilot processes exited; all three takes remain unreviewed".into())
 }

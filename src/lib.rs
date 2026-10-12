@@ -4,15 +4,19 @@ pub mod demo_import;
 pub mod capture_request;
 pub mod capture_project;
 pub mod capture_receipt;
+pub mod capture_qc;
 pub mod capture_preflight;
 pub mod capture_pilot;
 pub mod event_pilot;
+pub mod owned_capture;
 pub mod native_grenade_parser;
 pub mod domain;
 pub mod error;
 pub mod parser;
 pub mod package;
 pub mod media_probe;
+pub mod media_tools;
+pub mod runtime_resources;
 #[cfg(feature = "native-ui")]
 pub mod ui;
 
@@ -44,3 +48,4 @@ mod tests {
         assert!(analyzed.events.is_empty());
     }
 }
+

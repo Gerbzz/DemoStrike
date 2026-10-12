@@ -50,6 +50,8 @@ pub fn import_package_to_new_project_with_cancel(
         )));
     }
     let package = CapturePackage::load_and_validate_with_cancel(package_dir, &should_cancel)?;
+    crate::package::verify_review_binding_with_cancel(package_dir,
+        &package.manifest.package_id, &should_cancel)?;
     let first = &package.manifest.clips[0];
     if package.manifest.clips.iter().any(|clip| {
         clip.width != first.width
@@ -198,7 +200,6 @@ fn apply_editor_coverages(
 
 #[cfg(test)]
 mod tests {
-    // Synthetic metadata exercises the import boundary without a match or media fixture.
     use super::{
         CaptureImportClipCoverage, apply_editor_coverages,
         import_package_to_new_project_with_cancel,
@@ -214,13 +215,13 @@ mod tests {
             "relative_path": format!("clips/clip-{asset_id}.mp4"),
             "sha256": "a".repeat(64),
             "demo_sha256": "b".repeat(64),
-            "event_id": "fixture-event",
-            "player_steamid64": "76561198000000011",
-            "map": "de_fixture",
-            "round": 1,
+            "event_id": "6",
+            "player_steamid64": "76561198000000001",
+            "map": "de_train",
+            "round": 2,
             "utility_type": "he",
-            "start_tick": 100,
-            "end_tick": 200,
+            "start_tick": 5484,
+            "end_tick": 5660,
             "camera_role": "projectile",
             "duration_ms": duration_ms,
             "width": 1920,
@@ -237,7 +238,7 @@ mod tests {
         .unwrap();
         CapturedAsset {
             asset_id,
-            package_id: "synthetic-package".into(),
+            package_id: "synthetic-capture".into(),
             package_path: Some("accepted-package".into()),
             media_validation: Default::default(),
             clip,
@@ -245,7 +246,7 @@ mod tests {
     }
 
     fn project_with_two_declared_clips() -> Project {
-        let mut project = Project::new("synthetic-package", 1920, 1080, 60.0);
+        let mut project = Project::new("synthetic-capture", 1920, 1080, 60.0);
         for (id, declared, start) in [(1, 2740_u64, 0_i64), (2, 4028, 2740)] {
             project.assets.push(MediaAsset {
                 id,

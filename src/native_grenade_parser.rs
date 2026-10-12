@@ -8,9 +8,6 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
 
-pub const VALIDATED_ANCIENT_SHA256: &str = "00143fb30897b5697a25ca891bd92bc90293dc29d2ef980c196c5b0f22e0b454";
-pub const VALIDATED_ANCIENT_P2_SHA256: &str = "75c464e025350b8a46b7b2808cd55500fea9bd526fcdc659201b1ba97f4f3213";
-pub const VALIDATED_NUKE_SHA256: &str = "5c59ee08348a2b7378b8a5dde90f3d4ba3ead21be5b2f74a2cc7f3f8ada39c14";
 pub const PARSER_PROVENANCE: &str = "crates.io source2-demo 0.5.9, cs2 feature";
 
 pub struct NativeGrenadeParser;
@@ -222,10 +219,9 @@ fn validate_combat_event_schema(ctx: &Context) -> Result<(), String> {
 fn round_outcome(win: i32, reason: i32) -> Option<(&'static str, &'static str)> {
     match (win, reason) {
         (3, 8) => Some(("CT", "t_killed")),
-        // Nuke p1 has bomb_defused game events at the exact ticks where
-        // Source 2 GameRules reports win=3, reason=7.
+        // Source 2 GameRules can report win=3, reason=7 for a defused bomb.
         (3, 7) => Some(("CT", "bomb_defused")),
-        // Confirmed at matching ticks in the local Inferno and Vertigo sidecars.
+        // A round can end because its time limit expired.
         (3, 12) => Some(("CT", "time_ran_out")),
         (2, 1) => Some(("T", "bomb_exploded")),
         (2, 9) => Some(("T", "ct_killed")),

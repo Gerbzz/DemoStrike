@@ -6,7 +6,7 @@ fn main() -> eframe::Result<()> {
         [] => None,
         [flag, path] if flag == "--project" => Some(std::path::PathBuf::from(path)),
         _ => {
-            eprintln!("usage: demostrike [--project saved-project.cstrike]");
+            eprintln!("usage: demostrike [--project saved-project.cstrike|saved-project.fcproj]");
             std::process::exit(2);
         }
     };
