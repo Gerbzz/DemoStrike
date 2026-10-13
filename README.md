@@ -6,7 +6,7 @@
 
 DemoStrike turns supported CS2 demos into searchable match events. Review combat, utility, and flashes; mark favorites and tags; then prepare a supervised capture and editable handoff for selected moments.
 
-### Highlights
+## Highlights
 
 - Find and organize events in a local match database.
 - Track useful moments with favorites and tags.
