@@ -1,8 +1,24 @@
-# DemoStrike source preview
+# DemoStrike
 
-DemoStrike is a local Rust workbench for importing supported CS2 demos, reviewing utility/combat/flash events, and preparing editable clip handoffs. The native parser copies a demo to a private byte snapshot, validates supported facts, and commits an import transactionally. Unsupported schemas and missing facts are rejected rather than guessed. It stores searchable events, favorites and tags in a local database. No Node extractor or `.raw.json` sidecar is needed for the normal Rust import.
+**by PWDS**
 
-**Status: alpha source.** The verified local foundation passed 91 no-UI and 112 native-UI library tests (with opt-in media tests ignored), linked the native executable, and passed a generated three-take technical QC/mux exercise. An earlier retained-media editor proof imported an accepted capture, saved/reopened an editable project and decoded a rendered export. The source-publication candidate removes match-specific proof tests and identifiers; it has not undergone another heavy build. Native pointer/keyboard use, human listening, a new CS2/HLAE capture, broad demo compatibility and release packaging remain unverified. No binary is published here.
+**Find the moments worth clipping.**
+
+DemoStrike turns supported CS2 demos into searchable match events. Review combat, utility, and flashes; mark favorites and tags; then prepare a supervised capture and editable handoff for selected moments.
+
+### Highlights
+
+- Find and organize events in a local match database.
+- Track useful moments with favorites and tags.
+- Prepare reviewed capture packages for an editor workflow.
+
+## Current status
+
+Alpha source. Earlier local parser, UI-library, and media proofs passed, but this public source candidate has not had a fresh heavy build. Broad demo compatibility, a new CS2/HLAE capture, human media review, and release packaging remain unverified.
+
+## From match to edit
+
+Import a supported CS2 demo, search the events it produces, and mark the moments you want to revisit. The capture path then stages a supervised offline run with external CS2/HLAE tools and prepares a package for the embedded editor. A technical capture check is not a human approval of the footage or sound.
 
 ## Capture and editor flow
 
@@ -19,3 +35,7 @@ There is **no root license grant for first-party DemoStrike source**. Public vis
 ## Reproduce the source checks
 
 Use a reviewed Windows Rust/Cargo toolchain and the committed lockfile. Populate the Cargo cache with `cargo fetch --locked`, then run `cargo test --locked --offline --lib` and `cargo test --locked --offline --features native-ui --lib` with an isolated target and one Cargo job. The full FilmCraft editor and media graph is substantial; allow enough disk headroom. Real-media tests are intentionally absent from this public source boundary. The normal desktop binary requires the `native-ui` feature.
+
+## Verification history
+
+The earlier local foundation passed 91 no-UI and 112 native-UI library tests, linked the native executable, and passed a generated three-take technical QC/mux exercise. A retained-media editor proof imported a capture, saved and reopened an editable project, and decoded a rendered export. The public source candidate removes match-specific proof tests and identifiers and has not been rebuilt. These checks do not establish broad demo support or human approval of capture quality.
