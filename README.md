@@ -16,10 +16,6 @@ DemoStrike turns supported CS2 demos into searchable match events. Review combat
 
 Alpha source. Earlier local parser, UI-library, and media proofs passed, but this public source candidate has not had a fresh heavy build. Broad demo compatibility, a new CS2/HLAE capture, human media review, and release packaging remain unverified.
 
-## From match to edit
-
-Import a supported CS2 demo, search the events it produces, and mark the moments you want to revisit. The capture path then stages a supervised offline run with external CS2/HLAE tools and prepares a package for the embedded editor. A technical capture check is not a human approval of the footage or sound.
-
 ## Capture and editor flow
 
 The in-app path can stage a supervised offline pilot, launch owned CS2/HLAE processes in a bounded Windows Job Object, inspect three camera roles, preview muxed media in the embedded FilmCraft editor, and author a reviewed receipt. Technical QC and media decoding do not mark image, motion, POV or audio as human-approved. Sealing checks source hashes, runtime identity, proof and receipt relationships; the new package sidecar can be verified after relocation. Raw HLAE WAVs, logs and proof PNGs are retained separately for an independent evidence audit. The app does not create footage without external CS2/HLAE tools.
