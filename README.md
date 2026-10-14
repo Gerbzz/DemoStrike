@@ -1,4 +1,8 @@
-# DemoStrike
+<p align="center">
+  <img src="assets/branding/DemoStrike.png" alt="Original DemoStrike falcon logo" width="160" height="160">
+</p>
+
+<h1 align="center">DemoStrike</h1>
 
 <p align="center">
   <a href="https://prowebdevsolutions.com"><picture>
