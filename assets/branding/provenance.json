@@ -1,21 +1,70 @@
 {
   "app": "DemoStrike",
   "asset": "assets/branding/DemoStrike.png",
-  "method": "Lossless rectangular extraction of original pixels with ImageMagick. No scaling, recoloring, tracing, generation, transparency fabrication or animal changes. Original cream outside rounded corners retained. Labels excluded.",
-  "coordinate_system": "Origin top-left; crop bounds [left, top, right, bottom), right/bottom exclusive.",
-  "source_sha256": "ffbe34cd3370ce5c475089de7cfdbc155597422dc4cc9269578d3c2000a63fd8",
-  "crop_bounds": [
-    1360,
-    0,
-    2016,
-    656
-  ],
+  "method": "Measured rounded alpha mask applied to the original 656x656 logo tile, then translated by whole pixels to center its visible bounds. Original visible RGB and masked visible RGBA were verified unchanged.",
+  "source_tile": {
+    "repository": "Gerbzz/DemoStrike",
+    "commit": "46cec7c131867b1a0f655f80280198ccc76ff83c",
+    "path": "assets/branding/DemoStrike.png",
+    "sha256": "c3e7a9773b3f4d7595a34cdb9c87ae54b402dff3323ee2a69e0ebf8d79698a9d",
+    "git_blob_sha": "e1f956f909dd331dbabff38ae69f9f59e3573751"
+  },
+  "mask_and_centering": {
+    "inset_pixels": 1.5,
+    "masked_alpha_bbox": [
+      11,
+      23,
+      647,
+      640
+    ],
+    "centered_alpha_bbox": [
+      10,
+      19,
+      646,
+      636
+    ],
+    "integer_translation": [
+      -1,
+      -4
+    ],
+    "padding_ltrb": [
+      10,
+      19,
+      10,
+      20
+    ],
+    "original_visible_rgb_exact": true,
+    "masked_visible_rgba_exact": true,
+    "transparent_corners": true
+  },
   "dimensions": [
     656,
     656
   ],
-  "sha256": "c3e7a9773b3f4d7595a34cdb9c87ae54b402dff3323ee2a69e0ebf8d79698a9d",
-  "decoded_rgb_sha256": "9ce078d85d301e6379d244fb3dcf6598b6244a08d2c8854a3626e0ad9411f2b2",
-  "pixel_equality_verified": true,
-  "git_blob_sha": "e1f956f909dd331dbabff38ae69f9f59e3573751"
+  "mode": "RGBA",
+  "sha256": "d039582241b04a74d6e8124a0021d22df91a5acb1641ccc0f873b72376e4320b",
+  "decoded_rgba_sha256": "ccf1dfa2e435dc6d6832af51a80860e567d72c73d34fda53e8ed2823030931eb",
+  "git_blob_sha": "60123e267fd221a10f282ec198098e92b3cf4685",
+  "tool": "ImageMagick 7.1.2-34 Q16 x64",
+  "original_tile_provenance": {
+    "app": "DemoStrike",
+    "asset": "assets/branding/DemoStrike.png",
+    "method": "Lossless rectangular extraction of original pixels with ImageMagick. No scaling, recoloring, tracing, generation, transparency fabrication or animal changes. Original cream outside rounded corners retained. Labels excluded.",
+    "coordinate_system": "Origin top-left; crop bounds [left, top, right, bottom), right/bottom exclusive.",
+    "source_sha256": "ffbe34cd3370ce5c475089de7cfdbc155597422dc4cc9269578d3c2000a63fd8",
+    "crop_bounds": [
+      1360,
+      0,
+      2016,
+      656
+    ],
+    "dimensions": [
+      656,
+      656
+    ],
+    "sha256": "c3e7a9773b3f4d7595a34cdb9c87ae54b402dff3323ee2a69e0ebf8d79698a9d",
+    "decoded_rgb_sha256": "9ce078d85d301e6379d244fb3dcf6598b6244a08d2c8854a3626e0ad9411f2b2",
+    "pixel_equality_verified": true,
+    "git_blob_sha": "e1f956f909dd331dbabff38ae69f9f59e3573751"
+  }
 }
