@@ -1,0 +1,21 @@
+{
+  "app": "DemoStrike",
+  "asset": "assets/branding/DemoStrike.png",
+  "method": "Lossless rectangular extraction of original pixels with ImageMagick. No scaling, recoloring, tracing, generation, transparency fabrication or animal changes. Original cream outside rounded corners retained. Labels excluded.",
+  "coordinate_system": "Origin top-left; crop bounds [left, top, right, bottom), right/bottom exclusive.",
+  "source_sha256": "ffbe34cd3370ce5c475089de7cfdbc155597422dc4cc9269578d3c2000a63fd8",
+  "crop_bounds": [
+    1360,
+    0,
+    2016,
+    656
+  ],
+  "dimensions": [
+    656,
+    656
+  ],
+  "sha256": "c3e7a9773b3f4d7595a34cdb9c87ae54b402dff3323ee2a69e0ebf8d79698a9d",
+  "decoded_rgb_sha256": "9ce078d85d301e6379d244fb3dcf6598b6244a08d2c8854a3626e0ad9411f2b2",
+  "pixel_equality_verified": true,
+  "git_blob_sha": "e1f956f909dd331dbabff38ae69f9f59e3573751"
+}
