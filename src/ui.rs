@@ -16,10 +16,11 @@ use filmcraft_engine::{Session, autosave::AutosaveConfig};
 use filmcraft_ui_egui::{FilmcraftApp, state::Mode};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, mpsc};
+use std::time::{Duration, Instant};
 
 // Public FilmCraft app-host modules adapted from the pinned source commit.
 // See ATTRIBUTION.md and third_party/filmcraft for license and provenance.
@@ -128,6 +129,15 @@ pub struct DemoStrikeApp {
     library_favorites_only: bool,
     selected_event: Option<UtilityEventDetail>,
     tag_draft: String,
+    capture: Option<CaptureOnce>,
+}
+
+struct CaptureOnce {
+    path: PathBuf,
+    outcome: Arc<Mutex<Option<Result<(), String>>>>,
+    started: Instant,
+    settle_frames: u32,
+    requested: bool,
 }
 
 impl Default for DemoStrikeApp {
@@ -171,6 +181,7 @@ impl Default for DemoStrikeApp {
             library_matches: Vec::new(), library_opened: false, library_events: Vec::new(), library_match_id: None,
             library_page: 0, library_search: String::new(), library_search_applied: String::new(),
             library_favorites_only: false, selected_event: None, tag_draft: String::new(),
+            capture: None,
         }
     }
 }
@@ -187,6 +198,68 @@ impl Drop for DemoStrikeApp {
 }
 
 impl DemoStrikeApp {
+    /// Capture one fully painted native window, then close. Existing files are preserved.
+    pub fn capture_once(&mut self, path: PathBuf,
+        outcome: Arc<Mutex<Option<Result<(), String>>>>) {
+        self.capture = Some(CaptureOnce {
+            path, outcome, started: Instant::now(), settle_frames: 0, requested: false,
+        });
+    }
+
+    fn finish_capture(&mut self, ctx: &egui::Context, result: Result<(), String>) {
+        if let Some(capture) = self.capture.take() {
+            *capture.outcome.lock().unwrap() = Some(result);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+
+    fn capture_after_frame(&mut self, ctx: &egui::Context) {
+        let Some(capture) = self.capture.as_ref() else { return; };
+        if capture.started.elapsed() > Duration::from_secs(15) {
+            self.finish_capture(ctx, Err("Timed out waiting for a native screenshot".into()));
+            return;
+        }
+        if capture.requested {
+            let image = ctx.input(|input| input.events.iter().find_map(|event| match event {
+                egui::Event::Screenshot { image, .. } => Some(Arc::clone(image)),
+                _ => None,
+            }));
+            if let Some(image) = image {
+                let result = Self::write_capture_png(&capture.path, &image);
+                self.finish_capture(ctx, result);
+            } else {
+                ctx.request_repaint();
+            }
+            return;
+        }
+        let capture = self.capture.as_mut().unwrap();
+        if capture.settle_frames < 2 {
+            capture.settle_frames += 1;
+        } else {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+            capture.requested = true;
+        }
+        ctx.request_repaint();
+    }
+
+    fn write_capture_png(path: &Path, screenshot: &egui::ColorImage) -> Result<(), String> {
+        let [width, height] = screenshot.size;
+        let mut pixels = Vec::with_capacity(width.checked_mul(height)
+            .and_then(|n| n.checked_mul(4)).ok_or("Screenshot dimensions overflow")?);
+        for color in &screenshot.pixels { pixels.extend_from_slice(&color.to_array()); }
+        let image = image::RgbaImage::from_raw(
+            u32::try_from(width).map_err(|_| "Screenshot width exceeds PNG limits")?,
+            u32::try_from(height).map_err(|_| "Screenshot height exceeds PNG limits")?, pixels)
+            .ok_or("Screenshot pixel count does not match its dimensions")?;
+        let mut file = OpenOptions::new().write(true).create_new(true).open(path)
+            .map_err(|e| format!("Create screenshot {}: {e}", path.display()))?;
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(&mut file, image::ImageFormat::Png)
+            .map_err(|e| format!("Encode screenshot: {e}"))?;
+        file.sync_all().map_err(|e| format!("Sync screenshot: {e}"))?;
+        Ok(())
+    }
+
     fn start_package_import(&mut self, package_dir: &Path, project_path: &Path) -> Result<(), String> {
         if self.package_import_messages.is_some() {
             return Err("another capture package is still being imported".into());
@@ -1158,6 +1231,7 @@ impl eframe::App for DemoStrikeApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.capture_after_frame(&ctx);
         if self.embedded_editor.is_some() {
             self.show_embedded_editor(ui, frame);
             return;
