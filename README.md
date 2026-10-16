@@ -15,6 +15,10 @@
 
 DemoStrike turns supported CS2 demos into searchable match events. Review combat, utility, and flashes; mark favorites and tags; then prepare a supervised capture and editable handoff for selected moments.
 
+![DemoStrike native desktop app showing its empty analysis workspace](assets/screenshots/demostrike-empty-native-current.png)
+
+*Native empty workspace, captured from the tested [draft screenshot branch](https://github.com/Gerbzz/DemoStrike/pull/1) on 15 October 2026. No demo, match events, capture footage, or media were loaded. [Capture provenance and limits](docs/NATIVE_UI_PREVIEW.md).*
+
 ## Highlights
 
 - Find and organize events in a local match database.
@@ -23,7 +27,7 @@ DemoStrike turns supported CS2 demos into searchable match events. Review combat
 
 ## Current status
 
-Alpha source. Earlier local parser, UI-library, and media proofs passed, but this public source candidate has not had a fresh heavy build. Broad demo compatibility, a new CS2/HLAE capture, human media review, and release packaging remain unverified.
+Alpha source. A draft branch with a screenshot hook passed a hosted Windows native build and focused binary test, and its executable produced the image above. The main branch itself has not had a fresh heavy build. Broad demo compatibility, a new CS2/HLAE capture, human media review, and release packaging remain unverified.
 
 ## Capture and editor flow
 
