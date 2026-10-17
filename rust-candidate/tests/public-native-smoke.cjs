@@ -1,0 +1,124 @@
+// Hosted Windows only: exercise a pinned public CS2 demo in the actual Tauri
+// WebView2 window, with the synthetic parser environment variable absent.
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+const { chromium } = require('playwright-core');
+
+const outputDir = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-public-native');
+const demoPath = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'public-cs2-fixture.dem');
+const appPath = path.resolve(__dirname, '../src-tauri/target/release/demostrike-rust-candidate.exe');
+const cdpUrl = 'http://127.0.0.1:19375';
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+
+async function main() {
+  assert.equal(process.platform, 'win32');
+  assert.ok(fs.existsSync(appPath), `Native app missing: ${appPath}`);
+  assert.equal(fs.statSync(demoPath).size, 60601900);
+  const sourceHash = sha256(demoPath);
+  fs.mkdirSync(outputDir, { recursive: true });
+  const env = { ...process.env };
+  delete env.DEMOSTRIKE_SYNTHETIC_RAW_FACTS;
+  const app = spawn(appPath, [], { cwd: path.dirname(appPath), windowsHide: false, stdio: 'pipe', env });
+  let exit = null;
+  app.once('exit', (code, signal) => { exit = `${code ?? 'none'} / ${signal ?? 'none'}`; });
+  app.stdout.on('data', (data) => process.stdout.write(data));
+  app.stderr.on('data', (data) => process.stderr.write(data));
+  let browser;
+  let page;
+  const pageErrors = [];
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      if (exit !== null) throw new Error(`App exited before WebView2 opened: ${exit}`);
+      try {
+        const response = await fetch(`${cdpUrl}/json/version`, { signal: AbortSignal.timeout(1500) });
+        if (response.ok) { ready = true; break; }
+      } catch { /* Native startup still in progress. */ }
+      await sleep(1000);
+    }
+    assert.ok(ready, 'Native WebView2 debugging endpoint did not open');
+    browser = await chromium.connectOverCDP(cdpUrl, { timeout: 15000 });
+    for (let attempt = 0; attempt < 30 && !page; attempt += 1) {
+      for (const context of browser.contexts()) {
+        for (const target of context.pages()) {
+          try {
+            if (await target.evaluate(() => Boolean(window.__TAURI_INTERNALS__))) page = target;
+          } catch { /* Page is navigating. */ }
+        }
+      }
+      if (!page) await sleep(1000);
+    }
+    assert.ok(page, 'No Tauri IPC-enabled page appeared');
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.evaluate(() => { location.hash = '#/matches'; });
+    const changeLibrary = page.getByRole('button', { name: 'Change library' });
+    if (await changeLibrary.isVisible().catch(() => false)) await changeLibrary.click();
+    await page.getByRole('textbox', { name: 'Import a CS2 demo' }).fill(demoPath);
+    await page.getByRole('button', { name: 'Import demo' }).click();
+    const row = page.getByRole('row').filter({ hasText: 'public-cs2-fixture.dem' });
+    await row.waitFor({ timeout: 180000 });
+    assert.ok((await row.innerText()).includes('de_mirage'));
+    const matchesShot = path.join(outputDir, 'real-demo-matches.png');
+    await page.screenshot({ path: matchesShot, animations: 'disabled' });
+    await row.dblclick();
+    await page.getByRole('heading', { name: 'Recorded combat' }).waitFor({ timeout: 30000 });
+    assert.equal(await page.getByText('Synthetic CI fixture:', { exact: false }).count(), 0);
+    const overviewShot = path.join(outputDir, 'real-demo-overview.png');
+    await page.screenshot({ path: overviewShot, animations: 'disabled' });
+    await page.getByRole('link', { name: 'Rounds' }).click();
+    await page.getByRole('heading', { name: 'Recorded rounds' }).waitFor({ timeout: 30000 });
+    const roundRows = await page.locator('tbody tr').count();
+    assert.ok(roundRows >= 10, `Unexpected round count: ${roundRows}`);
+    const roundsShot = path.join(outputDir, 'real-demo-rounds.png');
+    await page.screenshot({ path: roundsShot, animations: 'disabled' });
+    await page.getByRole('link', { name: 'Players' }).click();
+    await page.getByRole('heading', { name: 'Recorded players' }).waitFor({ timeout: 30000 });
+    const playerRows = await page.locator('tbody tr').count();
+    assert.ok(playerRows >= 10, `Unexpected player count: ${playerRows}`);
+    const playersShot = path.join(outputDir, 'real-demo-players.png');
+    await page.screenshot({ path: playersShot, animations: 'disabled' });
+    await page.getByRole('link', { name: 'Utility' }).click();
+    await page.getByRole('heading', { name: 'Recorded utility' }).waitFor({ timeout: 30000 });
+    const utilityRows = await page.locator('tbody tr').count();
+    assert.equal(utilityRows, 150);
+    const utilityShot = path.join(outputDir, 'real-demo-utility.png');
+    await page.screenshot({ path: utilityShot, animations: 'disabled' });
+    assert.equal(sha256(demoPath), sourceHash, 'Native import changed public demo bytes');
+    assert.deepEqual(pageErrors, [], `Renderer errors: ${pageErrors.join('; ')}`);
+    const proof = {
+      source: 'actual hosted Tauri WebView2 window using the native source2-demo decoder',
+      fixture: 'LaihoE/demoparser@45ca85ae:src/parser/test_demo.dem',
+      fixtureBytes: fs.statSync(demoPath).size,
+      fixtureSha256: sourceHash,
+      commit: process.env.GITHUB_SHA || null,
+      executableSha256: sha256(appPath),
+      observed: { roundRows, playerRows, utilityRows },
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, playersShot, utilityShot]
+        .map((file) => [path.basename(file), sha256(file)])),
+      runtimeUrl: page.url(),
+      scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',
+    };
+    fs.writeFileSync(path.join(outputDir, 'proof.json'), `${JSON.stringify(proof, null, 2)}\n`);
+    console.log('PASS: public CS2 demo imported and rendered in native Tauri WebView2');
+  } catch (error) {
+    if (page) {
+      await page.screenshot({ path: path.join(outputDir, 'real-demo-failure.png'), animations: 'disabled' }).catch(() => {});
+      const visible = await page.evaluate(() => ({ url: location.href, text: document.body.innerText.slice(0, 3000) }))
+        .catch((inspectionError) => ({ inspectionError: String(inspectionError) }));
+      fs.writeFileSync(path.join(outputDir, 'failure.json'), `${JSON.stringify({ error: String(error), pageErrors, visible }, null, 2)}\n`);
+      console.error('Native app visible state:', JSON.stringify({ visible, pageErrors }));
+    }
+    throw error;
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+    if (exit === null) app.kill();
+  }
+}
+
+main().catch((error) => { console.error(error); process.exitCode = 1; });
+
