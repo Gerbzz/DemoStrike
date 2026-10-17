@@ -134,7 +134,7 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
         {queueError && <p role="alert" className="mt-4 text-red-500 select-text">Could not read import jobs: {queueError}</p>}
         {jobs.slice(0, 5).map((job) => <p key={job.id} className="mt-4 break-all text-gray-700" role={job.state === 'failed' ? 'alert' : 'status'}>
           <span className="text-body-strong">{job.state === 'running' ? 'Analyzing' : job.state === 'completed' ? 'Imported' : job.state === 'failed' ? 'Import failed' : 'Queued'}</span>
-          {' '}{job.demoPath}{job.error ? `: ${job.error}` : ''}
+          {' '}{job.demoPath}{job.recovered ? ' · resumed after restart' : ''}{job.error ? `: ${job.error}` : ''}
         </p>)}
       </section>}
       <div className="border-b border-gray-300 px-16 py-8">
