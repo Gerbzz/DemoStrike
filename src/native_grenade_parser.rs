@@ -385,6 +385,7 @@ struct GrenadeObserver {
     dead_users_until_spawn: BTreeSet<i32>,
     round_events: Vec<RawRoundEvent>, round_start_game_ticks: Vec<i64>, round_timeout_zero_ticks: Vec<i64>, last_rules: Option<(i32, bool, i32)>,
     last_timeout: Option<(f32, f32)>, last_match_started: Option<bool>,
+    last_game_phase: Option<i32>,
     last_start_count: Option<u8>,
     errors: Vec<String>,
 }
@@ -615,6 +616,14 @@ impl GrenadeObserver {
             let total = get_i32("m_totalRoundsPlayed");
             let frozen = match entity.get_property("m_pGameRules.m_bFreezePeriod") { Ok(FieldValue::Boolean(v)) => Some(*v), _ => None };
             let win = get_i32("m_iRoundWinStatus");
+            let phase = get_i32("m_gamePhase");
+            if phase != self.last_game_phase {
+                if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
+                    eprintln!("ROUND_TRACE phase tick={} old={:?} new={phase:?} total={total:?} warmup={:?}",
+                        ctx.tick(), self.last_game_phase, warmup(ctx));
+                }
+                self.last_game_phase = phase;
+            }
             let match_started = match entity.get_property("m_pGameRules.m_bHasMatchStarted") {
                 Ok(FieldValue::Boolean(value)) => Some(*value), _ => None,
             };
