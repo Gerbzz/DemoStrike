@@ -97,7 +97,7 @@ mod tests {
         let args = [OsString::from("--capture"), path.as_os_str().to_os_string()];
         let (project, capture) = parse_args(&args).unwrap();
         assert!(project.is_none());
-        assert_eq!(capture, Some(path));
+        assert_eq!(capture, Some(path.clone()));
         assert!(
             parse_args(&[OsString::from("--capture"), OsString::from("relative.png")]).is_err()
         );
