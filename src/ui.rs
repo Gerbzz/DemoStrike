@@ -22,6 +22,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
+fn trace_editor_once(seen: &AtomicBool, step: &str) {
+    if std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some()
+        && !seen.swap(true, Ordering::Relaxed)
+    {
+        eprintln!("EDITOR_FRAME {step}");
+    }
+}
+
 // Public FilmCraft app-host modules adapted from the pinned source commit.
 // See ATTRIBUTION.md and third_party/filmcraft for license and provenance.
 #[path = "filmcraft_legacy.rs"]
@@ -214,6 +222,8 @@ impl DemoStrikeApp {
     }
 
     fn capture_after_frame(&mut self, ctx: &egui::Context) {
+        static ENTER: AtomicBool = AtomicBool::new(false);
+        trace_editor_once(&ENTER, "capture_after_frame_enter");
         let Some(capture) = self.capture.as_ref() else { return; };
         if capture.started.elapsed() > Duration::from_secs(15) {
             self.finish_capture(ctx, Err("Timed out waiting for a native screenshot".into()));
@@ -449,6 +459,10 @@ impl DemoStrikeApp {
     }
 
     fn show_embedded_editor(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        static ENTER: AtomicBool = AtomicBool::new(false);
+        static FILMCRAFT_ENTER: AtomicBool = AtomicBool::new(false);
+        static FILMCRAFT_DONE: AtomicBool = AtomicBool::new(false);
+        trace_editor_once(&ENTER, "show_embedded_editor_enter");
         let ctx = ui.ctx().clone();
         let mut return_requested = false;
         let mut discard_editor_changes = false;
@@ -465,7 +479,9 @@ impl DemoStrikeApp {
                     if let Some(error) = &self.error { ui.colored_label(egui::Color32::RED, error); }
                 });
             });
+            trace_editor_once(&FILMCRAFT_ENTER, "filmcraft_ui_enter");
             eframe::App::ui(editor, ui, frame);
+            trace_editor_once(&FILMCRAFT_DONE, "filmcraft_ui_done");
             if self.confirm_discard_editor && editor_return_state(editor, false) == EditorReturnGate::Busy {
                 self.confirm_discard_editor = false;
                 self.error = Some("Finish or cancel the active editor export before returning to analysis".into());
@@ -1254,22 +1270,36 @@ impl DemoStrikeApp {
 
 impl eframe::App for DemoStrikeApp {
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        static ENTER: AtomicBool = AtomicBool::new(false);
+        static DONE: AtomicBool = AtomicBool::new(false);
+        trace_editor_once(&ENTER, "raw_input_hook_enter");
         if let Some(editor) = self.embedded_editor.as_mut() {
             eframe::App::raw_input_hook(editor, ctx, input);
         }
+        trace_editor_once(&DONE, "raw_input_hook_done");
     }
 
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        static ENTER: AtomicBool = AtomicBool::new(false);
+        static DONE: AtomicBool = AtomicBool::new(false);
+        trace_editor_once(&ENTER, "logic_enter");
         if let Some(editor) = self.embedded_editor.as_mut() {
             eframe::App::logic(editor, ctx, frame);
         }
+        trace_editor_once(&DONE, "logic_done");
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        static ENTER: AtomicBool = AtomicBool::new(false);
+        static CAPTURE_DONE: AtomicBool = AtomicBool::new(false);
+        static EDITOR_DONE: AtomicBool = AtomicBool::new(false);
+        trace_editor_once(&ENTER, "ui_enter");
         let ctx = ui.ctx().clone();
         self.capture_after_frame(&ctx);
+        trace_editor_once(&CAPTURE_DONE, "capture_after_frame_done");
         if self.embedded_editor.is_some() {
             self.show_embedded_editor(ui, frame);
+            trace_editor_once(&EDITOR_DONE, "show_embedded_editor_done");
             return;
         }
         self.poll_demo_import();
