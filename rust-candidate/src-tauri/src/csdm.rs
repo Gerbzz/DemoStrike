@@ -71,11 +71,14 @@ impl Store {
     fn request(
         &self,
         name: &str,
-        _payload: Option<Value>,
+        payload: Option<Value>,
         settings: Value,
     ) -> Result<Value, String> {
         match name {
             "connect-database" => {
+                if payload.is_some_and(|value| !value.is_null()) {
+                    return Err("External CS Demo Manager database settings are not supported by this Tauri port.".to_owned());
+                }
                 self.database()?;
                 Ok(Value::Null)
             }
@@ -188,6 +191,16 @@ mod tests {
                 .request("connect-database", None, settings.clone())
                 .unwrap(),
             Value::Null
+        );
+        assert!(
+            store
+                .request(
+                    "connect-database",
+                    Some(json!({"host":"localhost"})),
+                    settings.clone()
+                )
+                .unwrap_err()
+                .contains("External CS Demo Manager database settings")
         );
         let initial = store
             .request("init-application", None, settings.clone())

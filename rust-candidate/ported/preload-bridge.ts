@@ -28,6 +28,9 @@ const api = {
     return currentSettings;
   },
   updateSettings: async (partial: Record<string, unknown>, options?: { preserveSourceArray?: boolean }) => {
+    if ('database' in partial) {
+      throw new Error('External CS Demo Manager database settings are not supported by this Tauri port.');
+    }
     const settings = mergeSettings(currentSettings, partial, options?.preserveSourceArray === true);
     await invoke('csdm_save_settings', { settings });
     currentSettings = settings;
