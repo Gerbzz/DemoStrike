@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Status } from 'csdm/common/types/status';
 import { Button } from 'csdm/ui/components/buttons/button';
 import { CenteredContent } from 'csdm/ui/components/content';
@@ -11,7 +11,8 @@ import { useFuzzySearchText } from 'csdm/ui/matches/use-fuzzy-search-text';
 
 // Keep the original action bar, table, status bar, and route. This replaces
 // only the messages that would otherwise claim an unported demo import works.
-export function MatchesTable() {
+export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) => void }) {
+  const [path, setPath] = useState('');
   const table = useMatchesTable();
   const status = useMatchesStatus();
   const fetchMatches = useFetchMatches();
@@ -44,6 +45,15 @@ export function MatchesTable() {
               ? 'Try a different search or filter.'
               : 'The original CS Demo Manager workspace is running in Tauri. Demo import and populated match data are still being ported.'}
           </p>
+          {!hasActiveFilter && !search && (
+            <div className="flex w-full flex-col gap-y-8 border-t border-gray-300 pt-16 text-left">
+              <label htmlFor="local-library-path" className="text-body-strong">Open an existing DemoStrike SQLite library</label>
+              <p className="text-gray-700">Paste the path to a library file to inspect its matches, rounds, players, and utility in read-only mode.</p>
+              <input id="local-library-path" className="w-full rounded-4 border border-gray-400 bg-gray-75 p-8 select-text"
+                value={path} onChange={(event) => setPath(event.target.value)} placeholder="C:\\path\\to\\matches.sqlite" />
+              <div><Button isDisabled={!path.trim()} onClick={() => onOpenLibrary(path.trim())}>Open local library</Button></div>
+            </div>
+          )}
         </div>
       </CenteredContent>
     );

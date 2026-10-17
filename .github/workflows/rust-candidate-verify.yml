@@ -35,6 +35,8 @@ jobs:
           path: rust-candidate/ported/dist
       - name: Build native original renderer host
         run: npm run tauri -- build --config src-tauri/tauri.upstream.smoke.conf.json
+      - name: Generate sanitized synthetic library
+        run: python tests/make_smoke_fixture.py
       - name: Exercise original startup and capture native app
         run: node tests/original-native-smoke.cjs
       - name: Upload original app-only capture

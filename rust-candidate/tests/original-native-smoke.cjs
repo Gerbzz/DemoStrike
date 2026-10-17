@@ -9,6 +9,7 @@ const { spawn } = require('node:child_process');
 const { chromium } = require('playwright-core');
 
 const outputDir = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-original');
+const fixturePath = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-smoke', 'synthetic-library.sqlite');
 const appPath = path.resolve(__dirname, '../src-tauri/target/release/demostrike-rust-candidate.exe');
 const cdpUrl = 'http://127.0.0.1:19375';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -17,6 +18,8 @@ const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file
 async function main() {
   assert.equal(process.platform, 'win32');
   assert.ok(fs.existsSync(appPath), `Native app missing: ${appPath}`);
+  assert.ok(fs.existsSync(fixturePath), `Synthetic library missing: ${fixturePath}`);
+  const fixtureSha256 = sha256(fixturePath);
   fs.mkdirSync(outputDir, { recursive: true });
   const app = spawn(appPath, [], { cwd: path.dirname(appPath), windowsHide: false, stdio: 'pipe' });
   let exit = null;
@@ -64,18 +67,35 @@ async function main() {
     const screenshot = path.join(outputDir, 'original-matches-empty.png');
     await page.screenshot({ path: screenshot, animations: 'disabled' });
     assert.ok(fs.statSync(screenshot).size > 10000, 'Native screenshot is unexpectedly small');
+    await page.getByRole('textbox', { name: 'Open an existing DemoStrike SQLite library' }).fill(fixturePath);
+    await page.getByRole('button', { name: 'Open local library' }).click();
+    await page.getByRole('button', { name: 'synthetic-alpha.dem' }).waitFor({ timeout: 20000 });
+    assert.equal(await page.getByRole('button', { name: 'synthetic-beta.dem' }).count(), 1);
+    await page.getByRole('tab', { name: 'Rounds' }).click();
+    assert.equal(await page.getByRole('tabpanel').locator('tbody tr').count(), 3);
+    await page.getByRole('tab', { name: 'Players' }).click();
+    assert.equal(await page.getByRole('tabpanel').locator('tbody tr').count(), 2);
+    await page.getByRole('tab', { name: 'Utility' }).click();
+    assert.equal(await page.getByRole('tabpanel').locator('tbody tr').count(), 3);
+    assert.ok((await page.getByRole('tabpanel').innerText()).includes('Unavailable'));
+    const libraryScreenshot = path.join(outputDir, 'original-local-library.png');
+    await page.screenshot({ path: libraryScreenshot, animations: 'disabled' });
+    assert.ok(fs.statSync(libraryScreenshot).size > 10000, 'Local-library screenshot is unexpectedly small');
+    assert.equal(sha256(fixturePath), fixtureSha256, 'Read-only viewer changed the synthetic fixture');
     const proof = {
       source: 'actual hosted Tauri WebView2 window with original CS Demo Manager renderer',
-      data: 'new persistent local SQLite library with no imported matches',
-      scope: 'startup and empty Matches route only; import and other route backends remain unported',
+      data: 'new empty local SQLite plus a separate sanitized synthetic DemoStrike library',
+      scope: 'original startup and read-only local library; import and other route backends remain unported',
       commit: process.env.GITHUB_SHA || null,
       executableSha256: sha256(appPath),
       screenshotSha256: sha256(screenshot),
+      libraryScreenshotSha256: sha256(libraryScreenshot),
+      fixtureSha256,
       runtimeUrl: page.url(),
       originalSidebarRoutes: ['matches', 'demos', 'players', 'teams'],
     };
     fs.writeFileSync(path.join(outputDir, 'proof.json'), `${JSON.stringify(proof, null, 2)}\n`);
-    console.log('PASS: original renderer startup and empty Matches route in native Tauri WebView2');
+    console.log('PASS: original renderer startup and read-only local library in native Tauri WebView2');
   } catch (error) {
     if (page) {
       const screenshot = path.join(outputDir, 'original-startup-failure.png');

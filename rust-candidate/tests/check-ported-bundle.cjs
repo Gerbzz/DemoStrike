@@ -16,6 +16,7 @@ assert.ok(bundle.includes('csdm_request'), 'Tauri request adapter was not includ
 assert.ok(!bundle.includes('REACT_STRICT_MODE_ENABLED'), 'Electron-only startup constant was left unresolved');
 assert.ok(bundle.includes('Existing CS Demo Manager PostgreSQL data is untouched.'), 'Accurate local-library settings pane was not included');
 assert.ok(bundle.includes('Could not open this view'), 'Ported recoverable error boundary was not included');
+assert.ok(bundle.includes('list_matches') && bundle.includes('get_match_detail'), 'Read-only DemoStrike library bridge was not included');
 assert.ok(!bundle.includes('WS:: connecting to server'), 'Electron WebSocket client remained in the ported bundle');
 assert.ok(styles.includes('.gap-x-8'), 'Original UI spacing classes were not generated');
 console.log('PASS: ported original renderer contains the Tauri adapter and no Electron WebSocket startup');
