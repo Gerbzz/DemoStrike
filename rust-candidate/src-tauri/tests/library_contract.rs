@@ -216,7 +216,10 @@ fn ordered_deaths_and_round_fields_remain_distinct_from_missing_facts() {
     assert_eq!(deaths[0].weapon.as_deref(), Some("m4a1"));
     assert_eq!(observed.rounds[1].deaths.as_ref().unwrap().len(), 0);
     let hurts = observed.rounds[0].hurts.as_ref().unwrap();
-    assert_eq!(hurts.iter().map(|event| event.tick).collect::<Vec<_>>(), vec![180, 200]);
+    assert_eq!(
+        hurts.iter().map(|event| event.tick).collect::<Vec<_>>(),
+        vec![180, 200]
+    );
     assert_eq!(hurts[1].raw_damage, 17);
     assert!(observed.rounds[1].hurts.as_ref().unwrap().is_empty());
     assert_eq!(std::fs::read(&path).unwrap(), before);
@@ -326,3 +329,4 @@ fn empty_valid_library_is_valid_and_missing_match_is_an_error() {
     assert!(list_matches(&path).unwrap().matches.is_empty());
     assert!(get_match_detail(&path, 1).is_err());
 }
+
