@@ -55,6 +55,20 @@ jobs:
         run: node tests/public-native-smoke.cjs
         env:
           EXPECT_FEATURE_FREE: '1'
+      - name: Fetch licensed Ancient demo for restart acceptance
+        shell: pwsh
+        run: |
+          $directory = Join-Path $env:RUNNER_TEMP 'ancient'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $fixture = Join-Path $directory 'public-cs2-fixture.dem'
+          curl.exe --fail --location --retry 2 --max-filesize 350000000 --max-time 600 --output $fixture 'https://api.figshare.com/v2/file/download/52456259'
+          if ($LASTEXITCODE -ne 0) { throw 'Ancient fixture download failed' }
+          if ((Get-Item -LiteralPath $fixture).Length -ne 112473210) { throw 'Ancient fixture size changed' }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $fixture).Hash.ToLowerInvariant() -ne 'b29a9cb537a181deef97b15cfed10ee722a37999644a27bb2226fdd77a1337fc') { throw 'Ancient fixture content changed' }
+      - name: Interrupt real import and verify recovery after process restart
+        run: node tests/import-queue-restart.cjs
+        env:
+          EXPECT_FEATURE_FREE: '1'
       - name: Upload original app-only capture
         if: always()
         uses: actions/upload-artifact@v4
@@ -69,6 +83,14 @@ jobs:
         with:
           name: demostrike-public-native-ui
           path: ${{ runner.temp }}/demostrike-public-native/*
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Upload native queue restart evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-queue-restart
+          path: ${{ runner.temp }}/demostrike-queue-restart/*
           if-no-files-found: warn
           retention-days: 1
   upstream-renderer:
