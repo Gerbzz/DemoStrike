@@ -146,6 +146,8 @@ fn parse_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
         },
         players: state.players.values().cloned().collect(),
         round_events,
+        bomb_events: state.bomb_events.clone(),
+        bomb_event_stream_available: true,
         effective_health_damage_available: true,
         observed_match_start: state.observed_match_start,
         team_phase_known_at_match_start: state.team_phase_known_at_match_start,
@@ -716,10 +718,21 @@ fn validate_round_outcome_events(
     Ok(())
 }
 
-fn include_position(alive_flag: bool, died_this_tick: bool) -> bool {
+fn observed_alive_state(alive_flag: Option<bool>, died_this_tick: bool) -> Option<bool> {
     // On a lethal grenade tick, player_death can precede the tick-end sample
     // while m_bPawnIsAlive still reports true. The event is the newer state.
-    alive_flag && !died_this_tick
+    if died_this_tick {
+        Some(false)
+    } else {
+        alive_flag
+    }
+}
+
+fn alive_flag_from_field(value: Option<&FieldValue>) -> Option<bool> {
+    match value {
+        Some(FieldValue::Boolean(value)) => Some(*value),
+        _ => None,
+    }
 }
 
 fn record_position(
@@ -781,6 +794,7 @@ struct GrenadeObserver {
     position_stream_truncated: bool,
     bomb_defused_ticks: BTreeSet<u32>,
     bomb_exploded_ticks: BTreeSet<u32>,
+    bomb_events: Vec<RawBombEvent>,
     ct_death_ticks: BTreeSet<u32>,
     dead_users_on_tick: BTreeMap<u32, BTreeSet<i32>>,
     dead_users_until_spawn: BTreeSet<i32>,
@@ -843,6 +857,40 @@ impl GrenadeObserver {
         }
         if name == "bomb_exploded" {
             self.bomb_exploded_ticks.insert(ctx.tick());
+        }
+        if matches!(name, "bomb_planted" | "bomb_defused" | "bomb_exploded")
+            && warmup(ctx) == Some(false)
+        {
+            let controller =
+                event_int(event, "userid").and_then(|user| controller_by_user(ctx, user));
+            let actor = controller.and_then(controller_identity);
+            let event_position = match (
+                event_float(event, "x"),
+                event_float(event, "y"),
+                event_float(event, "z"),
+            ) {
+                (Some(x), Some(y), Some(z)) => Some([x, y, z]),
+                _ => None,
+            };
+            let player_position = if name == "bomb_exploded" {
+                None
+            } else {
+                controller
+                    .and_then(|value| pawn_of(ctx, value))
+                    .and_then(origin)
+            };
+            let position = event_position.or(player_position);
+            self.bomb_events.push(RawBombEvent {
+                kind: name.into(),
+                tick: i64::from(ctx.tick()),
+                round: game_round(ctx),
+                actor_steamid: actor.as_ref().map(|value| value.0.clone()),
+                actor_name: actor.as_ref().map(|value| value.1.clone()),
+                site_id: event_int(event, "site"),
+                x: position.map(|value| value[0]),
+                y: position.map(|value| value[1]),
+                z: position.map(|value| value[2]),
+            });
         }
         if matches!(name, "player_death" | "player_spawn") {
             if let Some(user) = event_int(event, "userid") {
@@ -1480,11 +1528,9 @@ impl GrenadeObserver {
                 else {
                     continue;
                 };
-                let alive_flag = matches!(
-                    controller.get_property("m_bPawnIsAlive"),
-                    Ok(FieldValue::Boolean(true))
-                );
-                let is_alive = include_position(
+                let alive_flag =
+                    alive_flag_from_field(controller.get_property("m_bPawnIsAlive").ok());
+                let is_alive = observed_alive_state(
                     alive_flag,
                     dead_this_tick.contains(&user) || self.dead_users_until_spawn.contains(&user),
                 );
@@ -1515,7 +1561,7 @@ impl GrenadeObserver {
                     x: Some(x),
                     y: Some(y),
                     z: Some(z),
-                    is_alive: Some(is_alive),
+                    is_alive,
                     health,
                     yaw,
                 };
@@ -1590,29 +1636,23 @@ mod round_tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("broken.dem");
         std::fs::write(&path, b"PBDEMS2\0").unwrap();
-        assert!(
-            validate_format(&path, &ImportControl::new())
-                .unwrap_err()
-                .contains("truncated")
-        );
+        assert!(validate_format(&path, &ImportControl::new())
+            .unwrap_err()
+            .contains("truncated"));
         let mut header = [0_u8; 32];
         header[..8].copy_from_slice(b"PBDEMS2\0");
         header[8..12].copy_from_slice(&u32::MAX.to_le_bytes());
         std::fs::write(&path, header).unwrap();
-        assert!(
-            validate_format(&path, &ImportControl::new())
-                .unwrap_err()
-                .contains("file-info offset")
-        );
+        assert!(validate_format(&path, &ImportControl::new())
+            .unwrap_err()
+            .contains("file-info offset"));
         header[8..12].copy_from_slice(&16_u32.to_le_bytes());
         std::fs::write(&path, header).unwrap();
         let cancelled = ImportControl::new();
         cancelled.request_cancel();
-        assert!(
-            validate_format(&path, &cancelled)
-                .unwrap_err()
-                .contains("cancelled")
-        );
+        assert!(validate_format(&path, &cancelled)
+            .unwrap_err()
+            .contains("cancelled"));
     }
 
     #[test]
@@ -1675,33 +1715,27 @@ mod round_tests {
             winner: Some("CT".into()),
             reason: Some("bomb_defused".into()),
         }];
-        assert!(
-            validate_round_outcome_events(
-                &rounds,
-                &BTreeSet::from([20_760]),
-                &BTreeSet::new(),
-                &BTreeSet::new()
-            )
-            .is_ok()
-        );
-        assert!(
-            validate_round_outcome_events(
-                &rounds,
-                &BTreeSet::new(),
-                &BTreeSet::new(),
-                &BTreeSet::new()
-            )
-            .is_err()
-        );
-        assert!(
-            validate_round_outcome_events(
-                &rounds,
-                &BTreeSet::from([20_761]),
-                &BTreeSet::new(),
-                &BTreeSet::new()
-            )
-            .is_err()
-        );
+        assert!(validate_round_outcome_events(
+            &rounds,
+            &BTreeSet::from([20_760]),
+            &BTreeSet::new(),
+            &BTreeSet::new()
+        )
+        .is_ok());
+        assert!(validate_round_outcome_events(
+            &rounds,
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            &BTreeSet::new()
+        )
+        .is_err());
+        assert!(validate_round_outcome_events(
+            &rounds,
+            &BTreeSet::from([20_761]),
+            &BTreeSet::new(),
+            &BTreeSet::new()
+        )
+        .is_err());
     }
 
     #[test]
@@ -1838,33 +1872,27 @@ mod round_tests {
                 reason: Some("ct_killed".into()),
             },
         ];
-        assert!(
-            validate_round_outcome_events(
-                &rounds,
-                &BTreeSet::new(),
-                &BTreeSet::from([45_707]),
-                &BTreeSet::from([52_063])
-            )
-            .is_ok()
-        );
-        assert!(
-            validate_round_outcome_events(
-                &rounds,
-                &BTreeSet::new(),
-                &BTreeSet::new(),
-                &BTreeSet::from([52_063])
-            )
-            .is_err()
-        );
-        assert!(
-            validate_round_outcome_events(
-                &rounds,
-                &BTreeSet::new(),
-                &BTreeSet::from([45_707]),
-                &BTreeSet::new()
-            )
-            .is_err()
-        );
+        assert!(validate_round_outcome_events(
+            &rounds,
+            &BTreeSet::new(),
+            &BTreeSet::from([45_707]),
+            &BTreeSet::from([52_063])
+        )
+        .is_ok());
+        assert!(validate_round_outcome_events(
+            &rounds,
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            &BTreeSet::from([52_063])
+        )
+        .is_err());
+        assert!(validate_round_outcome_events(
+            &rounds,
+            &BTreeSet::new(),
+            &BTreeSet::from([45_707]),
+            &BTreeSet::new()
+        )
+        .is_err());
     }
 
     #[test]
@@ -1876,15 +1904,13 @@ mod round_tests {
             winner: Some("T".into()),
             reason: Some("ct_killed".into()),
         }];
-        assert!(
-            validate_round_outcome_events(
-                &rounds,
-                &BTreeSet::new(),
-                &BTreeSet::from([101]),
-                &BTreeSet::from([100])
-            )
-            .is_ok()
-        );
+        assert!(validate_round_outcome_events(
+            &rounds,
+            &BTreeSet::new(),
+            &BTreeSet::from([101]),
+            &BTreeSet::from([100])
+        )
+        .is_ok());
         let active = [
             rounds[0].clone(),
             RawRoundEvent {
@@ -1895,26 +1921,45 @@ mod round_tests {
                 reason: None,
             },
         ];
-        assert!(
-            validate_round_outcome_events(
-                &active,
-                &BTreeSet::new(),
-                &BTreeSet::from([111]),
-                &BTreeSet::from([100])
-            )
-            .is_err()
-        );
+        assert!(validate_round_outcome_events(
+            &active,
+            &BTreeSet::new(),
+            &BTreeSet::from([111]),
+            &BTreeSet::from([100])
+        )
+        .is_err());
     }
 
     #[test]
     fn same_tick_death_overrides_stale_alive_flag_for_position_sampling() {
         let mut dead = BTreeSet::new();
-        assert!(include_position(true, dead.contains(&6)));
+        assert_eq!(
+            observed_alive_state(Some(true), dead.contains(&6)),
+            Some(true)
+        );
         update_same_tick_deaths(&mut dead, "player_death", 6);
-        assert!(!include_position(true, dead.contains(&6)));
+        assert_eq!(
+            observed_alive_state(Some(true), dead.contains(&6)),
+            Some(false)
+        );
         update_same_tick_deaths(&mut dead, "player_spawn", 6);
-        assert!(include_position(true, dead.contains(&6)));
-        assert!(!include_position(false, false));
+        assert_eq!(
+            observed_alive_state(Some(true), dead.contains(&6)),
+            Some(true)
+        );
+        assert_eq!(observed_alive_state(Some(false), false), Some(false));
+    }
+
+    #[test]
+    fn absent_or_wrong_type_alive_property_stays_unknown() {
+        assert_eq!(alive_flag_from_field(None), None);
+        assert_eq!(alive_flag_from_field(Some(&FieldValue::Signed32(1))), None);
+        assert_eq!(
+            alive_flag_from_field(Some(&FieldValue::Boolean(true))),
+            Some(true)
+        );
+        assert_eq!(observed_alive_state(None, false), None);
+        assert_eq!(observed_alive_state(None, true), Some(false));
     }
 
     #[test]

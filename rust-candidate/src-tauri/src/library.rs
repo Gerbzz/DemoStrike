@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
@@ -225,6 +225,41 @@ pub struct ViewerRoundMeta {
     pub positions_available: bool,
     pub player_sample_count: i64,
     pub grenade_sample_count: i64,
+    pub utility_events: Vec<ViewerUtilityEvent>,
+    pub bomb_events: Vec<ViewerBombEvent>,
+    pub bomb_events_available: bool,
+}
+
+/// Detonation facts persist with the imported demo. Missing coordinates and
+/// projectile identity stay nullable; the viewer must not infer an effect.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewerUtilityEvent {
+    pub id: i64,
+    pub utility_type: String,
+    pub throw_tick: i64,
+    pub detonate_tick: Option<i64>,
+    pub detonate_x: Option<f64>,
+    pub detonate_y: Option<f64>,
+    pub detonate_z: Option<f64>,
+    pub projectile_entity_id: Option<i64>,
+    pub thrower_steamid: String,
+    pub thrower_name: String,
+    pub thrower_side: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewerBombEvent {
+    pub source_index: i64,
+    pub kind: String,
+    pub tick: i64,
+    pub actor_steamid: Option<String>,
+    pub actor_name: Option<String>,
+    pub site_id: Option<i64>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub z: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -557,6 +592,9 @@ pub fn get_viewer_round(
         connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     let mut player_sample_count = 0;
     let mut grenade_sample_count = 0;
+    let mut utility_events = Vec::new();
+    let mut bomb_events = Vec::new();
+    let mut bomb_events_available = false;
     let mut version = None;
     if schema_version >= 10 && has_column(&connection, "matches", "viewer_position_version")? {
         version = connection.query_row(
@@ -571,6 +609,67 @@ pub fn get_viewer_round(
             grenade_sample_count = connection.query_row(
                 "SELECT COUNT(*) FROM viewer_grenade_positions WHERE match_id=?1 AND round_number=?2",
                 params![match_id,round_number], |row| row.get(0))?;
+            if has_column(&connection, "utility_events", "projectile_entity_id")?
+                && has_column(&connection, "utility_events", "detonate_tick")?
+                && has_column(&connection, "utility_events", "thrower_steamid")?
+            {
+                let mut query = connection.prepare(
+                    "SELECT id,utility_type,throw_tick,detonate_tick,
+                    detonate_x,detonate_y,detonate_z,projectile_entity_id,
+                    thrower_steamid,thrower_name,thrower_team
+                 FROM utility_events WHERE match_id=?1 AND round_number=?2
+                 ORDER BY throw_tick,id",
+                )?;
+                utility_events = query
+                    .query_map(params![match_id, round_number], |row| {
+                        Ok(ViewerUtilityEvent {
+                            id: row.get(0)?,
+                            utility_type: row.get(1)?,
+                            throw_tick: row.get(2)?,
+                            detonate_tick: row.get(3)?,
+                            detonate_x: row.get(4)?,
+                            detonate_y: row.get(5)?,
+                            detonate_z: row.get(6)?,
+                            projectile_entity_id: row.get(7)?,
+                            thrower_steamid: row.get(8)?,
+                            thrower_name: row.get(9)?,
+                            thrower_side: row.get(10)?,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+            }
+            if schema_version >= 11
+                && has_column(&connection, "matches", "viewer_bomb_version")?
+                && has_column(&connection, "viewer_bomb_events", "kind")?
+            {
+                bomb_events_available = connection.query_row(
+                    "SELECT viewer_bomb_version FROM matches WHERE id=?1",
+                    [match_id],
+                    |row| row.get::<_, Option<i64>>(0),
+                )? == Some(1);
+            }
+            if bomb_events_available {
+                let mut query = connection.prepare(
+                    "SELECT source_index,kind,tick,actor_steamid,actor_name,site_id,x,y,z
+                     FROM viewer_bomb_events WHERE match_id=?1 AND round_number=?2
+                     ORDER BY tick,source_index",
+                )?;
+                bomb_events = query
+                    .query_map(params![match_id, round_number], |row| {
+                        Ok(ViewerBombEvent {
+                            source_index: row.get(0)?,
+                            kind: row.get(1)?,
+                            tick: row.get(2)?,
+                            actor_steamid: row.get(3)?,
+                            actor_name: row.get(4)?,
+                            site_id: row.get(5)?,
+                            x: row.get(6)?,
+                            y: row.get(7)?,
+                            z: row.get(8)?,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+            }
         }
     }
     Ok(ViewerRoundMeta {
@@ -586,6 +685,9 @@ pub fn get_viewer_round(
             && matches!((start_tick,end_tick), (Some(start),Some(end)) if start < end),
         player_sample_count,
         grenade_sample_count,
+        utility_events,
+        bomb_events,
+        bomb_events_available,
     })
 }
 

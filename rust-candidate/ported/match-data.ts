@@ -81,6 +81,22 @@ export type ViewerRoundMeta = {
   roundNumber: number; startTick: number | null; endTick: number | null;
   tickRate: number | null; mapName: string; positionsAvailable: boolean;
   playerSampleCount: number; grenadeSampleCount: number;
+  utilityEvents: ViewerUtilityEvent[];
+  bombEvents: ViewerBombEvent[];
+  bombEventsAvailable: boolean;
+};
+export type ViewerUtilityEvent = {
+  id: number; utilityType: string; throwTick: number;
+  detonateTick: number | null;
+  detonateX: number | null; detonateY: number | null; detonateZ: number | null;
+  projectileEntityId: number | null;
+  throwerSteamid: string; throwerName: string; throwerSide: string;
+};
+export type ViewerBombEvent = {
+  sourceIndex: number; kind: string; tick: number;
+  actorSteamid: string | null; actorName: string | null;
+  siteId: number | null;
+  x: number | null; y: number | null; z: number | null;
 };
 export type ViewerPlayerFrame = {
   tick: number; steamid: string; name: string; side: string | null;

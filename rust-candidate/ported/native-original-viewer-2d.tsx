@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { Game, GrenadeName, TeamNumber, WeaponName } from 'csdm/common/types/counter-strike';
 import type { Map } from 'csdm/common/types/map';
 import type { Kill } from 'csdm/common/types/kill';
-import type { PlayerPosition } from 'csdm/common/types/player-position';
 import type { GrenadePosition } from 'csdm/common/types/grenade-position';
 import { Viewer2D } from 'csdm/ui/match/viewer-2d/viewer-2d';
 import { ViewerContext } from 'csdm/ui/match/viewer-2d/viewer-context';
@@ -13,6 +12,9 @@ import type { MatchDetail, RecordedRound, ViewerFrameChunk, ViewerGrenadeFrame, 
 import { useSourceMatch } from './match-loader';
 import { nativeSide, originalRound } from './native-original-viewer-match';
 import { NativeRadarProvider } from './native-original-viewer-radar';
+import type { NativeObservedPosition } from './native-original-draw-players';
+import { observedBombTimeline, observedGrenadeEvents } from './native-original-viewer-events';
+import { NativeOriginalEventList } from './native-original-event-list';
 import './native-original-viewer.css';
 
 const calibratedMaps: Record<string, Pick<Map, 'posX' | 'posY' | 'scale' | 'radarSize'>> = {
@@ -34,7 +36,7 @@ function grenadeName(kind: string | null): GrenadeName | null {
   return null;
 }
 
-function playerPosition(frame: ViewerPlayerFrame, checksum: string, roundNumber: number): PlayerPosition {
+function playerPosition(frame: ViewerPlayerFrame, checksum: string, roundNumber: number): NativeObservedPosition {
   // The original canvas uses position, side, yaw, health and alive state. Its
   // equipment fields are unavailable in the native stream and are not shown
   // in the adapted team panel. NaN suppresses unobserved health/yaw graphics.
@@ -51,6 +53,7 @@ function playerPosition(frame: ViewerPlayerFrame, checksum: string, roundNumber:
     yaw: frame.yaw ?? Number.NaN,
     health: frame.health ?? Number.NaN,
     isAlive: frame.isAlive === true,
+    observedAlive: frame.isAlive,
     flashDurationRemaining: 0,
     money: Number.NaN,
     armor: Number.NaN,
@@ -146,6 +149,8 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap }: {
   const [lowerRadarOpacity, setLowerRadarOpacity] = useState(1);
   const playerPositions = useMemo(() => frames.players.map((frame) => playerPosition(frame, checksum!, recorded.roundNumber)), [frames.players, checksum, recorded.roundNumber]);
   const grenadePositions = useMemo(() => frames.grenades.map((frame) => grenadePosition(frame, checksum!, recorded.roundNumber)).filter((row): row is GrenadePosition => row !== null), [frames.grenades, checksum, recorded.roundNumber]);
+  const lifecycle = useMemo(() => observedGrenadeEvents(meta, frames.grenades, checksum!), [meta, frames.grenades, checksum]);
+  const bombs = useMemo(() => observedBombTimeline(meta, checksum!), [meta, checksum]);
   const kills = useMemo(() => observedKills(detail, recorded, frames, checksum!, start, end), [detail, recorded, frames, checksum, start, end]);
   const tickrate = meta.tickRate && meta.tickRate > 0 ? meta.tickRate : 64;
   const setCurrentTick = (tick: number) => setTick(Math.max(start, Math.min(tick, end)));
@@ -164,22 +169,31 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap }: {
     resetAudioOffset: () => {}, loadAudioFile: async () => {}, unloadAudioFile: () => {},
     audioBytes: new Uint8Array(), map, game: Game.CS2,
     kills, round, shots: [], playerPositions,
-    hostagesPickUpStart: [], heGrenadesExplode: [], flashbangsExplode: [],
-    smokesStart: [], decoysStart: [], hostagesPickedUp: [], hostagePositions: [],
+    hostagesPickUpStart: [], heGrenadesExplode: lifecycle.heGrenadesExplode,
+    flashbangsExplode: lifecycle.flashbangsExplode,
+    smokesStart: lifecycle.smokesStart, decoysStart: lifecycle.decoysStart,
+    hostagesPickedUp: [], hostagePositions: [],
     grenadePositions, infernoPositions: [], chickenPositions: [],
     bombsPlantStart: [], bombsDefuseStart: [],
-    bombExploded: null, bombPlanted: null, bombDefused: null, shouldDrawBombs: false,
+    bombExploded: bombs.bombExploded, bombPlanted: bombs.bombPlanted,
+    bombDefused: bombs.bombDefused, shouldDrawBombs: bombs.bombPlanted !== null,
     focusedPlayerId, updateFocusedPlayerId: (id: string) => setFocusedPlayerId((value) => value === id ? undefined : id),
     lowerRadarOffsetX, setLowerRadarOffsetX, lowerRadarOffsetY, setLowerRadarOffsetY,
     lowerRadarOpacity, setLowerRadarOpacity,
     drawingTool, setDrawingTool, drawingSize, setDrawingSize, drawingColor, setDrawingColor,
   };
-  return <div className="original-viewer-bridge flex min-h-0 flex-1 flex-col" data-original-csdm-viewer="true"
+  return <div className="original-viewer-bridge relative flex min-h-0 flex-1 flex-col" data-original-csdm-viewer="true"
     data-radar-selected={radarBitmap ? 'true' : 'false'}
     data-current-tick={currentTick} data-player-count={frames.players.filter((row) => row.tick === currentTick).length}
+    data-unknown-alive-count={frames.players.filter((row) => row.tick === currentTick && row.isAlive === null).length}
+    data-grenade-detonation-count={lifecycle.recorded.length}
+    data-bomb-event-count={bombs.observedCount}
+    data-bomb-plant-tick={bombs.bombPlanted?.tick ?? ''}
+    data-bomb-events-available={meta.bombEventsAvailable ? 'true' : 'false'}
     data-grenade-count={frames.grenades.filter((row) => row.tick === currentTick).length}>
     <ViewerContext.Provider value={context}>
       <NativeRadarProvider bitmap={radarBitmap}><Viewer2D /></NativeRadarProvider>
+      <NativeOriginalEventList detail={detail} recorded={recorded} meta={meta} />
     </ViewerContext.Provider>
   </div>;
 }
@@ -196,7 +210,8 @@ export function Viewer2DLoader() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [radarError, setRadarError] = useState('');
-  const [radarBitmap, setRadarBitmap] = useState<ImageBitmap | null>(null);
+  const [radarSelection, setRadarSelection] = useState<{ mapName: string; bitmap: ImageBitmap } | null>(null);
+  const radarBitmap = radarSelection?.mapName === meta?.mapName ? radarSelection.bitmap : null;
 
   useEffect(() => {
     if (matchId === null || !path || !recorded || !Number.isSafeInteger(roundNumber)) {
@@ -229,7 +244,10 @@ export function Viewer2DLoader() {
     return () => { active = false; };
   }, [path, matchId, roundNumber, recorded]);
 
-  useEffect(() => () => { radarBitmap?.close(); }, [radarBitmap]);
+  useEffect(() => () => { radarSelection?.bitmap.close(); }, [radarSelection]);
+  useEffect(() => {
+    if (radarSelection && meta?.mapName && radarSelection.mapName !== meta.mapName) setRadarSelection(null);
+  }, [meta?.mapName, radarSelection]);
   const chooseRadar = async (file: File | undefined) => {
     if (!file) return;
     setRadarError('');
@@ -240,7 +258,7 @@ export function Viewer2DLoader() {
       const bitmap = await createImageBitmap(file);
       const valid = bitmap.width === 1024 && bitmap.height === 1024;
       if (!valid) { bitmap.close(); setRadarError('This calibrated view needs a 1024 x 1024 radar PNG.'); return; }
-      setRadarBitmap(bitmap);
+      setRadarSelection({ mapName: meta!.mapName, bitmap });
     } catch { setRadarError('The selected PNG could not be decoded.'); }
   };
   if (error) return <div role="alert" className="p-16">{error}</div>;
@@ -257,7 +275,7 @@ export function Viewer2DLoader() {
   return <div className="flex min-h-0 flex-1 flex-col">
     <header className="flex flex-wrap items-center justify-between gap-8 border-b border-gray-300 px-16 py-8">
       <div><h1 className="text-subtitle">2D Viewer - Round {roundNumber}</h1>
-        <p className="text-gray-700">Recorded positions and projectiles. Audio, equipment and advanced kill effects are unavailable.</p></div>
+        <p className="text-gray-700">Recorded positions, projectiles and detonations. Audio, equipment, inferno cells and bomb site labels are unavailable.</p></div>
       <label className="cursor-pointer rounded border border-gray-300 px-8 py-4 text-blue-600">Choose local radar PNG
         <input className="sr-only" type="file" accept="image/png" aria-label="Choose local radar PNG"
           onChange={(event) => void chooseRadar(event.target.files?.[0])} /></label>

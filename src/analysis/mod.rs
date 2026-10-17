@@ -111,6 +111,9 @@ pub struct AnalyzedMatch {
     /// weapon analysis without a destructive reimport.
     pub raw_combat_hurts: Vec<RawCombatHurt>,
     pub raw_combat_deaths: Vec<RawCombatDeath>,
+    /// Source 2 bomb game events with nullable actor, site and position facts.
+    pub bomb_events: Vec<RawBombEvent>,
+    pub bomb_event_stream_available: bool,
     /// Absolute-tick frame-end positions and full projectile paths for 2D replay.
     /// A false capability keeps legacy and reference imports explicitly unavailable.
     pub position_stream_available: bool,
@@ -146,6 +149,8 @@ pub fn build_match(raw: &RawDemo) -> AnalyzedMatch {
         player_round_combat,
         raw_combat_hurts: raw.combat_hurts.clone(),
         raw_combat_deaths: raw.combat_deaths.clone(),
+        bomb_events: raw.bomb_events.clone(),
+        bomb_event_stream_available: raw.bomb_event_stream_available,
         position_stream_available: raw.position_stream_available,
         viewer_positions: if raw.position_stream_available {
             raw.positions.clone()
@@ -1443,24 +1448,18 @@ mod tests {
 
         raw.team_phase_known_at_match_start = false;
         let missing_phase = build_match(&raw);
-        assert!(
-            missing_phase
-                .rounds
-                .iter()
-                .all(|row| row.team_a_side.is_none())
-        );
-        assert!(
-            missing_phase
-                .player_round_combat
-                .iter()
-                .all(|row| row.stable_team.is_none())
-        );
-        assert!(
-            missing_phase
-                .player_round_combat
-                .iter()
-                .any(|row| row.effective_enemy_health_damage == Some(100))
-        );
+        assert!(missing_phase
+            .rounds
+            .iter()
+            .all(|row| row.team_a_side.is_none()));
+        assert!(missing_phase
+            .player_round_combat
+            .iter()
+            .all(|row| row.stable_team.is_none()));
+        assert!(missing_phase
+            .player_round_combat
+            .iter()
+            .any(|row| row.effective_enemy_health_damage == Some(100)));
         raw.team_phase_known_at_match_start = true;
         raw.team_phase_unknown_from_tick = Some(8400);
         let phase_gap = build_match(&raw);
@@ -1472,13 +1471,11 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![Some("CT"), None]
         );
-        assert!(
-            phase_gap
-                .player_round_combat
-                .iter()
-                .filter(|row| row.round_number == 2)
-                .all(|row| row.stable_team.is_none())
-        );
+        assert!(phase_gap
+            .player_round_combat
+            .iter()
+            .filter(|row| row.round_number == 2)
+            .all(|row| row.stable_team.is_none()));
         raw.team_phase_unknown_from_tick = None;
 
         raw.observed_match_start = false;
@@ -1521,12 +1518,10 @@ mod tests {
         .unwrap();
         let analyzed = build_match(&raw);
         assert_eq!(analyzed.raw_combat_deaths.len(), 2);
-        assert!(
-            !analyzed
-                .player_round_combat
-                .iter()
-                .any(|row| row.round_number == 3)
-        );
+        assert!(!analyzed
+            .player_round_combat
+            .iter()
+            .any(|row| row.round_number == 3));
         let victim = analyzed
             .player_round_combat
             .iter()
@@ -1576,7 +1571,7 @@ mod tests {
         assert_eq!(ev.trajectory.len(), 3);
         assert_eq!(ev.nearby_players.len(), 1);
         assert_eq!(ev.nearby_players[0].name, "bob");
-        // throw_time: (3000 - 2000) / 64 ? 15.63s after freeze end
+        // throw_time: (3000 - 2000) / 64 � 15.63s after freeze end
         assert!((ev.throw_time - 15.63).abs() < 0.02);
     }
 
@@ -1638,11 +1633,9 @@ mod tests {
         let facts = attribute_effects(&raw, &mut events, 64.0);
         assert_eq!(facts[0].resolution, "ambiguous");
         assert_eq!(facts[0].candidate_events, [0, 1]);
-        assert!(
-            events
-                .iter()
-                .all(|event| event.flash_assists == 0 && !event.assist_attribution_complete)
-        );
+        assert!(events
+            .iter()
+            .all(|event| event.flash_assists == 0 && !event.assist_attribution_complete));
     }
 
     #[test]

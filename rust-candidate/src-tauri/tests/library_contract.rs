@@ -1,6 +1,6 @@
 use demostrike_rust_candidate::library::{
-    ScoreRelation, get_match_detail, get_viewer_frames, get_viewer_round, list_matches,
-    score_relation,
+    get_match_detail, get_viewer_frames, get_viewer_round, list_matches, score_relation,
+    ScoreRelation,
 };
 use rusqlite::Connection;
 use tempfile::tempdir;
@@ -127,6 +127,7 @@ fn viewer_reads_absolute_tick_frames_but_never_invents_legacy_positions() {
           (1,1,101,3,44,'CSmokeGrenadeProjectile','7656',40,50,60);").unwrap();
     let meta = get_viewer_round(&path, 1, 1).unwrap();
     assert!(meta.positions_available);
+    assert!(meta.utility_events.is_empty());
     assert_eq!(meta.tick_rate, Some(64.0));
     assert_eq!(
         (meta.player_sample_count, meta.grenade_sample_count),
@@ -141,6 +142,45 @@ fn viewer_reads_absolute_tick_frames_but_never_invents_legacy_positions() {
     assert_eq!(chunk.grenades[0].entity_id, 44);
     assert!(get_viewer_frames(&path, 1, 1, 100, 201).is_err());
     assert!(get_viewer_frames(&path, 1, 1, 102, 101).is_err());
+    db.execute_batch(
+        "ALTER TABLE utility_events ADD COLUMN thrower_steamid TEXT;
+         ALTER TABLE utility_events ADD COLUMN detonate_tick INTEGER;
+         ALTER TABLE utility_events ADD COLUMN detonate_x REAL;
+         ALTER TABLE utility_events ADD COLUMN detonate_y REAL;
+         ALTER TABLE utility_events ADD COLUMN detonate_z REAL;
+         ALTER TABLE utility_events ADD COLUMN projectile_entity_id INTEGER;
+         UPDATE utility_events SET thrower_steamid='7656',detonate_tick=150,
+           detonate_x=4,detonate_y=5,detonate_z=6,projectile_entity_id=44;
+         UPDATE viewer_player_positions SET is_alive=NULL WHERE tick=101;",
+    )
+    .unwrap();
+    let meta = get_viewer_round(&path, 1, 1).unwrap();
+    assert_eq!(meta.utility_events.len(), 1);
+    assert_eq!(meta.utility_events[0].detonate_tick, Some(150));
+    assert_eq!(meta.utility_events[0].projectile_entity_id, Some(44));
+    assert_eq!(
+        get_viewer_frames(&path, 1, 1, 101, 101).unwrap().players[0].is_alive,
+        None
+    );
+    db.execute_batch(
+        "PRAGMA user_version=11;
+         ALTER TABLE matches ADD COLUMN viewer_bomb_version INTEGER;
+         CREATE TABLE viewer_bomb_events
+           (match_id INTEGER,source_index INTEGER,round_number INTEGER,kind TEXT,tick INTEGER,
+            actor_steamid TEXT,actor_name TEXT,site_id INTEGER,x REAL,y REAL,z REAL);
+         INSERT INTO viewer_bomb_events VALUES
+           (1,0,1,'bomb_planted',160,'7656','Tester',NULL,10,20,30),
+           (1,1,1,'bomb_exploded',190,NULL,NULL,NULL,NULL,NULL,NULL);",
+    )
+    .unwrap();
+    assert!(!get_viewer_round(&path, 1, 1).unwrap().bomb_events_available);
+    db.execute("UPDATE matches SET viewer_bomb_version=1 WHERE id=1", [])
+        .unwrap();
+    let meta = get_viewer_round(&path, 1, 1).unwrap();
+    assert!(meta.bomb_events_available);
+    assert_eq!(meta.bomb_events.len(), 2);
+    assert_eq!(meta.bomb_events[0].site_id, None);
+    assert_eq!(meta.bomb_events[1].x, None);
 }
 
 #[test]
@@ -185,11 +225,9 @@ fn full_combat_is_read_only_and_gated_by_schema_and_parser_provenance() {
         [],
     )
     .unwrap();
-    assert!(
-        get_match_detail(&path, 1).unwrap().players[0]
-            .combat
-            .is_none()
-    );
+    assert!(get_match_detail(&path, 1).unwrap().players[0]
+        .combat
+        .is_none());
 }
 
 #[test]

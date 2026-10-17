@@ -274,7 +274,24 @@ async function main() {
     });
     assert.ok(viewerFacts.meta.playerSampleCount > 1000, 'Native player frame stream is unexpectedly sparse');
     assert.ok(viewerFacts.meta.grenadeSampleCount > 0, 'Native projectile frame stream is absent');
+    assert.ok(viewerFacts.meta.utilityEvents.some((event) => event.detonateTick !== null),
+      'No grounded grenade lifecycle events reached the viewer');
+    assert.equal(viewerFacts.meta.bombEventsAvailable, true, 'New native import lost bomb event provenance');
     assert.ok(viewerFacts.candidate, 'No synchronized player and projectile frame was found');
+    const eventList = page.locator('details.native-recorded-events');
+    await eventList.locator('summary').click();
+    const damageEvent = eventList.locator('[data-event-kind="damage"]').first();
+    await damageEvent.waitFor({ timeout: 15000 });
+    const damageTick = Number(await damageEvent.getAttribute('data-event-tick'));
+    await damageEvent.click();
+    await page.waitForFunction((tick) =>
+      Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')) === tick,
+    damageTick, { timeout: 15000 });
+    assert.equal(await damageEvent.getAttribute('aria-current'), 'true');
+    const eventShot = path.join(outputDir, 'real-demo-viewer-recorded-events.png');
+    await captureAppOnly(page, eventShot);
+    await eventList.locator('summary').click();
+    await page.evaluate(() => document.activeElement?.blur());
     const timeline = page.locator('[data-original-csdm-viewer="true"] div.border-x-gray-300').first();
     await timeline.evaluate((element, selected) => {
       const bounds = element.getBoundingClientRect();
@@ -318,6 +335,36 @@ async function main() {
       null, { timeout: 30000 });
     const viewerRoundShot = path.join(outputDir, 'real-demo-viewer-next-round.png');
     await captureAppOnly(page, viewerRoundShot);
+    const bombRound = await page.evaluate(async () => {
+      const library = localStorage.getItem('csdm-port-selected-library');
+      const matchId = Number(location.hash.match(/local-(\d+)/)?.[1]);
+      const invoke = window.__TAURI_INTERNALS__.invoke;
+      for (let roundNumber = 1; roundNumber <= 10; roundNumber++) {
+        const meta = await invoke('get_viewer_round', { path: library, matchId, roundNumber });
+        const plant = meta.bombEvents.find((event) => event.kind === 'bomb_planted'
+          && event.x !== null && event.y !== null && event.z !== null);
+        if (plant) return { roundNumber, tick: plant.tick, eventCount: meta.bombEvents.length };
+      }
+      return null;
+    });
+    console.log('BOMB_VIEWER_FACT', JSON.stringify(bombRound));
+    assert.ok(bombRound, 'Pinned public demo has no grounded bomb plant for viewer acceptance');
+    await page.evaluate((number) => {
+      location.hash = location.hash.replace(/viewer-2d\/\d+/, `viewer-2d/${number}`);
+    }, bombRound.roundNumber);
+    await page.getByRole('heading', { name: `2D Viewer - Round ${bombRound.roundNumber}` })
+      .waitFor({ timeout: 60000 });
+    await page.waitForFunction((tick) =>
+      document.querySelector('[data-bomb-plant-tick]')?.getAttribute('data-bomb-plant-tick') === String(tick),
+    bombRound.tick, { timeout: 60000 });
+    const bombList = page.locator('details.native-recorded-events');
+    await bombList.locator('summary').click();
+    await bombList.locator(`[data-event-kind="bomb"][data-event-tick="${bombRound.tick}"]`).click();
+    await page.waitForFunction((tick) =>
+      Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')) === tick,
+    bombRound.tick, { timeout: 15000 });
+    const bombShot = path.join(outputDir, 'real-demo-viewer-bomb-event.png');
+    await captureAppOnly(page, bombShot);
     // Exercise failure recovery in the same native window. Neither attempt
     // may replace or duplicate the successfully imported match.
     await page.evaluate(() => { location.hash = '#/matches'; });
@@ -348,8 +395,8 @@ async function main() {
       featureFreeReleaseBuild: featureFree,
       syntheticEnvironmentDeliberatelySet: featureFree,
       parserCapability: capability,
-      observed: { roundRows, playerRows, playerDetailRows, utilityRows, nativeFacts, viewerFacts, pausedTick },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, effectiveDamageShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, viewerSeekShot, viewerRoundShot, duplicateShot, invalidShot]
+      observed: { roundRows, playerRows, playerDetailRows, utilityRows, nativeFacts, viewerFacts, pausedTick, bombRound },
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, effectiveDamageShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, eventShot, viewerSeekShot, viewerRoundShot, bombShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',

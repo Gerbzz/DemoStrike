@@ -11,6 +11,12 @@ pub struct RawDemo {
     pub players: Vec<RawPlayer>,
     #[serde(default)]
     pub round_events: Vec<RawRoundEvent>,
+    /// Observed Source 2 bomb game events. Missing actor, site or coordinates
+    /// stay nullable; old imports have no bomb-event stream.
+    #[serde(default)]
+    pub bomb_events: Vec<RawBombEvent>,
+    #[serde(default)]
+    pub bomb_event_stream_available: bool,
     /// Initial Team A=CT / Team B=T is trustworthy only with match start.
     #[serde(default)]
     pub observed_match_start: bool,
@@ -105,6 +111,20 @@ pub struct RawRoundEvent {
     pub round: Option<i64>,
     pub winner: Option<String>,
     pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawBombEvent {
+    pub kind: String,
+    pub tick: i64,
+    pub round: Option<i64>,
+    pub actor_steamid: Option<String>,
+    pub actor_name: Option<String>,
+    pub site_id: Option<i64>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub z: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -7,7 +7,7 @@ use rusqlite::Connection;
 use std::path::Path;
 
 const MIGRATIONS: &[&str] = &[
-    // v1 - initial schema
+    // v1 — initial schema
     r#"
     CREATE TABLE matches (
         id INTEGER PRIMARY KEY,
@@ -114,7 +114,7 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (job_id, event_id)
     );
     "#,
-    // v2 - real CS2 POV capture needs the spectator slot from the demo.
+    // v2 — real CS2 POV capture needs the spectator slot from the demo.
     r#"
     ALTER TABLE utility_events ADD COLUMN observer_slot INTEGER;
     "#,
@@ -288,6 +288,25 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (match_id, trajectory_index, tick)
     );
     CREATE INDEX viewer_grenade_tick ON viewer_grenade_positions(match_id, round_number, tick);
+    "#,
+    // v11 - exact observed bomb game events for the original viewer timeline.
+    // Legacy imports retain an empty stream until reimported; no site or
+    // position is inferred by migration.
+    r#"
+    ALTER TABLE matches ADD COLUMN viewer_bomb_version INTEGER;
+    CREATE TABLE viewer_bomb_events (
+        match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+        source_index INTEGER NOT NULL,
+        round_number INTEGER NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('bomb_planted','bomb_defused','bomb_exploded')),
+        tick INTEGER NOT NULL,
+        actor_steamid TEXT,
+        actor_name TEXT,
+        site_id INTEGER,
+        x REAL, y REAL, z REAL,
+        PRIMARY KEY (match_id, source_index)
+    );
+    CREATE INDEX viewer_bomb_tick ON viewer_bomb_events(match_id, round_number, tick);
     "#,
 ];
 

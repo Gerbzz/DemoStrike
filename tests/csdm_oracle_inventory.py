@@ -62,6 +62,23 @@ with sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True) as connect
             "FROM raw_combat_deaths ORDER BY source_index"
         )
     ]
+    native_bombs = [
+        {"kind": kind, "roundNumber": number, "tick": tick,
+         "actorSteamId": steamid, "siteId": site_id, "x": x, "y": y, "z": z}
+        for kind, number, tick, steamid, site_id, x, y, z in connection.execute(
+            "SELECT kind,round_number,tick,actor_steamid,site_id,x,y,z "
+            "FROM viewer_bomb_events ORDER BY tick,source_index"
+        )
+    ]
+    native_detonations = [
+        {"kind": kind, "roundNumber": number, "tick": tick,
+         "x": x, "y": y, "z": z}
+        for kind, number, tick, x, y, z in connection.execute(
+            "SELECT utility_type,round_number,detonate_tick,detonate_x,detonate_y,detonate_z "
+            "FROM utility_events WHERE detonate_tick IS NOT NULL "
+            "ORDER BY detonate_tick,id"
+        )
+    ]
     native_teams = {}
     for steamid, team in connection.execute(
         "SELECT steamid, stable_team FROM player_round_combat ORDER BY steamid, round_number"
@@ -257,6 +274,31 @@ comparison = {
     ),
     "retainedPostMatchRawDeaths": len(native_deaths) - len(in_match_deaths),
     "playerTotals": player_comparison,
+    "bombTickRoundDiscovery": {
+        kind: event_differences(
+            oracle.get(source) or [],
+            [event for event in native_bombs if event["kind"] == kind],
+            ("roundNumber", "tick"),
+        )
+        for kind, source in (
+            ("bomb_planted", "bombsPlanted"),
+            ("bomb_defused", "bombsDefused"),
+            ("bomb_exploded", "bombsExploded"),
+        )
+    },
+    "grenadeDetonationTickRoundDiscovery": {
+        kind: event_differences(
+            oracle.get(source) or [],
+            [event for event in native_detonations if event["kind"] == kind],
+            ("roundNumber", "tick"),
+        )
+        for kind, source in (
+            ("smoke", "smokesStart"),
+            ("flash", "flashbangsExplode"),
+            ("he", "heGrenadesExplode"),
+            ("decoy", "decoysStart"),
+        )
+    },
 }
 
 inventory = {

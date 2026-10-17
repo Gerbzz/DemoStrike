@@ -52,6 +52,7 @@ export default {
       { find: '../use-current-match', replacement: path.resolve(portedRoot, 'native-original-viewer-match.ts') },
       { find: '../../use-current-match', replacement: path.resolve(portedRoot, 'native-original-viewer-match.ts') },
       { find: './drawing/use-draw-map-radar', replacement: path.resolve(portedRoot, 'native-original-viewer-radar.tsx') },
+      { find: './drawing/use-draw-players', replacement: path.resolve(portedRoot, 'native-original-draw-players.ts') },
       { find: 'csdm/ui/match/viewer-2d/teams-panel/team-panel', replacement: path.resolve(portedRoot, 'native-original-team-panel.tsx') },
       { find: './audio-selector-button', replacement: path.resolve(portedRoot, 'native-viewer-no-audio.tsx') },
       { find: 'csdm/ui/match/video/video-loader', replacement: path.resolve(portedRoot, 'unsupported-match-view.tsx') },

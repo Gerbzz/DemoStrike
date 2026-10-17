@@ -358,6 +358,38 @@ pub fn insert_match_with_source_hash(
             matches!((round.start_tick, round.end_tick), (Some(start), Some(end)) if start <= tick && tick <= end)
         }).map(|round| round.round_number)
         };
+        {
+            let mut insert = tx.prepare(
+                "INSERT INTO viewer_bomb_events
+                 (match_id,source_index,round_number,kind,tick,actor_steamid,actor_name,site_id,x,y,z)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            )?;
+            for (index, event) in m.bomb_events.iter().enumerate() {
+                check_cancel()?;
+                let Some(round_number) = round_at(event.tick) else {
+                    continue;
+                };
+                insert.execute(params![
+                    match_id,
+                    index as i64,
+                    round_number,
+                    event.kind,
+                    event.tick,
+                    event.actor_steamid,
+                    event.actor_name,
+                    event.site_id,
+                    event.x,
+                    event.y,
+                    event.z,
+                ])?;
+            }
+        }
+        if m.bomb_event_stream_available {
+            tx.execute(
+                "UPDATE matches SET viewer_bomb_version=1 WHERE id=?1",
+                [match_id],
+            )?;
+        }
         let mut player_rows = 0_i64;
         {
             let mut insert = tx.prepare(
@@ -825,7 +857,7 @@ pub fn list_tags(conn: &Connection) -> AppResult<Vec<Tag>> {
 pub fn tag_event(conn: &Connection, event_id: i64, tag_name: &str) -> AppResult<Tag> {
     let name = tag_name.trim();
     if name.is_empty() || name.len() > 64 {
-        return Err(AppError::Invalid("tag must be 1-64 characters".into()));
+        return Err(AppError::Invalid("tag must be 1–64 characters".into()));
     }
     conn.execute(
         "INSERT OR IGNORE INTO tags (name) VALUES (?1)",
@@ -886,7 +918,7 @@ pub fn create_collection(conn: &Connection, name: &str) -> AppResult<Collection>
     let name = name.trim();
     if name.is_empty() || name.len() > 128 {
         return Err(AppError::Invalid(
-            "collection name must be 1-128 characters".into(),
+            "collection name must be 1–128 characters".into(),
         ));
     }
     conn.execute(
