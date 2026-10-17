@@ -323,6 +323,19 @@ fn align_round_starts_to_observed_ticks(rounds: &mut [RawRoundEvent], ticks: &[i
     }
 }
 
+// Mirrors demoinfocs-golang v4 at 5be4d04: nonfatal hits use capped
+// dmg_health; a fatal hit uses the last post-hit HP in this tick, or the
+// pawn's start-of-tick HP when it is the first hit. Missing inputs stay unknown.
+fn effective_health_damage(raw: i32, post_health: Option<i32>,
+    start_health: Option<i32>, prior_post_same_tick: Option<i32>) -> Option<i64> {
+    if raw < 0 { return None; }
+    match post_health? {
+        0 => Some(i64::from(prior_post_same_tick.or(start_health)?.max(0))),
+        health if health > 0 => Some(i64::from(raw.min(100))),
+        _ => None,
+    }
+}
+
 fn timeout_reached_zero(previous: (f32, f32), current: (f32, f32)) -> bool {
     (previous.0 > 0.0 && current.0 == 0.0) || (previous.1 > 0.0 && current.1 == 0.0)
 }
@@ -798,6 +811,16 @@ mod round_tests {
         let cancelled = ImportControl::new();
         cancelled.request_cancel();
         assert!(validate_format(&path, &cancelled).unwrap_err().contains("cancelled"));
+    }
+
+    #[test]
+    fn effective_damage_uses_pinned_decoder_lethal_and_same_tick_rules() {
+        assert_eq!(effective_health_damage(178, Some(0), Some(31), None), Some(31));
+        assert_eq!(effective_health_damage(88, Some(0), Some(100), Some(12)), Some(12));
+        assert_eq!(effective_health_damage(131, Some(48), Some(100), None), Some(100));
+        assert_eq!(effective_health_damage(7, Some(93), Some(100), None), Some(7));
+        assert_eq!(effective_health_damage(178, Some(0), None, None), None);
+        assert_eq!(effective_health_damage(10, None, Some(100), None), None);
     }
 
     #[test]
