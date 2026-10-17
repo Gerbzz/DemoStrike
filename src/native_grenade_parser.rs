@@ -654,8 +654,14 @@ fn record_game_phase(
         unknown_from.get_or_insert(tick);
     }
     let changed = phase != *last;
-    if changed && phase == Some(3) && match_started == Some(true) && warmup == Some(false) {
-        switches.push(tick);
+    if changed && phase == Some(3) && observed_match_start {
+        if match_started == Some(true) && warmup == Some(false) {
+            switches.push(tick);
+        } else {
+            // A readable side-switch phase with unreadable match/warmup
+            // context still cannot establish whether the swap happened.
+            unknown_from.get_or_insert(tick);
+        }
     }
     if changed {
         *last = phase;
@@ -1957,6 +1963,35 @@ mod round_tests {
         assert!(observe(Some(2), 60, &mut last, &mut unknown, &mut switches));
         assert_eq!(unknown, Some(50));
         assert_eq!(switches, [20, 40]);
+        let mut last = Some(2);
+        let mut unknown = None;
+        let mut switches = Vec::new();
+        record_game_phase(
+            &mut last,
+            &mut unknown,
+            &mut switches,
+            true,
+            None,
+            Some(false),
+            Some(3),
+            100,
+        );
+        assert_eq!(unknown, Some(100));
+        assert!(switches.is_empty());
+        let mut last = Some(2);
+        let mut unknown = None;
+        record_game_phase(
+            &mut last,
+            &mut unknown,
+            &mut switches,
+            true,
+            Some(true),
+            None,
+            Some(3),
+            110,
+        );
+        assert_eq!(unknown, Some(110));
+        assert!(switches.is_empty());
     }
 
     #[test]
