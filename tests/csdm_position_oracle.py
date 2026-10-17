@@ -35,6 +35,7 @@ player_attribute_samples = {"yaw": [], "yawDirectOnly": [], "yawNeither": []}
 player_attribute_compared = {"alive": 0, "health": 0, "yaw": 0}
 yaw_rotated_matches = 0
 yaw_direct_matches = 0
+yaw_viewer_matches = 0
 with player_files[0].open(newline="", encoding="utf-8") as file:
     for row in csv.DictReader(file):
         key = (int(row["tick"]), row["steamid"])
@@ -62,6 +63,7 @@ with player_files[0].open(newline="", encoding="utf-8") as file:
                 rotated_match = min(rotated_difference, 360 - rotated_difference) <= 0.1
                 yaw_direct_matches += direct
                 yaw_rotated_matches += rotated_match
+                yaw_viewer_matches += direct if local["yaw"] == 0 else rotated_match
                 if not direct:
                     player_attribute_differences["yaw"].append(key)
                     if len(player_attribute_samples["yaw"]) < 8:
@@ -172,6 +174,7 @@ report = {
     "playerAttributeSamples": player_attribute_samples,
     "yawDirectMatches": yaw_direct_matches,
     "yawRotatedMatches": yaw_rotated_matches,
+    "yawViewerConventionMatches": yaw_viewer_matches,
     "projectilePathIdentityDiagnostics": {
         "nativePaths": len(native_paths), "oraclePaths": len(oracle_paths),
         "oneToOnePairs": len(path_pairs),
@@ -204,6 +207,7 @@ assert len(grenade_matches) >= 5, "Too few overlapping native and CSDM projectil
 assert report["grenadeWithin16Units"] == len(grenade_matches), "Projectile world coordinates disagree with CSDM"
 assert player_attribute_compared["alive"] > 0 and not player_attribute_differences["alive"], "Observed alive state disagrees with CSDM"
 assert player_attribute_compared["health"] > 0 and not player_attribute_differences["health"], "Observed health disagrees with CSDM"
+assert yaw_viewer_matches == player_attribute_compared["yaw"], "Viewer yaw convention disagrees with CSDM"
 assert len(path_pairs) == len(native_paths) == len(oracle_paths), "Projectile identities do not pair one-to-one"
 assert sum(pair["sharedTicks"] for pair in path_pairs) == len(grenade_rows), "Projectile trajectory samples do not pair one-to-one"
 assert all(pair["startTickDelta"] == 0 for pair in path_pairs), "Projectile release/start ticks disagree with CSDM"

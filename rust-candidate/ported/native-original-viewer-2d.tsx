@@ -36,6 +36,14 @@ function grenadeName(kind: string | null): GrenadeName | null {
   return null;
 }
 
+function originalViewerYaw(raw: number | null): number {
+  if (raw === null) return Number.NaN;
+  // This decoder's nonzero Source 2 eye angle is 180 degrees from the
+  // pinned CSDM viewer convention. Keep the observed zero sentinel intact.
+  if (raw === 0) return 0;
+  return ((raw % 360 + 360) % 360) - 180;
+}
+
 function playerPosition(frame: ViewerPlayerFrame, checksum: string, roundNumber: number): NativeObservedPosition {
   // The original canvas uses position, side, yaw, health and alive state. Its
   // equipment fields are unavailable in the native stream and are not shown
@@ -50,7 +58,7 @@ function playerPosition(frame: ViewerPlayerFrame, checksum: string, roundNumber:
     playerName: frame.name,
     side: nativeSide(frame.side),
     x: frame.x, y: frame.y, z: frame.z,
-    yaw: frame.yaw ?? Number.NaN,
+    yaw: originalViewerYaw(frame.yaw),
     health: frame.health ?? Number.NaN,
     isAlive: frame.isAlive === true,
     observedAlive: frame.isAlive,
@@ -212,7 +220,8 @@ export function Viewer2DLoader() {
   const [error, setError] = useState('');
   const [radarError, setRadarError] = useState('');
   const [radarSelection, setRadarSelection] = useState<{ mapName: string; bitmap: ImageBitmap } | null>(null);
-  const radarBitmap = radarSelection?.mapName === meta?.mapName ? radarSelection.bitmap : null;
+  const radarBitmap = radarSelection !== null && meta !== null && radarSelection.mapName === meta.mapName
+    ? radarSelection.bitmap : null;
 
   useEffect(() => {
     if (matchId === null || !path || !recorded || !Number.isSafeInteger(roundNumber)) {
