@@ -722,4 +722,3 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
         full_combat_coverage,
     })
 }
-
