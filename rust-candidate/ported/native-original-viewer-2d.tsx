@@ -13,6 +13,7 @@ import type { MatchDetail, RecordedRound, ViewerFrameChunk, ViewerGrenadeFrame, 
 import { useSourceMatch } from './match-loader';
 import { nativeSide, originalRound } from './native-original-viewer-match';
 import { NativeRadarProvider } from './native-original-viewer-radar';
+import './native-original-viewer.css';
 
 const calibratedMaps: Record<string, Pick<Map, 'posX' | 'posY' | 'scale' | 'radarSize'>> = {
   de_mirage: { posX: -3230, posY: 1713, scale: 5, radarSize: 1024 },
@@ -118,8 +119,8 @@ function observedKills(detail: MatchDetail, recorded: RecordedRound, frames: Fra
   });
 }
 
-function NativeOriginalViewer({ detail, recorded, meta, frames, radarUrl }: {
-  detail: MatchDetail; recorded: RecordedRound; meta: ViewerRoundMeta; frames: Frames; radarUrl: string | null;
+function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap }: {
+  detail: MatchDetail; recorded: RecordedRound; meta: ViewerRoundMeta; frames: Frames; radarBitmap: ImageBitmap | null;
 }) {
   const { checksum } = useParams();
   const navigate = useNavigate();
@@ -129,9 +130,9 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarUrl }: {
   const map = useMemo<Map>(() => ({
     id: meta.mapName, name: meta.mapName, game: Game.CS2,
     ...calibratedMaps[meta.mapName], thresholdZ: Number.NEGATIVE_INFINITY,
-    radarFilePath: radarUrl ?? undefined, lowerRadarFilePath: undefined,
+    radarFilePath: radarBitmap ? 'selected in memory' : undefined, lowerRadarFilePath: undefined,
     thumbnailFilePath: undefined,
-  }), [meta.mapName, radarUrl]);
+  }), [meta.mapName, radarBitmap]);
   const [mode, setMode] = useState<'drawing' | 'playback'>('playback');
   const [drawingTool, setDrawingTool] = useState<ViewerValue['drawingTool']>('pen');
   const [drawingSize, setDrawingSize] = useState(2);
@@ -173,11 +174,12 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarUrl }: {
     lowerRadarOpacity, setLowerRadarOpacity,
     drawingTool, setDrawingTool, drawingSize, setDrawingSize, drawingColor, setDrawingColor,
   };
-  return <div className="flex min-h-0 flex-1 flex-col" data-original-csdm-viewer="true"
+  return <div className="original-viewer-bridge flex min-h-0 flex-1 flex-col" data-original-csdm-viewer="true"
+    data-radar-selected={radarBitmap ? 'true' : 'false'}
     data-current-tick={currentTick} data-player-count={frames.players.filter((row) => row.tick === currentTick).length}
     data-grenade-count={frames.grenades.filter((row) => row.tick === currentTick).length}>
     <ViewerContext.Provider value={context}>
-      <NativeRadarProvider src={radarUrl}><Viewer2D /></NativeRadarProvider>
+      <NativeRadarProvider bitmap={radarBitmap}><Viewer2D /></NativeRadarProvider>
     </ViewerContext.Provider>
   </div>;
 }
@@ -194,7 +196,7 @@ export function Viewer2DLoader() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [radarError, setRadarError] = useState('');
-  const [radarUrl, setRadarUrl] = useState<string | null>(null);
+  const [radarBitmap, setRadarBitmap] = useState<ImageBitmap | null>(null);
 
   useEffect(() => {
     if (matchId === null || !path || !recorded || !Number.isSafeInteger(roundNumber)) {
@@ -227,7 +229,7 @@ export function Viewer2DLoader() {
     return () => { active = false; };
   }, [path, matchId, roundNumber, recorded]);
 
-  useEffect(() => () => { if (radarUrl) URL.revokeObjectURL(radarUrl); }, [radarUrl]);
+  useEffect(() => () => { radarBitmap?.close(); }, [radarBitmap]);
   const chooseRadar = async (file: File | undefined) => {
     if (!file) return;
     setRadarError('');
@@ -235,11 +237,10 @@ export function Viewer2DLoader() {
       setRadarError('Choose a PNG radar smaller than 8 MB.'); return;
     }
     try {
-      const image = await createImageBitmap(file);
-      const valid = image.width === 1024 && image.height === 1024;
-      image.close();
-      if (!valid) { setRadarError('This calibrated view needs a 1024 x 1024 radar PNG.'); return; }
-      setRadarUrl(URL.createObjectURL(file));
+      const bitmap = await createImageBitmap(file);
+      const valid = bitmap.width === 1024 && bitmap.height === 1024;
+      if (!valid) { bitmap.close(); setRadarError('This calibrated view needs a 1024 x 1024 radar PNG.'); return; }
+      setRadarBitmap(bitmap);
     } catch { setRadarError('The selected PNG could not be decoded.'); }
   };
   if (error) return <div role="alert" className="p-16">{error}</div>;
@@ -262,6 +263,6 @@ export function Viewer2DLoader() {
           onChange={(event) => void chooseRadar(event.target.files?.[0])} /></label>
     </header>
     {radarError && <p role="alert" className="px-16 py-4 text-red-600">{radarError}</p>}
-    <NativeOriginalViewer key={roundNumber} detail={detail} recorded={recorded} meta={meta} frames={frames} radarUrl={radarUrl} />
+    <NativeOriginalViewer key={roundNumber} detail={detail} recorded={recorded} meta={meta} frames={frames} radarBitmap={radarBitmap} />
   </div>;
 }

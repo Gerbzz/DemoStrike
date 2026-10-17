@@ -1,32 +1,23 @@
-import React, { createContext, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useContext } from 'react';
 import type { InteractiveCanvas } from 'csdm/ui/hooks/use-interactive-map-canvas';
 
-const RadarContext = createContext<string | null>(null);
+const RadarContext = createContext<ImageBitmap | null>(null);
 
-export function NativeRadarProvider({ src, children }: { src: string | null; children: React.ReactNode }) {
-  return <RadarContext.Provider value={src}>{children}</RadarContext.Provider>;
+export function NativeRadarProvider({ bitmap, children }: { bitmap: ImageBitmap | null; children: React.ReactNode }) {
+  return <RadarContext.Provider value={bitmap}>{children}</RadarContext.Provider>;
 }
 
 // The pinned CSDM canvas and map transforms remain in use. Only its Electron
 // file:// radar loader is replaced: selected artwork stays in WebView memory.
 export function useDrawMapRadar() {
-  const src = useContext(RadarContext);
-  const image = useRef<HTMLImageElement | null>(null);
-  useEffect(() => {
-    image.current = null;
-    if (!src) return;
-    const loaded = new Image();
-    loaded.onload = () => { image.current = loaded; };
-    loaded.src = src;
-    return () => { loaded.onload = null; image.current = null; };
-  }, [src]);
+  const bitmap = useContext(RadarContext);
 
   const drawMapRadar = (context: CanvasRenderingContext2D, canvas: InteractiveCanvas) => {
     const x = canvas.zoomedX(0);
     const y = canvas.zoomedY(0);
     const size = canvas.getScaledRadarSize();
-    if (image.current) {
-      context.drawImage(image.current, x, y, size, size);
+    if (bitmap) {
+      context.drawImage(bitmap, x, y, size, size);
       return;
     }
     context.fillStyle = '#1c2228';

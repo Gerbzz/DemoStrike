@@ -236,6 +236,23 @@ async function main() {
     assert.ok(radarPath && fs.existsSync(radarPath), 'Pinned test radar was not downloaded');
     await page.getByLabel('Choose local radar PNG').setInputFiles(radarPath);
     await page.locator('[data-original-csdm-viewer="true"] canvas').first().waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => {
+      const root = document.querySelector('[data-original-csdm-viewer="true"]');
+      const canvas = root?.querySelector('canvas');
+      if (root?.getAttribute('data-radar-selected') !== 'true' || !canvas || canvas.width === 0) return false;
+      const context = canvas.getContext('2d');
+      if (!context) return false;
+      let brightPixels = 0;
+      for (let row = 1; row <= 7; row++) {
+        for (let column = 1; column <= 7; column++) {
+          const x = Math.floor(canvas.width / 2 + (column - 4) * canvas.height / 10);
+          const y = Math.floor(row * canvas.height / 8);
+          const [red, green, blue] = context.getImageData(x, y, 1, 1).data;
+          if (red + green + blue > 240) brightPixels++;
+        }
+      }
+      return brightPixels >= 5;
+    }, null, { timeout: 15000 });
     const viewerFacts = await page.evaluate(async () => {
       const library = localStorage.getItem('csdm-port-selected-library');
       const matchId = Number(location.hash.match(/local-(\d+)/)?.[1]);
