@@ -304,6 +304,11 @@ async function main() {
       return Math.abs(Number(root?.getAttribute('data-current-tick')) - selectedTick) < 128
         && Number(root?.getAttribute('data-player-count')) > 0;
     }, viewerFacts.candidate.tick, { timeout: 30000 });
+    const seekTick = Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick'));
+    await page.keyboard.press('Space');
+    await page.waitForFunction((tick) =>
+      Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')) >= tick + 8,
+    seekTick, { timeout: 15000 });
     await page.keyboard.press('Space');
     const viewerText = await page.locator('[data-current-tick]').innerText();
     assert.ok(!viewerText.includes('\uFFFD'), 'Viewer contains a broken replacement glyph');
@@ -313,29 +318,34 @@ async function main() {
       'Recorded players were not available at the selected tick');
     const viewerSeekShot = path.join(outputDir, 'real-demo-viewer-seek.png');
     await captureAppOnly(page, viewerSeekShot);
-    const oneXStartTick = Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick'));
-    const oneXStartWall = Date.now();
     await page.keyboard.press('Space');
-    await sleep(900);
+    const playbackSample = () => page.evaluate(() => ({
+      tick: Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')),
+      wall: performance.now(),
+    }));
+    const oneXStart = await playbackSample();
+    await sleep(1200);
+    const oneXEnd = await playbackSample();
     await page.keyboard.press('Space');
-    const oneXElapsed = (Date.now() - oneXStartWall) / 1000;
+    const oneXElapsed = (oneXEnd.wall - oneXStart.wall) / 1000;
     const pausedTick = Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick'));
-    const oneXRate = (pausedTick - oneXStartTick) / oneXElapsed;
+    const oneXRate = (oneXEnd.tick - oneXStart.tick) / oneXElapsed;
+    console.log('VIEWER_1X_TIMING', JSON.stringify({ oneXStart, oneXEnd, oneXRate }));
     assert.ok(oneXRate > 35 && oneXRate < 100, `1x playback rate drifted: ${oneXRate}`);
     await sleep(500);
     assert.equal(Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick')), pausedTick,
       'Pause did not hold the synchronized absolute tick');
     await page.keyboard.press('ArrowRight');
     await page.getByText('1.5x', { exact: true }).waitFor({ timeout: 5000 });
-    const fastStartWall = Date.now();
     await page.keyboard.press('Space');
-    await sleep(900);
+    const fastStart = await playbackSample();
+    await sleep(1200);
+    const fastEnd = await playbackSample();
     await page.keyboard.press('Space');
-    const fastElapsed = (Date.now() - fastStartWall) / 1000;
-    const fastTick = Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick'));
-    const fastRate = (fastTick - pausedTick) / fastElapsed;
+    const fastElapsed = (fastEnd.wall - fastStart.wall) / 1000;
+    const fastRate = (fastEnd.tick - fastStart.tick) / fastElapsed;
     const speedRatio = fastRate / oneXRate;
-    console.log('VIEWER_PLAYBACK_TIMING', JSON.stringify({ oneXRate, fastRate, speedRatio }));
+    console.log('VIEWER_PLAYBACK_TIMING', JSON.stringify({ oneXRate, fastRate, speedRatio, fastStart, fastEnd }));
     assert.ok(speedRatio > 1.15 && speedRatio < 1.9,
       `1.5x playback did not advance ticks at the selected speed: ${speedRatio}`);
     await page.keyboard.press('n');
