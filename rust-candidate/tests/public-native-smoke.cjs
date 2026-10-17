@@ -227,6 +227,8 @@ async function main() {
     assert.equal(utilityRows, 150);
     const utilityShot = path.join(outputDir, 'real-demo-utility.png');
     await captureAppOnly(page, utilityShot);
+    const radarPath = process.env.CSDM_PUBLIC_RADAR_PATH;
+    assert.ok(radarPath && fs.existsSync(radarPath), 'Pinned test radar was not downloaded');
     await page.getByRole('link', { name: 'Finder' }).click();
     await page.getByRole('heading', { name: 'Grenade finder' }).waitFor({ timeout: 30000 });
     await page.waitForFunction(() => document.querySelector('[data-finder-count]')?.getAttribute('data-finder-count') === '150',
@@ -249,7 +251,7 @@ async function main() {
     await page.locator(`[data-throw-id="${finderTarget.item.id}"]`).click();
     assert.equal(await page.locator('[data-selected-throw]').getAttribute('data-selected-throw'), String(finderTarget.item.id));
     assert.equal(await page.locator('svg polyline').count(), 1, 'Selected measured path was not drawn');
-    await page.getByLabel('Choose local radar PNG').setInputFiles(process.env.CSDM_PUBLIC_RADAR_PATH);
+    await page.getByLabel('Choose local radar PNG').setInputFiles(radarPath);
     await page.locator('svg image').waitFor({ timeout: 15000 });
     const finderShot = path.join(outputDir, 'real-demo-grenade-finder.png');
     await captureAppOnly(page, finderShot);
@@ -265,8 +267,6 @@ async function main() {
     await page.getByRole('link', { name: '2D Viewer' }).click();
     await page.getByRole('heading', { name: /2D Viewer - Round 1/ }).waitFor({ timeout: 60000 });
     await page.locator('[data-original-csdm-viewer="true"]').waitFor({ timeout: 60000 });
-    const radarPath = process.env.CSDM_PUBLIC_RADAR_PATH;
-    assert.ok(radarPath && fs.existsSync(radarPath), 'Pinned test radar was not downloaded');
     await page.getByLabel('Choose local radar PNG').setInputFiles(radarPath);
     await page.locator('[data-original-csdm-viewer="true"] canvas').first().waitFor({ timeout: 15000 });
     await page.waitForFunction(() => {
