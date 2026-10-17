@@ -28,6 +28,12 @@ jobs:
       - name: Test saved FilmCraft project navigation
         shell: pwsh
         run: cargo test --locked --features native-ui --lib ui::tests::synthetic_filmcraft_project_opens_through_demo_workspace -- --exact --test-threads=1
+      - name: Diagnose full library suite in serial
+        shell: pwsh
+        run: cargo test --locked --features native-ui --lib -- --test-threads=1 --nocapture
+      - name: Diagnose full library suite with parallel workers
+        shell: pwsh
+        run: cargo test --locked --features native-ui --lib -- --test-threads=8 --nocapture
       - name: Test synthetic CLI fixtures
         shell: pwsh
         run: cargo test --locked --features native-ui --test cli
