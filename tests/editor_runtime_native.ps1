@@ -23,9 +23,27 @@ foreach ($case in $cases) {
     $project = $case.Project
     if (-not (Test-Path -LiteralPath $project)) { throw "Editor project is missing: $project" }
     $png = Join-Path $EvidenceDir ($case.Name + '.png')
-    & $app --project $project --capture $png
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $png)) {
-        throw "Actual native editor failed to open and capture $project"
+    Write-Output "EDITOR_CAPTURE_LAUNCH $($case.Name)"
+    $start = [System.Diagnostics.ProcessStartInfo]::new($app)
+    $start.UseShellExecute = $false
+    [void]$start.ArgumentList.Add('--project')
+    [void]$start.ArgumentList.Add($project)
+    [void]$start.ArgumentList.Add('--capture')
+    [void]$start.ArgumentList.Add($png)
+    $process = [System.Diagnostics.Process]::Start($start)
+    if (-not $process) { throw "Native editor process did not start for $($case.Name)" }
+    try {
+        if (-not $process.WaitForExit(90000)) {
+            $process.Kill($true)
+            [void]$process.WaitForExit(10000)
+            throw "Native editor capture exceeded 90 seconds for $($case.Name)"
+        }
+        $exitCode = $process.ExitCode
+    } finally {
+        $process.Dispose()
+    }
+    if ($exitCode -ne 0 -or -not (Test-Path -LiteralPath $png)) {
+        throw "Actual native editor failed to open and capture $project (exit $exitCode)"
     }
     $bitmap = [System.Drawing.Bitmap]::FromFile($png)
     try {
