@@ -125,6 +125,18 @@ fn full_combat_is_read_only_and_gated_by_schema_and_parser_provenance() {
     assert_eq!(std::fs::read(&path).unwrap(), before);
 
     db.execute(
+        "UPDATE matches SET parser_capability = 'test-synthetic-combat-v1'",
+        [],
+    )
+    .unwrap();
+    let synthetic = get_match_detail(&path, 1).unwrap();
+    assert!(synthetic.full_combat_coverage);
+    assert_eq!(
+        synthetic.summary.parser_capability,
+        "test-synthetic-combat-v1"
+    );
+
+    db.execute(
         "UPDATE matches SET parser_capability = 'native-combat-flash-v1'",
         [],
     )

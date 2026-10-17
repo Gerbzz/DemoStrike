@@ -51,7 +51,7 @@ impl DemoFactsParser for SyntheticFactsParser {
             .map_err(|error| format!("Invalid synthetic smoke facts: {error}"))
     }
     fn capabilities(&self) -> demostrike::domain::ParserCapabilities {
-        demostrike::domain::ParserCapabilities::NativeCombatFullV2
+        demostrike::domain::ParserCapabilities::TestSyntheticCombatV1
     }
 }
 
@@ -124,6 +124,7 @@ mod tests {
         assert_eq!(imported.round_count, 2);
         let detail = get_match_detail(&imported.path, imported.match_id).unwrap();
         assert!(detail.full_combat_coverage);
+        assert_eq!(detail.summary.parser_capability, "test-synthetic-combat-v1");
         let ada = detail
             .players
             .iter()

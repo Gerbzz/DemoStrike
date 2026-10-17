@@ -11,14 +11,14 @@ export function MatchPlayers() {
   return <Content>
     <h1 className="text-title">{selected ? selected.name : 'Recorded players'}</h1>
     <p className="mt-4 text-gray-700">{fullCombatCoverage
-      ? 'Player combat comes from complete non-warmup native events. CT/T is an observed round side, not a stable team name.'
+      ? 'Combat rows show observed CT/T sides. Damage sums raw dmg_health events and can include overkill; it is not effective HP removed.'
       : 'Player identities are recorded. Individual combat statistics are unavailable in this library.'}</p>
     {players.length === 0 ? <p className="mt-16">No players were recorded for this match.</p> :
       <div className="mt-16 overflow-auto rounded-8 border border-gray-300">
         <table className="w-full text-left"><thead className="bg-gray-100"><tr>
           <th className="p-8">Player</th><th className="p-8">Steam ID</th>
           <th className="p-8 text-right">Enemy kills</th><th className="p-8 text-right">Assists</th>
-          <th className="p-8 text-right">Deaths</th><th className="p-8 text-right">Enemy damage</th>
+          <th className="p-8 text-right">Deaths</th><th className="p-8 text-right">Raw enemy damage</th>
         </tr></thead><tbody>{(selected ? [selected] : players).map((player) => <tr key={player.steamid} className="border-t border-gray-300">
           <td className="p-8">{selected ? player.name : <Link className="text-blue-600 underline" to={encodeURIComponent(player.steamid)}>{player.name}</Link>}</td>
           <td className="p-8 select-text">{player.steamid}</td>
@@ -34,7 +34,7 @@ export function MatchPlayers() {
         <table className="w-full text-left"><thead className="bg-gray-100"><tr>
           <th className="p-8">Round</th><th className="p-8">Observed side</th>
           <th className="p-8 text-right">Enemy kills</th><th className="p-8 text-right">Assists</th>
-          <th className="p-8 text-right">Deaths</th><th className="p-8 text-right">Enemy damage</th>
+          <th className="p-8 text-right">Deaths</th><th className="p-8 text-right">Raw enemy damage</th>
         </tr></thead><tbody>{selected.combat.rounds.map((round) => <tr key={round.roundNumber} className="border-t border-gray-300">
           <td className="p-8">{round.roundNumber}</td><td className="p-8">{round.side ?? 'Unavailable'}</td>
           <td className="p-8 text-right tabular-nums">{round.enemyKills ?? '—'}</td>

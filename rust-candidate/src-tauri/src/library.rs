@@ -163,7 +163,7 @@ pub struct MatchDetail {
 }
 
 fn has_full_combat(connection: &Connection, capability: &str) -> Result<bool, LibraryError> {
-    if capability != "native-combat-full-v2" {
+    if capability != "native-combat-full-v2" && capability != "test-synthetic-combat-v1" {
         return Ok(false);
     }
     let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;

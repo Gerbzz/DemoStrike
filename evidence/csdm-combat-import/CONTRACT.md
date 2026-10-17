@@ -16,13 +16,15 @@ bounded fields below through the existing native DemoStrike import pipeline.
 | Enemy eliminations | All non-warmup `player_death` events | Count only distinct attacker/victim identities with different observed sides. Unknown side makes that player's total unavailable. |
 | Deaths | Victim in all non-warmup `player_death` events | World and self deaths still count for the victim. |
 | Enemy assists | Resolved assister in non-warmup `player_death` | Count only a distinct assister on the opposite observed side from the victim. |
-| Enemy health damage | All non-warmup `player_hurt` events | Sum `dmg_health` only for distinct players with different observed sides. Unknown side makes that player's total unavailable. |
+| Raw enemy damage | All non-warmup `player_hurt` events | Sum raw `dmg_health` only for distinct players with different observed sides. This can include overkill and is not CSDM's capped effective health damage. Unknown side makes that player's total unavailable. |
 
 The versioned `player_round_combat` table is written in the same transaction
 as match, round, player, and utility data. Its nullable metrics preserve
 uncertainty. The read-only Tauri view exposes these rows only for schema v7+
 and parser capability `native-combat-full-v2`; historical
 `native-combat-flash-v1` and other imports remain explicitly unavailable.
+Hosted synthetic facts instead use `test-synthetic-combat-v1`; they remain
+readable for UI contract tests but never claim native decoder provenance.
 The original utility attribution view remains independent of these player
 combat totals. The import command checks source identity, snapshots the demo,
 parses it with the native parser, and commits the managed library without

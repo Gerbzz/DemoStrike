@@ -85,6 +85,8 @@ pub struct AnalyzedPlayerRoundCombat {
     pub enemy_kills: Option<i64>,
     pub deaths: i64,
     pub enemy_assists: Option<i64>,
+    /// Sum of raw player_hurt.dmg_health events. This can exceed available HP
+    /// on lethal hits and is not CSDM's effective HealthDamageTaken value.
     pub enemy_health_damage: Option<i64>,
 }
 
@@ -880,6 +882,39 @@ mod tests {
         let ada = ambiguous.player_round_combat.iter().find(|row| row.steamid == "s1").unwrap();
         assert_eq!(ada.side, None);
         assert_eq!(ada.enemy_kills, None);
+    }
+
+    #[test]
+    fn raw_enemy_damage_keeps_overkill_and_same_tick_hits_without_claiming_effective_hp() {
+        let mut raw = minimal_raw();
+        raw.round_sides = serde_json::from_value(serde_json::json!([
+            {"round":1,"steamid":"s1","side":"CT"},
+            {"round":1,"steamid":"s2","side":"T"},
+            {"round":1,"steamid":"s3","side":"CT"}
+        ])).unwrap();
+        let hurt = |tick, victim: &str, victim_team: &str, damage| serde_json::json!({
+            "tick":tick,"round":1,"weapon":"ak47","attackerSteamid":"s1",
+            "attackerTeam":"CT","victimSteamid":victim,"victimTeam":victim_team,
+            "damage":damage
+        });
+        raw.combat_hurts = serde_json::from_value(serde_json::json!([
+            hurt(3100, "s2", "T", 15),
+            hurt(3100, "s2", "T", 7),
+            hurt(3100, "s3", "CT", 30),
+            hurt(3100, "s1", "CT", 9)
+        ])).unwrap();
+        raw.combat_deaths = serde_json::from_value(serde_json::json!([{
+            "tick":3100,"round":1,"weapon":"ak47","attackerSteamid":"s1",
+            "attackerTeam":"CT","victimSteamid":"s2","victimTeam":"T",
+            "assisterSteamid":null,"assisterTeam":null
+        }])).unwrap();
+        let analyzed = build_match(&raw);
+        let attacker = analyzed.player_round_combat.iter().find(|row| row.steamid == "s1").unwrap();
+        // If the victim had 5 HP before the lethal 15-point event, effective
+        // health removed would be 5. That pre-hit HP is not in these facts.
+        assert_eq!(attacker.enemy_health_damage, Some(22));
+        assert_eq!(attacker.enemy_kills, Some(1));
+        assert_eq!(analyzed.player_round_combat.iter().find(|row| row.steamid == "s2").unwrap().deaths, 1);
     }
 
     #[test]

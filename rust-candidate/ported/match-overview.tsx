@@ -37,13 +37,15 @@ export function MatchOverview() {
     <section className="mt-24 border-t border-gray-300 pt-16" aria-label="Recorded combat">
       <h2 className="text-subtitle">Recorded combat</h2>
       <p className="mt-4 text-gray-700">{fullCombatCoverage
-        ? 'Enemy eliminations, assists, deaths, and health damage come from the complete non-warmup native event stream. Unknown side attribution remains unavailable.'
+        ? summary.parserCapability === 'test-synthetic-combat-v1'
+          ? 'These public synthetic combat facts test import and display. They did not pass through the CS2 demo decoder.'
+          : 'Enemy eliminations, assists, deaths, and raw dmg_health come from non-warmup native events. Raw damage can include overkill; unknown side attribution remains unavailable.'
         : 'This older import does not contain a complete player combat stream. New native imports record it; existing annotations stay with this match.'}</p>
       <dl className="mt-12 grid grid-cols-2 gap-12 sm:grid-cols-4">
         <div><dt className="text-gray-700">Enemy eliminations</dt><dd className="text-body-strong">{fact(total('enemyKills'))}</dd></div>
         <div><dt className="text-gray-700">Enemy assists</dt><dd className="text-body-strong">{fact(total('enemyAssists'))}</dd></div>
         <div><dt className="text-gray-700">Deaths</dt><dd className="text-body-strong">{fact(total('deaths'))}</dd></div>
-        <div><dt className="text-gray-700">Enemy health damage</dt><dd className="text-body-strong">{fact(total('enemyHealthDamage'))}</dd></div>
+        <div><dt className="text-gray-700">Raw enemy damage</dt><dd className="text-body-strong">{fact(total('enemyHealthDamage'))}</dd></div>
       </dl>
     </section>
     <div className="mt-24 rounded-8 border border-gray-300 p-16">

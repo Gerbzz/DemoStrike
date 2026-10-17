@@ -146,8 +146,16 @@ fn game_round(ctx: &Context) -> Option<i64> {
     }
 }
 
+/// CS2 game-event user IDs pack a generation in the upper byte and a player
+/// slot in the low byte. Zero is a world actor, not a player controller.
+fn source2_user_slot(user: i32) -> Option<u32> {
+    let encoded = u32::try_from(user).ok()?;
+    if encoded == 0 || encoded >= u32::from(u16::MAX) { return None; }
+    Some(encoded & 0xff)
+}
+
 fn controller_by_user(ctx: &Context, user: i32) -> Option<&Entity> {
-    let index = u32::try_from(user).ok()?.checked_add(1)?;
+    let index = source2_user_slot(user)?.checked_add(1)?;
     ctx.entities().iter().find(|e| e.index() == index && e.class().name().contains("PlayerController"))
 }
 
@@ -175,11 +183,13 @@ fn remember_identity(players: &mut BTreeMap<String, RawPlayer>, sides: &mut Vec<
 /// The event's userid is accepted as a POV candidate only when the live
 /// userinfo table independently binds that index to the same Steam account.
 fn userinfo_slot(ctx: &Context, user: i32, steam: &str) -> Option<i64> {
+    let slot = source2_user_slot(user)?;
     let row = ctx.string_tables().get_by_name("userinfo").ok()?
-        .get_row(usize::try_from(user).ok()?).ok()?;
+        .get_row(usize::try_from(slot).ok()?).ok()?;
     let info = CMsgPlayerInfo::decode(row.value()?).ok()?;
-    (info.userid == Some(user) && info.steamid?.to_string() == steam)
-        .then_some(i64::from(user))
+    (info.userid.is_some_and(|value| value >= 0 && (value as u32 & 0xff) == slot)
+        && info.steamid?.to_string() == steam)
+        .then_some(i64::from(slot))
 }
 
 fn pawn_of<'a>(ctx: &'a Context, controller: &Entity) -> Option<&'a Entity> {
@@ -235,6 +245,9 @@ fn round_outcome(win: i32, reason: i32) -> Option<(&'static str, &'static str)> 
         (3, 12) => Some(("CT", "time_ran_out")),
         (2, 1) => Some(("T", "bomb_exploded")),
         (2, 9) => Some(("T", "ct_killed")),
+        // Source 2 RoundEndReasonCTSurrender is 18: the terrorist side wins.
+        (2, 18) => Some(("T", "ct_surrender")),
+        (3, 17) => Some(("CT", "t_surrender")),
         _ => None,
     }
 }
@@ -329,8 +342,10 @@ impl GrenadeObserver {
         if name == "bomb_exploded" { self.bomb_exploded_ticks.insert(ctx.tick()); }
         if matches!(name, "player_death" | "player_spawn") {
             if let Some(user) = event_int(event, "userid") {
-                update_same_tick_deaths(self.dead_users_on_tick.entry(ctx.tick()).or_default(), name, user);
-                update_same_tick_deaths(&mut self.dead_users_until_spawn, name, user);
+                if let Some(slot) = source2_user_slot(user).and_then(|value| i32::try_from(value).ok()) {
+                    update_same_tick_deaths(self.dead_users_on_tick.entry(ctx.tick()).or_default(), name, slot);
+                    update_same_tick_deaths(&mut self.dead_users_until_spawn, name, slot);
+                }
                 if name == "player_death" && controller_by_user(ctx, user).and_then(controller_identity).is_some_and(|(_, _, side)| side == "CT") {
                     self.ct_death_ticks.insert(ctx.tick());
                 }
@@ -643,8 +658,23 @@ mod round_tests {
         assert_eq!(round_outcome(3, 12), Some(("CT", "time_ran_out")));
         assert_eq!(round_outcome(2, 9), Some(("T", "ct_killed")));
         assert_eq!(round_outcome(2, 1), Some(("T", "bomb_exploded")));
+        assert_eq!(round_outcome(2, 18), Some(("T", "ct_surrender")));
+        assert_eq!(round_outcome(3, 17), Some(("CT", "t_surrender")));
         assert_eq!(round_outcome(2, 7), None);
         assert_eq!(round_outcome(3, 6), None);
+    }
+
+    #[test]
+    fn source2_user_ids_decode_slot_before_controller_offset() {
+        assert_eq!(source2_user_slot(1), Some(1));
+        assert_eq!(source2_user_slot(0x101), Some(1));
+        assert_eq!(source2_user_slot(0x100), Some(0));
+        assert_eq!(source2_user_slot(0x201), Some(1));
+        assert_eq!(source2_user_slot(0), None);
+        assert_eq!(source2_user_slot(-1), None);
+        assert_eq!(source2_user_slot(0xffff), None);
+        assert_eq!(source2_user_slot(0x10000), None);
+        assert_eq!(source2_user_slot(0x101).unwrap() + 1, 2);
     }
 
     #[test]

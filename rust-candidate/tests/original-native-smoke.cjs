@@ -79,7 +79,8 @@ async function main() {
     await page.screenshot({ path: importedScreenshot, animations: 'disabled' });
     await importedRow.dblclick();
     await page.getByRole('heading', { name: 'Recorded combat' }).waitFor({ timeout: 20000 });
-    await page.getByText('complete non-warmup native event stream').waitFor({ timeout: 20000 });
+    await page.getByText('Synthetic CI fixture: combat facts bypassed the CS2 demo decoder.', { exact: false }).waitFor({ timeout: 20000 });
+    await page.getByText('These public synthetic combat facts test import and display.', { exact: false }).waitFor({ timeout: 20000 });
     const importedOverviewScreenshot = path.join(outputDir, 'imported-combat-overview.png');
     await page.screenshot({ path: importedOverviewScreenshot, animations: 'disabled' });
     await page.getByRole('link', { name: 'Rounds' }).click();

@@ -10,7 +10,7 @@ export function Rounds() {
   if (number !== undefined && !selected) return <Content><p role="alert">Round {number} is not recorded in this library.</p></Content>;
   return <Content>
     <h1 className="text-title">{selected ? `Round ${selected.roundNumber}` : 'Recorded rounds'}</h1>
-    <p className="mt-4 text-gray-700">Winners and tick boundaries come from the DemoStrike import. Native combat imports also record observed CT/T players and enemy eliminations for each round.</p>
+    <p className="mt-4 text-gray-700">Winners and tick boundaries come from the DemoStrike import. Full combat rows also record observed CT/T players and enemy eliminations for each round.</p>
     {rounds.length === 0 ? <p className="mt-16">No rounds were recorded for this match.</p> :
       <div className="mt-16 overflow-auto rounded-8 border border-gray-300">
         <table className="w-full text-left"><thead className="bg-gray-100"><tr>

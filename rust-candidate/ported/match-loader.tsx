@@ -59,6 +59,9 @@ export function MatchLoader() {
         <span className="ml-8 text-gray-700">Recorded DemoStrike data</span></div>
       <span className="text-gray-700">Read only</span>
     </div>
+    {detail.summary.parserCapability === 'test-synthetic-combat-v1' && <p role="note" className="border-b border-gray-300 bg-gray-100 px-16 py-8 text-gray-700">
+      Synthetic CI fixture: combat facts bypassed the CS2 demo decoder. These rows test import and display only.
+    </p>}
     <TabLinks>
       <TabLink url="">Overview</TabLink>
       <TabLink url="rounds" end={false}>Rounds</TabLink>
