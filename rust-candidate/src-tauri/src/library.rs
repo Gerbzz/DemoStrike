@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
