@@ -1,4 +1,5 @@
 import { defaultSettings } from '../upstream/cs-demo-manager/src/node/settings/default-settings';
+import { mergeSettings } from './settings-merge.mjs';
 
 type Native = { invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T> };
 const native = (window as any).__TAURI_INTERNALS__ as Native | undefined;
@@ -23,12 +24,14 @@ const api = {
   clearStartupArguments: async () => {},
   getTheme: async () => currentSettings.ui.theme,
   parseSettingsFile: async () => {
-    currentSettings = await invoke('csdm_load_settings', { defaults: defaultSettings });
+    currentSettings = await invoke<typeof defaultSettings>('csdm_load_settings', { defaults: defaultSettings });
     return currentSettings;
   },
-  updateSettings: async (settings: typeof defaultSettings) => {
+  updateSettings: async (partial: Record<string, unknown>, options?: { preserveSourceArray?: boolean }) => {
+    const settings = mergeSettings(currentSettings, partial, options?.preserveSourceArray === true);
     await invoke('csdm_save_settings', { settings });
     currentSettings = settings;
+    return settings;
   },
   readTableState: async (name: string) => JSON.parse(localStorage.getItem(`table:${name}`) ?? '[]'),
   writeTableState: async (name: string, state: unknown) => localStorage.setItem(`table:${name}`, JSON.stringify(state)),

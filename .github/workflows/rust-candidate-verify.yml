@@ -69,6 +69,9 @@ jobs:
       - name: Verify ported transport is in the renderer bundle
         working-directory: rust-candidate
         run: node tests/check-ported-bundle.cjs
+      - name: Test original settings update contract
+        working-directory: rust-candidate
+        run: node tests/settings-merge.test.mjs
       - name: Share renderer bundle with hosted native job
         uses: actions/upload-artifact@v4
         with:
