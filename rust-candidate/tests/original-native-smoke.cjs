@@ -74,6 +74,7 @@ async function main() {
     await page.getByRole('button', { name: 'Import demo' }).click();
     await page.getByText('1 recorded match').waitFor({ timeout: 30000 });
     const importedRow = page.getByRole('row').filter({ hasText: 'synthetic-combat.dem' });
+    await importedRow.waitFor({ timeout: 30000 });
     assert.equal(await importedRow.count(), 1, 'Imported synthetic demo missing from Matches');
     const importedScreenshot = path.join(outputDir, 'imported-combat-matches.png');
     await page.screenshot({ path: importedScreenshot, animations: 'disabled' });
