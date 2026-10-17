@@ -118,6 +118,24 @@ async function main() {
     assert.equal(utilityRows, 150);
     const utilityShot = path.join(outputDir, 'real-demo-utility.png');
     await captureAppOnly(page, utilityShot);
+    // Exercise failure recovery in the same native window. Neither attempt
+    // may replace or duplicate the successfully imported match.
+    await page.evaluate(() => { location.hash = '#/matches'; });
+    await page.getByRole('button', { name: 'Import demo' }).click();
+    const importPath = page.getByRole('textbox', { name: 'Import a CS2 demo' });
+    await importPath.fill(demoPath);
+    await page.getByRole('button', { name: 'Import demo' }).last().click();
+    await page.getByRole('alert').getByText('already imported', { exact: false }).waitFor({ timeout: 30000 });
+    const duplicateShot = path.join(outputDir, 'duplicate-demo-error.png');
+    await captureAppOnly(page, duplicateShot);
+    const corruptPath = path.join(outputDir, 'invalid-demo.dem');
+    fs.writeFileSync(corruptPath, 'not a valid CS2 demo');
+    await importPath.fill(corruptPath);
+    await page.getByRole('button', { name: 'Import demo' }).last().click();
+    await page.getByRole('alert').getByText('not a CS2 PBDEMS2 demo', { exact: false }).waitFor({ timeout: 30000 });
+    const invalidShot = path.join(outputDir, 'invalid-demo-error.png');
+    await captureAppOnly(page, invalidShot);
+    assert.equal(await page.getByRole('row').filter({ hasText: 'public-cs2-fixture.dem' }).count(), 1);
     assert.equal(sha256(demoPath), sourceHash, 'Native import changed public demo bytes');
     assert.deepEqual(pageErrors, [], `Renderer errors: ${pageErrors.join('; ')}`);
     const proof = {
@@ -128,7 +146,7 @@ async function main() {
       commit: process.env.GITHUB_SHA || null,
       executableSha256: sha256(appPath),
       observed: { roundRows, playerRows, utilityRows },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, playersShot, utilityShot]
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, playersShot, utilityShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',
