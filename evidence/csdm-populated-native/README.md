@@ -27,6 +27,5 @@ at 1024 x 768. They come from the actual Tauri WebView2 window, not mockups.
 The exact field mapping and missing full-stat upstream views are described
 in `CONTRACT.md`. The original pinned CSDM source snapshot remains intact.
 This public hosted fixture contains no private user demo, library, or match
-data. A separate private read-only check validated the available library's
-recorded data and unchanged bytes, but it was not a native GUI run of this
-build. The OS file/folder dialog itself was not exercised by this smoke.
+data. The OS file/folder dialog itself was not exercised by this smoke.
+
