@@ -19,6 +19,57 @@ $jpeg = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() |
     Where-Object { $_.MimeType -eq 'image/jpeg' } | Select-Object -First 1
 if (-not $jpeg) { throw 'Windows JPEG encoder is unavailable' }
 
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class EditorNativeWindow {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT bounds);
+    [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+}
+'@
+
+function Save-WindowProbe([System.Diagnostics.Process]$process, [string]$name) {
+    Start-Sleep -Seconds 4
+    try {
+        $process.Refresh()
+        $handle = $process.MainWindowHandle
+        Write-Output "EDITOR_WINDOW_HANDLE $name $handle"
+        if ($handle -eq [IntPtr]::Zero) { return }
+        $bounds = [EditorNativeWindow+RECT]::new()
+        if (-not [EditorNativeWindow]::GetWindowRect($handle, [ref]$bounds)) { return }
+        $width = $bounds.Right - $bounds.Left
+        $height = $bounds.Bottom - $bounds.Top
+        $screenWidth = [EditorNativeWindow]::GetSystemMetrics(0)
+        $screenHeight = [EditorNativeWindow]::GetSystemMetrics(1)
+        Write-Output "EDITOR_WINDOW_BOUNDS $name x=$($bounds.Left) y=$($bounds.Top) size=$($width)x$height screen=$($screenWidth)x$screenHeight"
+        if ($width -lt 900 -or $height -lt 560 -or $width -gt 3000 -or $height -gt 2000) { return }
+        $bitmap = [System.Drawing.Bitmap]::new($width, $height)
+        try {
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            try {
+                $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bitmap.Size)
+            } finally { $graphics.Dispose() }
+            $probe = Join-Path $EvidenceDir ($name + '-window-probe.png')
+            $bitmap.Save($probe, [System.Drawing.Imaging.ImageFormat]::Png)
+            $preview = Join-Path $EvidenceDir ($name + '-window-probe.jpg')
+            $parameters = [System.Drawing.Imaging.EncoderParameters]::new(1)
+            $parameters.Param[0] = [System.Drawing.Imaging.EncoderParameter]::new([System.Drawing.Imaging.Encoder]::Quality, [long]35)
+            try { $bitmap.Save($preview, $jpeg, $parameters) } finally { $parameters.Dispose() }
+            $bytes = [System.IO.File]::ReadAllBytes($preview)
+            $encoded = [Convert]::ToBase64String($bytes)
+            Write-Output "EDITOR_WINDOW_PREVIEW_BEGIN $name $($bytes.Length)"
+            for ($offset = 0; $offset -lt $encoded.Length; $offset += 4096) {
+                Write-Output $encoded.Substring($offset, [Math]::Min(4096, $encoded.Length - $offset))
+            }
+            Write-Output "EDITOR_WINDOW_PREVIEW_END $name"
+        } finally { $bitmap.Dispose() }
+    } catch {
+        Write-Output "EDITOR_WINDOW_PROBE_ERROR $name $($_.Exception.Message)"
+    }
+}
+
 foreach ($case in $cases) {
     $project = $case.Project
     if (-not (Test-Path -LiteralPath $project)) { throw "Editor project is missing: $project" }
@@ -35,6 +86,7 @@ foreach ($case in $cases) {
     $process = [System.Diagnostics.Process]::Start($start)
     if (-not $process) { throw "Native editor process did not start for $($case.Name)" }
     $stderrTask = $process.StandardError.ReadToEndAsync()
+    Save-WindowProbe $process $case.Name
     try {
         if (-not $process.WaitForExit(90000)) {
             $process.Kill($true)

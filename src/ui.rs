@@ -18,7 +18,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
@@ -1293,7 +1293,14 @@ impl eframe::App for DemoStrikeApp {
         static ENTER: AtomicBool = AtomicBool::new(false);
         static CAPTURE_DONE: AtomicBool = AtomicBool::new(false);
         static EDITOR_DONE: AtomicBool = AtomicBool::new(false);
+        static FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
         trace_editor_once(&ENTER, "ui_enter");
+        if std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some() {
+            let count = FRAME_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+            if count <= 4 || count % 60 == 0 {
+                eprintln!("EDITOR_FRAME ui_count={count}");
+            }
+        }
         let ctx = ui.ctx().clone();
         self.capture_after_frame(&ctx);
         trace_editor_once(&CAPTURE_DONE, "capture_after_frame_done");
