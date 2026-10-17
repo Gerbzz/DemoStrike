@@ -145,7 +145,7 @@ async function main() {
     // Capture only after the visible status and saved match row agree with IPC.
     await second.page.getByRole('status').filter({ hasText: /Imported.*resumed after restart/ })
       .waitFor({ timeout: 30000 });
-    await second.page.getByRole('row').filter({ hasText: 'public-cs2-fixture.dem' })
+    await second.page.getByRole('row').filter({ hasText: 'de_ancient' })
       .waitFor({ timeout: 30000 });
     const screenshot = path.join(outputDir, 'queue-recovered-native.png');
     await second.page.screenshot({ path: screenshot, animations: 'disabled' });
