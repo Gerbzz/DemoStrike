@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Link } from 'react-router';
 import { Content } from 'csdm/ui/components/content';
 import { useSourceMatch } from './match-loader';
-import type { RoundDeath } from './match-data';
 
 // The original MatchDuels TabLinks and nested route remain in place. This
 // adapter reads only event identities verified by the native demo import.
