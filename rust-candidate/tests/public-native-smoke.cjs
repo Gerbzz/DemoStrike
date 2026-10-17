@@ -158,11 +158,14 @@ async function main() {
     const matrix = page.locator('section[aria-label="Observed duel matrix"]');
     const nonzero = matrix.locator('button:not([disabled])');
     assert.ok(await nonzero.count() > 0, 'No opposing-side duel pairs appeared');
+    const duelsShot = path.join(outputDir, 'real-demo-duels.png');
+    await captureAppOnly(page, duelsShot);
     await nonzero.first().click();
     const duelEvents = page.locator('section[aria-label="Selected duel events"] li');
     assert.ok(await duelEvents.count() > 0, 'Selecting a duel did not reveal source events');
-    const duelsShot = path.join(outputDir, 'real-demo-duels.png');
-    await captureAppOnly(page, duelsShot);
+    await duelEvents.first().scrollIntoViewIfNeeded();
+    const duelEventsShot = path.join(outputDir, 'real-demo-duel-events.png');
+    await captureAppOnly(page, duelEventsShot);
     await duelEvents.first().getByRole('link').click();
     await page.getByRole('heading', { name: /^Round [0-9]+$/ }).waitFor({ timeout: 30000 });
     await page.getByRole('link', { name: 'Players' }).click();
@@ -234,7 +237,7 @@ async function main() {
       syntheticEnvironmentDeliberatelySet: featureFree,
       parserCapability: capability,
       observed: { roundRows, playerRows, playerDetailRows, utilityRows, nativeFacts },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, duelsShot, playersShot, playerDetailShot, utilityShot, duplicateShot, invalidShot]
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',
