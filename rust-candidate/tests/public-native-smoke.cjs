@@ -136,6 +136,17 @@ async function main() {
     assert.ok(playerRows >= 10, `Unexpected player count: ${playerRows}`);
     const playersShot = path.join(outputDir, 'real-demo-players.png');
     await captureAppOnly(page, playersShot);
+    const firstPlayerLink = page.locator('[aria-label="Recorded player scoreboard"] tbody tr').first().getByRole('link').first();
+    const firstPlayerName = (await firstPlayerLink.innerText()).trim();
+    await firstPlayerLink.click();
+    await page.getByRole('heading', { name: firstPlayerName, exact: true }).waitFor({ timeout: 30000 });
+    await page.getByRole('heading', { name: 'Round by round' }).waitFor({ timeout: 30000 });
+    const playerDetailRows = await page.locator('section[aria-label="Player rounds"] tbody tr').count();
+    assert.equal(playerDetailRows, 10, 'Selected real-demo player lacks ten recorded round rows');
+    const playerDetailShot = path.join(outputDir, 'real-demo-player-detail.png');
+    await captureAppOnly(page, playerDetailShot);
+    await page.getByRole('link', { name: 'All players' }).click();
+    await page.getByRole('heading', { name: 'Recorded players' }).waitFor({ timeout: 30000 });
     await page.getByRole('link', { name: 'Utility' }).click();
     await page.getByRole('heading', { name: 'Recorded utility' }).waitFor({ timeout: 30000 });
     await page.waitForFunction(() => document.querySelectorAll('tbody tr').length === 150, null, { timeout: 30000 });
@@ -173,8 +184,8 @@ async function main() {
       featureFreeReleaseBuild: featureFree,
       syntheticEnvironmentDeliberatelySet: featureFree,
       parserCapability: capability,
-      observed: { roundRows, playerRows, utilityRows },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, playersShot, utilityShot, duplicateShot, invalidShot]
+      observed: { roundRows, playerRows, playerDetailRows, utilityRows },
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, playersShot, playerDetailShot, utilityShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',
