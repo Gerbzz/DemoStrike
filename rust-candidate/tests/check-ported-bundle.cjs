@@ -18,6 +18,7 @@ assert.ok(bundle.includes('Existing CS Demo Manager PostgreSQL data is untouched
 assert.ok(bundle.includes('Could not open this view'), 'Ported recoverable error boundary was not included');
 assert.ok(bundle.includes('list_matches') && bundle.includes('get_match_detail'), 'Read-only DemoStrike library bridge was not included');
 assert.ok(bundle.includes('csdm_choose_library'), 'Native library picker was not included');
+assert.ok(bundle.includes('csdm_list_demo_files') && bundle.includes('csdm_choose_demo_folder'), 'Read-only demo-folder route was not included');
 assert.ok(!bundle.includes('WS:: connecting to server'), 'Electron WebSocket client remained in the ported bundle');
 assert.ok(styles.includes('.gap-x-8'), 'Original UI spacing classes were not generated');
 console.log('PASS: ported original renderer contains the Tauri adapter and no Electron WebSocket startup');

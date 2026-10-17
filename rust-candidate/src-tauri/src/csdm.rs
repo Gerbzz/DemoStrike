@@ -4,6 +4,7 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
+use std::time::UNIX_EPOCH;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
@@ -151,6 +152,75 @@ pub async fn csdm_choose_library(app: tauri::AppHandle) -> Result<Option<String>
     .map_err(|error| error.to_string())?
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DemoFile {
+    name: String,
+    path: String,
+    size_bytes: u64,
+    modified_at: Option<u64>,
+}
+
+fn demo_files(folder: &str) -> Result<Vec<DemoFile>, String> {
+    let entries =
+        fs::read_dir(folder).map_err(|error| format!("Could not read demo folder: {error}"))?;
+    let mut demos = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("Could not read demo folder: {error}"))?;
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let path = entry.path();
+        if !path
+            .extension()
+            .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("dem"))
+        {
+            continue;
+        }
+        let metadata = entry.metadata().map_err(|error| error.to_string())?;
+        demos.push(DemoFile {
+            name: entry.file_name().to_string_lossy().into_owned(),
+            path: path.to_string_lossy().into_owned(),
+            size_bytes: metadata.len(),
+            modified_at: metadata
+                .modified()
+                .ok()
+                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_secs()),
+        });
+    }
+    demos.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    Ok(demos)
+}
+
+#[tauri::command]
+pub async fn csdm_list_demo_files(folder: String) -> Result<Vec<DemoFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || demo_files(&folder))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn csdm_choose_demo_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .blocking_pick_folder()
+            .map(|folder| {
+                folder
+                    .into_path()
+                    .map_err(|error| error.to_string())?
+                    .into_os_string()
+                    .into_string()
+                    .map_err(|_| "The selected demo folder path is not valid UTF-8.".to_owned())
+            })
+            .transpose()
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 #[tauri::command]
 pub fn csdm_load_settings(app: tauri::AppHandle, defaults: Value) -> Result<Value, String> {
     app_store(&app)?.settings(defaults)
@@ -254,5 +324,26 @@ mod tests {
                 .unwrap_err()
                 .contains("not been ported")
         );
+    }
+
+    #[test]
+    fn demo_folder_lists_only_direct_demo_files_without_changing_them() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = directory.path().join("alpha.dem");
+        let second = directory.path().join("Beta.DEM");
+        fs::write(&first, b"synthetic demo one").unwrap();
+        fs::write(&second, b"synthetic demo two").unwrap();
+        fs::write(directory.path().join("notes.txt"), b"not a demo").unwrap();
+        let nested = directory.path().join("nested");
+        fs::create_dir(&nested).unwrap();
+        fs::write(nested.join("hidden.dem"), b"not direct").unwrap();
+
+        let demos = demo_files(directory.path().to_str().unwrap()).unwrap();
+        assert_eq!(demos.len(), 2);
+        assert_eq!(demos[0].name, "alpha.dem");
+        assert_eq!(demos[0].size_bytes, 18);
+        assert_eq!(demos[1].name, "Beta.DEM");
+        assert_eq!(fs::read(&first).unwrap(), b"synthetic demo one");
+        assert_eq!(fs::read(&second).unwrap(), b"synthetic demo two");
     }
 }

@@ -82,6 +82,30 @@ async function main() {
     await page.screenshot({ path: libraryScreenshot, animations: 'disabled' });
     assert.ok(fs.statSync(libraryScreenshot).size > 10000, 'Local-library screenshot is unexpectedly small');
     assert.equal(sha256(fixturePath), fixtureSha256, 'Read-only viewer changed the synthetic fixture');
+    const demoFolder = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-synthetic-demos');
+    fs.mkdirSync(demoFolder, { recursive: true });
+    const alphaDemo = path.join(demoFolder, 'synthetic-alpha.dem');
+    const betaDemo = path.join(demoFolder, 'synthetic-beta.DEM');
+    fs.writeFileSync(alphaDemo, 'synthetic test file one');
+    fs.writeFileSync(betaDemo, 'synthetic test file two');
+    fs.writeFileSync(path.join(demoFolder, 'not-a-demo.txt'), 'ignored');
+    const alphaHash = sha256(alphaDemo);
+    const betaHash = sha256(betaDemo);
+    await page.locator('a[href="#/demos"]').click();
+    await page.getByRole('heading', { name: 'Demo files' }).waitFor({ timeout: 20000 });
+    await page.getByRole('textbox', { name: 'Demo folder' }).fill(demoFolder);
+    await page.getByRole('button', { name: 'Open folder' }).click();
+    await page.getByText('2 demo files').waitFor({ timeout: 20000 });
+    assert.equal(await page.getByRole('cell', { name: 'synthetic-alpha.dem' }).count(), 1);
+    assert.equal(await page.getByRole('cell', { name: 'synthetic-beta.DEM' }).count(), 1);
+    assert.equal(await page.getByRole('cell', { name: 'not-a-demo.txt' }).count(), 0);
+    await page.getByRole('textbox', { name: 'Find demo' }).fill('beta');
+    assert.equal(await page.getByRole('cell', { name: 'synthetic-alpha.dem' }).count(), 0);
+    await page.getByRole('textbox', { name: 'Find demo' }).fill('');
+    const demoScreenshot = path.join(outputDir, 'ported-demo-folder.png');
+    await page.screenshot({ path: demoScreenshot, animations: 'disabled' });
+    assert.equal(sha256(alphaDemo), alphaHash, 'Read-only browser changed a synthetic demo file');
+    assert.equal(sha256(betaDemo), betaHash, 'Read-only browser changed a synthetic demo file');
     const proof = {
       source: 'actual hosted Tauri WebView2 window with original CS Demo Manager renderer',
       data: 'new empty local SQLite plus a separate sanitized synthetic DemoStrike library',
@@ -90,6 +114,8 @@ async function main() {
       executableSha256: sha256(appPath),
       screenshotSha256: sha256(screenshot),
       libraryScreenshotSha256: sha256(libraryScreenshot),
+      demoFolderScreenshotSha256: sha256(demoScreenshot),
+      syntheticDemoHashes: [alphaHash, betaHash],
       fixtureSha256,
       runtimeUrl: page.url(),
       originalSidebarRoutes: ['matches', 'demos', 'players', 'teams'],
