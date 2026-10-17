@@ -199,7 +199,14 @@ fn build_player_round_combat(raw: &RawDemo, rounds: &[AnalyzedRound]) -> Vec<Ana
     for death in &raw.combat_deaths {
         if death.round < 1 { continue; }
         let Some(round) = completed_combat_round(death.round, death.tick, rounds) else { continue; };
-        combat_row(&mut rows, round, &death.victim_steamid).deaths += 1;
+        // The original CSDM player scoreboard excludes a world-weapon
+        // suicide caused by client disconnection, while its kill ledger
+        // retains the event. Keep the v8 raw ledger lossless too.
+        let disconnected = death.weapon.as_deref() == Some("world")
+            && death.attacker_steamid.as_deref() == Some(death.victim_steamid.as_str());
+        if !disconnected {
+            combat_row(&mut rows, round, &death.victim_steamid).deaths += 1;
+        }
         if let Some(attacker) = death.attacker_steamid.as_deref() {
             let row = combat_row(&mut rows, round, attacker);
             if attacker != death.victim_steamid {
@@ -969,6 +976,21 @@ mod tests {
         let victim = analyzed.player_round_combat.iter().find(|row| row.steamid == "s2").unwrap();
         assert_eq!(victim.round_number, 1);
         assert_eq!(victim.deaths, 1);
+    }
+
+    #[test]
+    fn world_self_death_stays_raw_but_does_not_count_as_scoreboard_death() {
+        let mut raw = minimal_raw();
+        raw.combat_deaths = serde_json::from_value(serde_json::json!([{
+            "tick": 3200, "round": 1, "weapon": "world",
+            "attackerSteamid": "s1", "attackerTeam": "CT",
+            "victimSteamid": "s1", "victimTeam": "CT",
+            "assisterSteamid": null, "assisterTeam": null
+        }])).unwrap();
+        let analyzed = build_match(&raw);
+        assert_eq!(analyzed.raw_combat_deaths.len(), 1);
+        let player = analyzed.player_round_combat.iter().find(|row| row.steamid == "s1").unwrap();
+        assert_eq!(player.deaths, 0);
     }
 
     #[test]
