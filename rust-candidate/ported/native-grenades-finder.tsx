@@ -47,7 +47,8 @@ export function GrenadesFinderLoader() {
   const [handoffBusy, setHandoffBusy] = useState(false);
   const [handoffError, setHandoffError] = useState('');
   const [handoff, setHandoff] = useState<{ eventId: number; directory: string;
-    planPath: string; projectPath: string; throwTimelineMs: number; lineupHoldMs: number } | null>(null);
+    planPath: string; projectPath: string; requestPath: string; filmcraftProjectPath: string | null;
+    throwTimelineMs: number; lineupHoldMs: number } | null>(null);
   const mapInfo = calibration[detail.summary.mapName];
 
   useEffect(() => {
@@ -116,7 +117,8 @@ export function GrenadesFinderLoader() {
     setHandoffBusy(true); setHandoff(null); setHandoffError('');
     try {
       const saved = await invoke<{ eventId: number; directory: string; planPath: string;
-        projectPath: string; throwTimelineMs: number; lineupHoldMs: number }>('csdm_export_edit_handoff',
+        projectPath: string; requestPath: string; filmcraftProjectPath: string | null;
+        throwTimelineMs: number; lineupHoldMs: number }>('csdm_export_edit_handoff',
       { path: libraryPath, matchId, eventId: selected.id });
       setHandoff(saved);
     } catch (failure) { setHandoffError(describe(failure)); }
@@ -185,10 +187,12 @@ export function GrenadesFinderLoader() {
         {handoffError && <p role="alert" className="rounded-4 border border-red-400 p-8 text-red-700">{handoffError}</p>}
         {handoff && handoff.eventId === selected?.id && <div role="status"
           className="rounded-4 border border-green-500 p-8 text-gray-800">
-          <strong>Offline plan saved locally.</strong> The ClipStrike project has editable cue markers and empty camera tracks.
+          <strong>Offline plan saved locally.</strong> The ClipStrike and FilmCraft projects have editable cue markers and empty camera tracks.
           No capture or media was created. The POV and third-person lanes share a {handoff.lineupHoldMs / 1000}s lineup pause.
-          <div className="mt-4 break-all text-small">Plan: {handoff.planPath}</div>
+          <div className="mt-4 break-all text-small">CSthrowback request: {handoff.requestPath}</div>
+          <div className="break-all text-small">Plan: {handoff.planPath}</div>
           <div className="break-all text-small">Project: {handoff.projectPath}</div>
+          {handoff.filmcraftProjectPath && <div className="break-all text-small">FilmCraft: {handoff.filmcraftProjectPath}</div>}
         </div>}
         {!map ? <div className="flex min-h-[340px] items-center justify-center bg-gray-100 p-16 text-center text-gray-700">
           This map has no verified CSDM coordinate calibration. Throw details remain available in the list.

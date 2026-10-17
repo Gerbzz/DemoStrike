@@ -267,11 +267,24 @@ async function main() {
       const text = document.querySelector('[data-selected-throw] [role="status"]')?.textContent ?? '';
       const plan = text.match(/Plan:\s*(.+?capture-edit-plan\.json)/);
       const project = text.match(/Project:\s*(.+?offline-edit\.cstrike)/);
-      return { plan: plan?.[1], project: project?.[1] };
+      const request = text.match(/CSthrowback request:\s*(.+?capture-request\.json)/);
+      const filmcraft = text.match(/FilmCraft:\s*(.+?offline-edit\.fcproj)/);
+      return { plan: plan?.[1], project: project?.[1], request: request?.[1], filmcraft: filmcraft?.[1] };
     });
-    assert.ok(handoffPaths.plan && handoffPaths.project, 'Local handoff paths were not shown');
+    assert.ok(handoffPaths.plan && handoffPaths.project && handoffPaths.request && handoffPaths.filmcraft,
+      'Local handoff paths were not shown');
     const editPlan = JSON.parse(fs.readFileSync(handoffPaths.plan, 'utf8'));
     const editProject = JSON.parse(fs.readFileSync(handoffPaths.project, 'utf8'));
+    const captureRequest = JSON.parse(fs.readFileSync(handoffPaths.request, 'utf8'));
+    const filmcraftFile = JSON.parse(fs.readFileSync(handoffPaths.filmcraft, 'utf8'));
+    assert.equal(filmcraftFile.format, 'filmcraft.project');
+    assert.equal(filmcraftFile.project.notes.includes('Unrecorded editorial plan'), true);
+    const sequence = Object.values(filmcraftFile.project.items).find((item) => item.kind?.Sequence);
+    assert.ok(sequence, 'FilmCraft native sequence is absent');
+    assert.equal(sequence.kind.Sequence.video_tracks.length, 3);
+    assert.equal(sequence.kind.Sequence.markers.length, 4);
+    assert.ok(sequence.kind.Sequence.video_tracks.every((track) => track.items.length === 0));
+    assert.deepEqual(captureRequest, editPlan.captureRequest);
     assert.equal(editPlan.captureRequest.demoSha256, sourceHash);
     assert.equal(editPlan.captureRequest.eventId, finderTarget.item.id);
     assert.equal(editPlan.captureRequest.throwTick, finderTarget.item.tick);
