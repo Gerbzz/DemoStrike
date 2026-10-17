@@ -25,6 +25,8 @@ async function main() {
   app.stderr.on('data', (data) => process.stderr.write(data));
   let browser;
   let page;
+  const pageErrors = [];
+  const consoleErrors = [];
   try {
     let ready = false;
     for (let attempt = 0; attempt < 60; attempt += 1) {
@@ -48,8 +50,10 @@ async function main() {
       if (!page) await sleep(1000);
     }
     assert.ok(page, 'No Tauri IPC-enabled page appeared');
-    const pageErrors = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
     await page.getByText('Your local library is empty').waitFor({ timeout: 25000 });
     await page.getByText('Demo import and populated match data are still being ported.').waitFor({ timeout: 25000 });
     assert.equal(await page.locator('a[href="#/matches"]').count(), 1, 'Original Matches sidebar route missing');
@@ -84,9 +88,11 @@ async function main() {
       fs.writeFileSync(path.join(outputDir, 'failure.json'), `${JSON.stringify({
         source: 'hosted fresh-profile Tauri WebView2 window',
         error: String(error),
+        pageErrors,
+        consoleErrors,
         visible,
       }, null, 2)}\n`);
-      console.error('Native app visible state:', JSON.stringify(visible));
+      console.error('Native app visible state:', JSON.stringify({ visible, pageErrors, consoleErrors }));
     }
     throw error;
   } finally {
