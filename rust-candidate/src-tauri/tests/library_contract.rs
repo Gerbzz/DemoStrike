@@ -197,11 +197,11 @@ fn ordered_deaths_and_round_fields_remain_distinct_from_missing_facts() {
     db.execute_batch(
         "INSERT INTO raw_combat_deaths VALUES
            (1, 0, 2, 175, 1, 'ak47', '7656', 'CT', 'opponent', 'T', NULL),
-           (1, 1, 1, 150, 1, 'm4a1', 'opponent', 'T', '7656', 'CT', NULL),
+           (1, 1, 1, 150, 1, 'm4a1', 'opponent', 'TERRORIST', '7656', 'CT', NULL),
            (1, 2, 3, 200, 2, 'ak47', '7656', 'CT', 'opponent', 'T', NULL),
            (1, 3, 4, 301, 3, 'world', '7656', 'CT', '7656', 'CT', NULL);
          INSERT INTO raw_combat_hurts VALUES
-           (1, 0, 1, 180, 1, 'ak47', '7656', 'CT', 'opponent', 'T', 42),
+           (1, 0, 1, 180, 1, 'ak47', '7656', 'CT', 'opponent', 'TERRORIST', 42),
            (1, 1, 2, 200, 2, 'ak47', '7656', 'CT', 'opponent', 'T', 17),
            (1, 2, 3, 301, 3, 'world', '7656', 'CT', '7656', 'CT', 99);",
     )
@@ -214,6 +214,7 @@ fn ordered_deaths_and_round_fields_remain_distinct_from_missing_facts() {
         vec![150, 175, 200]
     );
     assert_eq!(deaths[0].weapon.as_deref(), Some("m4a1"));
+    assert_eq!(deaths[0].attacker_side.as_deref(), Some("T"));
     assert_eq!(observed.rounds[1].deaths.as_ref().unwrap().len(), 0);
     let hurts = observed.rounds[0].hurts.as_ref().unwrap();
     assert_eq!(
@@ -221,6 +222,7 @@ fn ordered_deaths_and_round_fields_remain_distinct_from_missing_facts() {
         vec![180, 200]
     );
     assert_eq!(hurts[1].raw_damage, 17);
+    assert_eq!(hurts[0].victim_side.as_deref(), Some("T"));
     assert!(observed.rounds[1].hurts.as_ref().unwrap().is_empty());
     assert_eq!(std::fs::read(&path).unwrap(), before);
 
