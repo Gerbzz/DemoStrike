@@ -42,9 +42,9 @@ with sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True) as connect
         )
     }
     rounds = [
-        dict(zip(("number", "winner", "start", "end", "reason"), row))
+        dict(zip(("number", "winner", "start", "freezeEnd", "end", "reason"), row))
         for row in connection.execute(
-            "SELECT round_number, winner, start_tick, end_tick, end_reason "
+            "SELECT round_number, winner, start_tick, freeze_end_tick, end_tick, end_reason "
             "FROM rounds ORDER BY round_number"
         )
     ]
@@ -172,7 +172,8 @@ comparison = {
     "roundFieldDifferences": round_comparison,
     "roundTimeline": [
         {"number": native["number"], "upstreamStart": upstream.get("startTick"),
-         "nativeStart": native["start"], "upstreamEnd": upstream.get("endTick"),
+         "nativeStart": native["start"], "nativeFreezeEnd": native["freezeEnd"],
+         "upstreamEnd": upstream.get("endTick"),
          "nativeEnd": native["end"], "upstreamFreezeEnd": upstream.get("freezeTimeEndTick")}
         for upstream, native in zip(oracle.get("rounds", []), rounds)
     ],
@@ -209,6 +210,8 @@ output.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n", en
 comparison_output = root / "csdm-oracle-comparison.json"
 comparison_output.write_text(json.dumps(comparison, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(json.dumps({"inventory": {
+    "upstreamSource": oracle.get("source"),
+    "upstreamType": oracle.get("type"),
     "upstreamRoundCount": len(oracle.get("rounds", [])),
     "upstreamKillCount": len(oracle.get("kills", [])),
     "upstreamDamageCount": len(oracle.get("damages", [])),
