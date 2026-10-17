@@ -78,7 +78,7 @@ function Scoreboard({ detail }: { detail: MatchDetail }) {
   return <section className="mt-20" aria-label="Recorded player scoreboard">
     <div className="flex flex-wrap items-baseline justify-between gap-x-16 gap-y-4">
       <h2 className="text-subtitle">Recorded players</h2>
-      <p className="text-gray-700">{detail.players.length} players � Double-click or press Enter to open a player</p>
+      <p className="text-gray-700">{detail.players.length} players | Double-click or press Enter to open a player</p>
     </div>
     <p className="mt-4 max-w-[760px] text-gray-700">The original CSDM scoreboard groups stable teams and includes ratings. This import records players and observed combat, without verified stable teams or ratings.</p>
     {rows.length === 0 ? <p className="mt-12" role="status">No players were recorded for this match.</p> :
