@@ -261,6 +261,54 @@ async function main() {
     await page.locator('svg image').waitFor({ timeout: 15000 });
     const finderShot = path.join(outputDir, 'real-demo-grenade-finder.png');
     await captureAppOnly(page, finderShot);
+    await page.getByRole('button', { name: 'Create offline edit plan' }).click();
+    await page.getByText('Offline plan saved locally.').waitFor({ timeout: 60000 });
+    const handoffPaths = await page.evaluate(() => {
+      const text = document.querySelector('[data-selected-throw] [role="status"]')?.textContent ?? '';
+      const plan = text.match(/Plan:\s*(.+?capture-edit-plan\.json)/);
+      const project = text.match(/Project:\s*(.+?offline-edit\.cstrike)/);
+      return { plan: plan?.[1], project: project?.[1] };
+    });
+    assert.ok(handoffPaths.plan && handoffPaths.project, 'Local handoff paths were not shown');
+    const editPlan = JSON.parse(fs.readFileSync(handoffPaths.plan, 'utf8'));
+    const editProject = JSON.parse(fs.readFileSync(handoffPaths.project, 'utf8'));
+    assert.equal(editPlan.captureRequest.demoSha256, sourceHash);
+    assert.equal(editPlan.captureRequest.eventId, finderTarget.item.id);
+    assert.equal(editPlan.captureRequest.throwTick, finderTarget.item.tick);
+    assert.equal(editPlan.status, 'planning_only');
+    assert.equal(editPlan.lineupHoldMs, 1200);
+    const pov = editPlan.spans.filter((span) => span.cameraRole === 'player_pov');
+    const third = editPlan.spans.filter((span) => span.cameraRole === 'third_person_reference');
+    const projectile = editPlan.spans.filter((span) => span.cameraRole === 'projectile');
+    assert.deepEqual(pov.map((span) => span.kind), ['play', 'hold', 'play']);
+    assert.deepEqual(third.map((span) => span.kind), ['play', 'hold', 'play']);
+    assert.equal(projectile.length, 1);
+    assert.deepEqual([pov[1].timelineStartMs, pov[1].timelineEndMs],
+      [third[1].timelineStartMs, third[1].timelineEndMs]);
+    assert.equal(pov[2].timelineEndMs, third[2].timelineEndMs);
+    assert.equal(projectile[0].timelineStartMs, editPlan.throwTimelineMs);
+    assert.equal(editProject.tracks.length, 3);
+    assert.equal(editProject.markers[2].time_ms, editPlan.throwTimelineMs);
+    assert.deepEqual(editProject.assets, []);
+    assert.deepEqual(editProject.clips, []);
+    assert.deepEqual(editProject.capture_sources, []);
+    const mismatch = await page.evaluate(async (item) => {
+      const path = localStorage.getItem('csdm-port-selected-library');
+      const matchId = Number(location.hash.match(/local-(\d+)/)?.[1]);
+      try {
+        await window.__TAURI_INTERNALS__.invoke('csdm_export_edit_handoff',
+          { path, matchId: matchId + 1, eventId: item.id });
+        return 'unexpected success';
+      } catch (error) { return String(error); }
+    }, finderTarget.item);
+    assert.match(mismatch, /does not belong to this recorded match/);
+    const handoffShot = path.join(outputDir, 'real-demo-finder-edit-handoff.png');
+    await captureAppOnly(page, handoffShot);
+    console.log('PUBLIC_EDIT_HANDOFF', JSON.stringify({
+      eventId: editPlan.captureRequest.eventId, sourceHash: editPlan.captureRequest.demoSha256,
+      spans: editPlan.spans.length, sharedHoldMs: editPlan.lineupHoldMs,
+      projectTracks: editProject.tracks.length, mediaAssets: editProject.assets.length,
+    }));
     await page.getByRole('link', { name: 'Open at throw in 2D Viewer' }).click();
     await page.getByRole('heading', { name: `2D Viewer - Round ${finderTarget.item.round}` })
       .waitFor({ timeout: 60000 });
@@ -494,7 +542,7 @@ async function main() {
       syntheticEnvironmentDeliberatelySet: featureFree,
       parserCapability: capability,
       observed: { roundRows, playerRows, playerDetailRows, utilityRows, finderTarget, nativeFacts, viewerFacts, pausedTick, bombRound },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, effectiveDamageShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, finderShot, finderViewerShot, eventShot, viewerSeekShot, viewerRoundShot, betweenRoundsShot, bombShot, duplicateShot, invalidShot]
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, effectiveDamageShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, finderShot, handoffShot, finderViewerShot, eventShot, viewerSeekShot, viewerRoundShot, betweenRoundsShot, bombShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',

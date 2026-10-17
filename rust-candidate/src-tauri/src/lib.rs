@@ -1,5 +1,6 @@
 pub mod capture_provider;
 pub mod csdm;
+pub mod edit_handoff;
 pub mod import;
 pub mod import_queue;
 pub mod library;
@@ -62,6 +63,7 @@ pub fn run() {
             get_viewer_round,
             get_viewer_frames,
             get_utility_finder,
+            edit_handoff::csdm_export_edit_handoff,
             import::csdm_import_demo,
             import::csdm_choose_demo,
             import_queue::csdm_enqueue_demo,

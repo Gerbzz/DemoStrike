@@ -44,6 +44,10 @@ export function GrenadesFinderLoader() {
     return file ? URL.createObjectURL(file) : null;
   });
   const [radarError, setRadarError] = useState('');
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  const [handoffError, setHandoffError] = useState('');
+  const [handoff, setHandoff] = useState<{ eventId: number; directory: string;
+    planPath: string; projectPath: string; throwTimelineMs: number; lineupHoldMs: number } | null>(null);
   const mapInfo = calibration[detail.summary.mapName];
 
   useEffect(() => {
@@ -107,6 +111,17 @@ export function GrenadesFinderLoader() {
       setRadarUrl(URL.createObjectURL(file));
     }).catch(() => setRadarError('The selected PNG could not be decoded.'));
   };
+  const createHandoff = async () => {
+    if (!selected || !libraryPath || matchId === null || handoffBusy) return;
+    setHandoffBusy(true); setHandoff(null); setHandoffError('');
+    try {
+      const saved = await invoke<{ eventId: number; directory: string; planPath: string;
+        projectPath: string; throwTimelineMs: number; lineupHoldMs: number }>('csdm_export_edit_handoff',
+      { path: libraryPath, matchId, eventId: selected.id });
+      setHandoff(saved);
+    } catch (failure) { setHandoffError(describe(failure)); }
+    finally { setHandoffBusy(false); }
+  };
 
   if (status === 'loading') return <Content><p role="status">Loading recorded utility paths...</p></Content>;
   if (status === 'error') return <Content><div role="alert"><h1 className="text-subtitle">Could not open grenade finder</h1>
@@ -140,7 +155,9 @@ export function GrenadesFinderLoader() {
         <div className="min-h-[280px] flex-1 overflow-auto rounded-8 border border-gray-300" role="listbox" aria-label="Recorded grenade throws">
           {visible.length === 0 ? <p className="p-16 text-gray-700">No throws match these filters. Clear a filter or try another player.</p>
             : visible.map((event) => <button key={event.id} type="button" role="option"
-              aria-selected={selected?.id === event.id} onClick={() => { setSelectedId(event.id); setManualZoom(null); }}
+              aria-selected={selected?.id === event.id} onClick={() => {
+                setSelectedId(event.id); setManualZoom(null); setHandoff(null); setHandoffError('');
+              }}
               data-throw-id={event.id}
               className={`flex w-full items-center gap-8 border-b border-gray-300 p-8 text-left hover:bg-gray-100 ${selected?.id === event.id ? 'bg-blue-100' : ''}`}>
               <span className="h-8 w-8 shrink-0 rounded-full" style={{ background: colors[event.utilityType] ?? '#9aa4b2' }} />
@@ -155,9 +172,23 @@ export function GrenadesFinderLoader() {
           <div><h2 className="text-subtitle">{labels[selected.utilityType] ?? selected.utilityType} · Round {selected.roundNumber}</h2>
             <p className="text-gray-700">{selected.throwerName} · tick {selected.throwTick}
               {selected.detonateTick !== null ? ` · detonation ${selected.detonateTick}` : ''}</p></div>
-          {canSeek ? <Link className="rounded-4 bg-blue-600 px-12 py-8 text-white hover:bg-blue-700"
-            to={`/matches/${checksum}/viewer-2d/${selected.roundNumber}?tick=${selected.throwTick}`}>
-            Open at throw in 2D Viewer</Link> : <span className="text-gray-700">Throw tick is outside the recorded replay.</span>}
+          <div className="flex flex-wrap items-center gap-8">
+            {canSeek ? <Link className="rounded-4 bg-blue-600 px-12 py-8 text-white hover:bg-blue-700"
+              to={`/matches/${checksum}/viewer-2d/${selected.roundNumber}?tick=${selected.throwTick}`}>
+              Open at throw in 2D Viewer</Link> : <span className="text-gray-700">Throw tick is outside the recorded replay.</span>}
+            <button type="button" onClick={() => void createHandoff()} disabled={handoffBusy}
+              className="rounded-4 border border-gray-500 px-12 py-8 hover:bg-gray-100 disabled:opacity-50">
+              {handoffBusy ? 'Verifying source...' : 'Create offline edit plan'}
+            </button>
+          </div>
+        </div>}
+        {handoffError && <p role="alert" className="rounded-4 border border-red-400 p-8 text-red-700">{handoffError}</p>}
+        {handoff && handoff.eventId === selected?.id && <div role="status"
+          className="rounded-4 border border-green-500 p-8 text-gray-800">
+          <strong>Offline plan saved locally.</strong> The ClipStrike project has editable cue markers and empty camera tracks.
+          No capture or media was created. The POV and third-person lanes share a {handoff.lineupHoldMs / 1000}s lineup pause.
+          <div className="mt-4 break-all text-small">Plan: {handoff.planPath}</div>
+          <div className="break-all text-small">Project: {handoff.projectPath}</div>
         </div>}
         {!map ? <div className="flex min-h-[340px] items-center justify-center bg-gray-100 p-16 text-center text-gray-700">
           This map has no verified CSDM coordinate calibration. Throw details remain available in the list.
