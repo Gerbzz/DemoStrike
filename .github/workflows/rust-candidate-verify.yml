@@ -41,6 +41,8 @@ jobs:
         run: node tests/original-native-smoke.cjs
         env:
           DEMOSTRIKE_SYNTHETIC_RAW_FACTS: ${{ github.workspace }}/rust-candidate/tests/fixtures/combat-raw.json
+      - name: Rebuild release host without synthetic parser feature
+        run: npm run tauri -- build --config src-tauri/tauri.upstream.smoke.conf.json
       - name: Fetch pinned public CS2 demo for real native UI import
         shell: pwsh
         run: |
@@ -51,6 +53,8 @@ jobs:
           if ((git hash-object -- $fixture) -ne 'e5cc97203262ab36bb756514b02d56eb6bd972a0') { throw 'Public fixture content changed' }
       - name: Import public demo in actual Tauri WebView2 window
         run: node tests/public-native-smoke.cjs
+        env:
+          EXPECT_FEATURE_FREE: '1'
       - name: Upload original app-only capture
         if: always()
         uses: actions/upload-artifact@v4
@@ -170,4 +174,3 @@ jobs:
             rust-candidate/src-tauri/Cargo.lock
           if-no-files-found: warn
           retention-days: 1
-
