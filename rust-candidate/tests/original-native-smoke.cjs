@@ -82,7 +82,7 @@ async function main() {
     await page.getByText('Synthetic CI facts bypassed the CS2 decoder', { exact: false }).waitFor({ timeout: 20000 });
     const importedOverviewScreenshot = path.join(outputDir, 'imported-combat-overview.png');
     await page.screenshot({ path: importedOverviewScreenshot, animations: 'disabled' });
-    await page.getByRole('link', { name: 'Rounds' }).click();
+    await page.getByRole('link', { name: 'Rounds', exact: true }).click();
     await page.getByRole('heading', { name: 'Recorded rounds' }).waitFor({ timeout: 20000 });
     await page.waitForFunction(() => document.querySelectorAll('section[aria-label="Round entries"] details').length === 2, null, { timeout: 20000 });
     await page.locator('section[aria-label="Round entries"] details').first().locator('summary').click();
@@ -119,7 +119,7 @@ async function main() {
     assert.ok((await page.getByText('Stable Team A/B identity, ratings, KAST', { exact: false }).count()) > 0);
     const overviewScreenshot = path.join(outputDir, 'ported-match-overview.png');
     await page.screenshot({ path: overviewScreenshot, animations: 'disabled' });
-    await page.getByRole('link', { name: 'Rounds' }).click();
+    await page.getByRole('link', { name: 'Rounds', exact: true }).click();
     await page.getByRole('heading', { name: 'Recorded rounds' }).waitFor({ timeout: 20000 });
     await page.waitForFunction(() => document.querySelectorAll('section[aria-label="Round entries"] details').length === 3, null, { timeout: 20000 });
     assert.equal(await page.locator('section[aria-label="Round entries"] details').count(), 3);
