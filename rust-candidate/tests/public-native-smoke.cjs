@@ -15,6 +15,20 @@ const cdpUrl = 'http://127.0.0.1:19375';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
+async function captureAppOnly(page, file) {
+  await page.screenshot({ path: file, animations: 'disabled' });
+  // Small previews from the same actual WebView2 window let review inspect
+  // pixels through hosted logs when artifact downloads are unavailable.
+  const preview = await page.screenshot({ type: 'jpeg', quality: 42, animations: 'disabled' });
+  const label = path.basename(file, '.png');
+  const encoded = preview.toString('base64');
+  console.log(`APP_PREVIEW_BEGIN ${label} ${preview.length}`);
+  for (let offset = 0; offset < encoded.length; offset += 4096) {
+    console.log(`APP_PREVIEW_CHUNK ${label} ${offset / 4096} ${encoded.slice(offset, offset + 4096)}`);
+  }
+  console.log(`APP_PREVIEW_END ${label}`);
+}
+
 async function main() {
   assert.equal(process.platform, 'win32');
   assert.ok(fs.existsSync(appPath), `Native app missing: ${appPath}`);
@@ -77,30 +91,30 @@ async function main() {
     await row.waitFor({ timeout: 180000 });
     assert.ok((await row.innerText()).includes('de_mirage'));
     const matchesShot = path.join(outputDir, 'real-demo-matches.png');
-    await page.screenshot({ path: matchesShot, animations: 'disabled' });
+    await captureAppOnly(page, matchesShot);
     await row.dblclick();
     await page.getByRole('heading', { name: 'Recorded combat' }).waitFor({ timeout: 30000 });
     assert.equal(await page.getByText('Synthetic CI fixture:', { exact: false }).count(), 0);
     const overviewShot = path.join(outputDir, 'real-demo-overview.png');
-    await page.screenshot({ path: overviewShot, animations: 'disabled' });
+    await captureAppOnly(page, overviewShot);
     await page.getByRole('link', { name: 'Rounds' }).click();
     await page.getByRole('heading', { name: 'Recorded rounds' }).waitFor({ timeout: 30000 });
     const roundRows = await page.locator('tbody tr').count();
     assert.ok(roundRows >= 10, `Unexpected round count: ${roundRows}`);
     const roundsShot = path.join(outputDir, 'real-demo-rounds.png');
-    await page.screenshot({ path: roundsShot, animations: 'disabled' });
+    await captureAppOnly(page, roundsShot);
     await page.getByRole('link', { name: 'Players' }).click();
     await page.getByRole('heading', { name: 'Recorded players' }).waitFor({ timeout: 30000 });
     const playerRows = await page.locator('tbody tr').count();
     assert.ok(playerRows >= 10, `Unexpected player count: ${playerRows}`);
     const playersShot = path.join(outputDir, 'real-demo-players.png');
-    await page.screenshot({ path: playersShot, animations: 'disabled' });
+    await captureAppOnly(page, playersShot);
     await page.getByRole('link', { name: 'Utility' }).click();
     await page.getByRole('heading', { name: 'Recorded utility' }).waitFor({ timeout: 30000 });
     const utilityRows = await page.locator('tbody tr').count();
     assert.equal(utilityRows, 150);
     const utilityShot = path.join(outputDir, 'real-demo-utility.png');
-    await page.screenshot({ path: utilityShot, animations: 'disabled' });
+    await captureAppOnly(page, utilityShot);
     assert.equal(sha256(demoPath), sourceHash, 'Native import changed public demo bytes');
     assert.deepEqual(pageErrors, [], `Renderer errors: ${pageErrors.join('; ')}`);
     const proof = {
