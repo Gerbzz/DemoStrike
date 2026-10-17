@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OpenFlags, params};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
@@ -8,7 +8,9 @@ use std::path::Path;
 pub enum LibraryError {
     MissingFile,
     InvalidSchema(String),
+    InvalidRequest(String),
     MatchNotFound(i64),
+    RoundNotFound(i64),
     Database(rusqlite::Error),
 }
 
@@ -22,10 +24,12 @@ impl fmt::Display for LibraryError {
             Self::InvalidSchema(detail) => {
                 write!(f, "This is not a compatible DemoStrike library: {detail}")
             }
+            Self::InvalidRequest(detail) => write!(f, "Invalid viewer request: {detail}"),
             Self::MatchNotFound(id) => write!(
                 f,
                 "Match {id} is no longer in this library. Refresh the match list."
             ),
+            Self::RoundNotFound(number) => write!(f, "Round {number} is not in this match."),
             Self::Database(error) => write!(f, "Could not read the library: {error}"),
         }
     }
@@ -206,6 +210,58 @@ pub struct MatchDetail {
     pub utility_events: Vec<UtilityEvent>,
     pub utility_breakdown: Vec<UtilityCount>,
     pub full_combat_coverage: bool,
+}
+
+/// The viewer keeps the demo's absolute tick domain. Older imports report
+/// unavailable instead of interpreting absent rows as an empty replay.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewerRoundMeta {
+    pub round_number: i64,
+    pub start_tick: Option<i64>,
+    pub end_tick: Option<i64>,
+    pub tick_rate: Option<f64>,
+    pub map_name: String,
+    pub positions_available: bool,
+    pub player_sample_count: i64,
+    pub grenade_sample_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewerPlayerFrame {
+    pub tick: i64,
+    pub steamid: String,
+    pub name: String,
+    pub side: Option<String>,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub is_alive: Option<bool>,
+    pub health: Option<i64>,
+    pub yaw: Option<f64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewerGrenadeFrame {
+    pub tick: i64,
+    pub trajectory_index: i64,
+    pub entity_id: i64,
+    pub grenade_type: Option<String>,
+    pub thrower_steamid: Option<String>,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewerFrameChunk {
+    pub start_tick: i64,
+    pub end_tick: i64,
+    pub players: Vec<ViewerPlayerFrame>,
+    pub grenades: Vec<ViewerGrenadeFrame>,
 }
 
 fn has_full_combat(connection: &Connection, capability: &str) -> Result<bool, LibraryError> {
@@ -476,6 +532,146 @@ pub fn list_matches(path: &str) -> Result<LibrarySnapshot, LibraryError> {
     Ok(LibrarySnapshot {
         path: path.to_owned(),
         matches: read_matches(&connection)?,
+    })
+}
+
+pub fn get_viewer_round(
+    path: &str,
+    match_id: i64,
+    round_number: i64,
+) -> Result<ViewerRoundMeta, LibraryError> {
+    let connection = open_library(path)?;
+    let summary = read_matches(&connection)?
+        .into_iter()
+        .find(|item| item.id == match_id)
+        .ok_or(LibraryError::MatchNotFound(match_id))?;
+    let bounds: Option<(Option<i64>, Option<i64>)> = connection
+        .query_row(
+            "SELECT start_tick,end_tick FROM rounds WHERE match_id=?1 AND round_number=?2",
+            params![match_id, round_number],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let (start_tick, end_tick) = bounds.ok_or(LibraryError::RoundNotFound(round_number))?;
+    let schema_version: i64 =
+        connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let mut player_sample_count = 0;
+    let mut grenade_sample_count = 0;
+    let mut version = None;
+    if schema_version >= 10 && has_column(&connection, "matches", "viewer_position_version")? {
+        version = connection.query_row(
+            "SELECT viewer_position_version FROM matches WHERE id=?1",
+            [match_id],
+            |row| row.get::<_, Option<i64>>(0),
+        )?;
+        if version == Some(1) {
+            player_sample_count = connection.query_row(
+                "SELECT COUNT(*) FROM viewer_player_positions WHERE match_id=?1 AND round_number=?2",
+                params![match_id,round_number], |row| row.get(0))?;
+            grenade_sample_count = connection.query_row(
+                "SELECT COUNT(*) FROM viewer_grenade_positions WHERE match_id=?1 AND round_number=?2",
+                params![match_id,round_number], |row| row.get(0))?;
+        }
+    }
+    Ok(ViewerRoundMeta {
+        round_number,
+        start_tick,
+        end_tick,
+        tick_rate: summary
+            .tick_rate
+            .filter(|rate| rate.is_finite() && *rate > 0.0),
+        map_name: summary.map_name,
+        positions_available: version == Some(1)
+            && player_sample_count > 0
+            && matches!((start_tick,end_tick), (Some(start),Some(end)) if start < end),
+        player_sample_count,
+        grenade_sample_count,
+    })
+}
+
+/// Return at most eight seconds at 64 ticks/s per IPC call. Seek and playback
+/// share the same absolute tick; the service never fabricates intermediate
+/// coordinates or continues a projectile after its last observed frame.
+pub fn get_viewer_frames(
+    path: &str,
+    match_id: i64,
+    round_number: i64,
+    start_tick: i64,
+    end_tick: i64,
+) -> Result<ViewerFrameChunk, LibraryError> {
+    let meta = get_viewer_round(path, match_id, round_number)?;
+    if !meta.positions_available {
+        return Err(LibraryError::InvalidRequest(
+            "this round has no verified native position stream".into(),
+        ));
+    }
+    if start_tick < meta.start_tick.unwrap()
+        || end_tick > meta.end_tick.unwrap()
+        || end_tick < start_tick
+        || end_tick - start_tick > 511
+    {
+        return Err(LibraryError::InvalidRequest(
+            "window must be within one recorded round and at most 512 ticks".into(),
+        ));
+    }
+    let connection = open_library(path)?;
+    let mut players = Vec::new();
+    let mut query = connection.prepare(
+        "SELECT tick,steamid,name,side,x,y,z,is_alive,health,yaw
+        FROM viewer_player_positions WHERE match_id=?1 AND round_number=?2
+        AND tick BETWEEN ?3 AND ?4 ORDER BY tick,steamid",
+    )?;
+    let rows = query.query_map(
+        params![match_id, round_number, start_tick, end_tick],
+        |row| {
+            let is_alive: Option<i64> = row.get(7)?;
+            Ok(ViewerPlayerFrame {
+                tick: row.get(0)?,
+                steamid: row.get(1)?,
+                name: row.get(2)?,
+                side: row.get(3)?,
+                x: row.get(4)?,
+                y: row.get(5)?,
+                z: row.get(6)?,
+                is_alive: is_alive.map(|value| value != 0),
+                health: row.get(8)?,
+                yaw: row.get(9)?,
+            })
+        },
+    )?;
+    for row in rows {
+        players.push(row?);
+    }
+    let mut grenades = Vec::new();
+    let mut query = connection.prepare(
+        "SELECT tick,trajectory_index,entity_id,grenade_type,
+        thrower_steamid,x,y,z FROM viewer_grenade_positions
+        WHERE match_id=?1 AND round_number=?2 AND tick BETWEEN ?3 AND ?4
+        ORDER BY tick,trajectory_index",
+    )?;
+    let rows = query.query_map(
+        params![match_id, round_number, start_tick, end_tick],
+        |row| {
+            Ok(ViewerGrenadeFrame {
+                tick: row.get(0)?,
+                trajectory_index: row.get(1)?,
+                entity_id: row.get(2)?,
+                grenade_type: row.get(3)?,
+                thrower_steamid: row.get(4)?,
+                x: row.get(5)?,
+                y: row.get(6)?,
+                z: row.get(7)?,
+            })
+        },
+    )?;
+    for row in rows {
+        grenades.push(row?);
+    }
+    Ok(ViewerFrameChunk {
+        start_tick,
+        end_tick,
+        players,
+        grenades,
     })
 }
 

@@ -24,6 +24,8 @@ assert.ok(bundle.includes('Recorded utility') && bundle.includes('This match ana
 assert.ok(bundle.includes('csdm_choose_library'), 'Native library picker was not included');
 assert.ok(bundle.includes('csdm_enqueue_demo') && bundle.includes('csdm_list_import_jobs') && bundle.includes('csdm_choose_demo'), 'Native demo import queue was not included');
 assert.ok(bundle.includes('csdm_list_demo_files') && bundle.includes('csdm_choose_demo_folder'), 'Read-only demo-folder route was not included');
+assert.ok(bundle.includes('get_viewer_round') && bundle.includes('get_viewer_frames')
+  && bundle.includes('Choose local radar PNG'), 'Native absolute-tick 2D viewer was not included');
 assert.ok(!bundle.includes('WS:: connecting to server'), 'Electron WebSocket client remained in the ported bundle');
 assert.ok(styles.includes('.gap-x-8'), 'Original UI spacing classes were not generated');
 console.log('PASS: ported original renderer contains the Tauri adapter and no Electron WebSocket startup');

@@ -51,10 +51,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Public fixture download failed' }
           if ((Get-Item -LiteralPath $fixture).Length -ne 60601900) { throw 'Public fixture size changed' }
           if ((git hash-object -- $fixture) -ne 'e5cc97203262ab36bb756514b02d56eb6bd972a0') { throw 'Public fixture content changed' }
+      - name: Fetch hash-pinned public CSDM radar for transient native capture
+        shell: pwsh
+        run: |
+          $radar = Join-Path $env:RUNNER_TEMP 'de_mirage-radar.png'
+          curl.exe --fail --location --retry 2 --max-filesize 200000 --max-time 60 --output $radar 'https://raw.githubusercontent.com/akiver/cs-demo-manager/7270bc95c8cab87b7f9ddd490fea13c6eda3ace7/static/images/maps/cs2/radars/de_mirage.png'
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned CSDM radar download failed' }
+          if ((Get-Item -LiteralPath $radar).Length -ne 144543) { throw 'Pinned CSDM radar size changed' }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $radar).Hash.ToLowerInvariant() -ne 'af139a92cf929214f7c0ac35e2d8c82bad385d83e71eeaf7b955dac96467a136') { throw 'Pinned CSDM radar content changed' }
       - name: Import public demo in actual Tauri WebView2 window
         run: node tests/public-native-smoke.cjs
         env:
           EXPECT_FEATURE_FREE: '1'
+          CSDM_PUBLIC_RADAR_PATH: ${{ runner.temp }}/de_mirage-radar.png
       - name: Fetch licensed Ancient demo for restart acceptance
         shell: pwsh
         run: |

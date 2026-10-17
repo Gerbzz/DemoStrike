@@ -68,6 +68,7 @@ export function MatchLoader() {
       <TabLink url="duels" end={false}>Duels</TabLink>
       <TabLink url="players" end={false}>Players</TabLink>
       <TabLink url="grenades" end={false}>Utility</TabLink>
+      <TabLink url="viewer-2d" end={false}>2D Viewer</TabLink>
     </TabLinks>
     <Outlet />
   </MatchContext.Provider>;

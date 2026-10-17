@@ -227,6 +227,72 @@ async function main() {
     assert.equal(utilityRows, 150);
     const utilityShot = path.join(outputDir, 'real-demo-utility.png');
     await captureAppOnly(page, utilityShot);
+    // The original CSDM viewer route is fed by bounded native frame chunks.
+    // A transient, hash-pinned CSDM radar is selected only in this test run.
+    await page.getByRole('link', { name: '2D Viewer' }).click();
+    await page.getByRole('heading', { name: /2D viewer.*Round 1/ }).waitFor({ timeout: 30000 });
+    const radarPath = process.env.CSDM_PUBLIC_RADAR_PATH;
+    assert.ok(radarPath && fs.existsSync(radarPath), 'Pinned test radar was not downloaded');
+    await page.getByLabel('Choose local radar PNG').setInputFiles(radarPath);
+    await page.locator('section[aria-label="Recorded map"] svg image').waitFor({ timeout: 15000 });
+    const viewerFacts = await page.evaluate(async () => {
+      const library = localStorage.getItem('csdm-port-selected-library');
+      const matchId = Number(location.hash.match(/local-(\d+)/)?.[1]);
+      if (!library || !Number.isSafeInteger(matchId)) throw new Error('Local viewer route not available');
+      const invoke = window.__TAURI_INTERNALS__.invoke;
+      const meta = await invoke('get_viewer_round', { path: library, matchId, roundNumber: 1 });
+      if (!meta.positionsAvailable) throw new Error('Native frame stream was not persisted');
+      let candidate = null;
+      for (let start = meta.startTick; start <= meta.endTick; start += 512) {
+        const chunk = await invoke('get_viewer_frames', {
+          path: library, matchId, roundNumber: 1,
+          startTick: start, endTick: Math.min(start + 511, meta.endTick),
+        });
+        const grenade = chunk.grenades.find((frame) => chunk.players.some((player) => player.tick === frame.tick));
+        if (grenade) { candidate = { tick: grenade.tick, players: chunk.players.filter((player) => player.tick === grenade.tick).length,
+          grenades: chunk.grenades.filter((frame) => frame.tick === grenade.tick).length }; break; }
+      }
+      return { meta, candidate };
+    });
+    assert.ok(viewerFacts.meta.playerSampleCount > 1000, 'Native player frame stream is unexpectedly sparse');
+    assert.ok(viewerFacts.meta.grenadeSampleCount > 0, 'Native projectile frame stream is absent');
+    assert.ok(viewerFacts.candidate, 'No synchronized player and projectile frame was found');
+    const timeline = page.getByRole('slider', { name: 'Round timeline' });
+    await timeline.evaluate((element, selectedTick) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(element, String(selectedTick));
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    }, viewerFacts.candidate.tick);
+    await page.waitForFunction((selectedTick) => {
+      const root = document.querySelector('[data-current-tick]');
+      return Number(root?.getAttribute('data-current-tick')) === selectedTick
+        && Number(root?.getAttribute('data-observed-tick')) === selectedTick
+        && Number(root?.getAttribute('data-player-count')) > 0
+        && Number(root?.getAttribute('data-grenade-count')) > 0;
+    }, viewerFacts.candidate.tick, { timeout: 30000 });
+    const viewerSeekShot = path.join(outputDir, 'real-demo-viewer-seek.png');
+    await captureAppOnly(page, viewerSeekShot);
+    await page.getByRole('button', { name: 'Play replay' }).click();
+    await page.waitForFunction((selectedTick) =>
+      Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')) > selectedTick,
+    viewerFacts.candidate.tick, { timeout: 15000 });
+    await page.getByRole('button', { name: 'Pause replay' }).click();
+    const pausedTick = Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick'));
+    await sleep(500);
+    assert.equal(Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick')), pausedTick,
+      'Pause did not hold the synchronized absolute tick');
+    await page.getByRole('button', { name: 'Play replay' }).click();
+    await page.waitForFunction((paused) =>
+      Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')) > paused,
+    pausedTick, { timeout: 15000 });
+    await page.getByRole('button', { name: 'Pause replay' }).click();
+    await page.getByRole('link', { name: 'Next round' }).click();
+    await page.getByRole('heading', { name: /2D viewer.*Round 2/ }).waitFor({ timeout: 30000 });
+    await page.waitForFunction(() => Number(document.querySelector('[data-player-count]')?.getAttribute('data-player-count')) > 0,
+      null, { timeout: 30000 });
+    const viewerRoundShot = path.join(outputDir, 'real-demo-viewer-next-round.png');
+    await captureAppOnly(page, viewerRoundShot);
     // Exercise failure recovery in the same native window. Neither attempt
     // may replace or duplicate the successfully imported match.
     await page.evaluate(() => { location.hash = '#/matches'; });
@@ -257,8 +323,8 @@ async function main() {
       featureFreeReleaseBuild: featureFree,
       syntheticEnvironmentDeliberatelySet: featureFree,
       parserCapability: capability,
-      observed: { roundRows, playerRows, playerDetailRows, utilityRows, nativeFacts },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, effectiveDamageShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, duplicateShot, invalidShot]
+      observed: { roundRows, playerRows, playerDetailRows, utilityRows, nativeFacts, viewerFacts, pausedTick },
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, effectiveDamageShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, viewerSeekShot, viewerRoundShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',

@@ -16,6 +16,27 @@ fn get_match_detail(path: String, match_id: i64) -> Result<MatchDetail, String> 
     library::get_match_detail(&path, match_id).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn get_viewer_round(
+    path: String,
+    match_id: i64,
+    round_number: i64,
+) -> Result<library::ViewerRoundMeta, String> {
+    library::get_viewer_round(&path, match_id, round_number).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn get_viewer_frames(
+    path: String,
+    match_id: i64,
+    round_number: i64,
+    start_tick: i64,
+    end_tick: i64,
+) -> Result<library::ViewerFrameChunk, String> {
+    library::get_viewer_frames(&path, match_id, round_number, start_tick, end_tick)
+        .map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -33,6 +54,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_matches,
             get_match_detail,
+            get_viewer_round,
+            get_viewer_frames,
             import::csdm_import_demo,
             import::csdm_choose_demo,
             import_queue::csdm_enqueue_demo,

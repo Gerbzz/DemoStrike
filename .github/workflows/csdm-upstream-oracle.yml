@@ -8,6 +8,7 @@ on:
       - 'src/analysis/mod.rs'
       - 'src/db/**'
       - 'tests/csdm_oracle_inventory.py'
+      - 'tests/csdm_position_oracle.py'
   workflow_dispatch:
 
 permissions:
@@ -64,6 +65,15 @@ jobs:
         run: cargo run --locked --bin demostrike-cli -- import-demo "$RUNNER_TEMP/public-cs2-fixture.dem" "$RUNNER_TEMP/oracle-demostrike.sqlite"
       - name: Inventory both outputs for explicit reviewed field mapping
         run: python tests/csdm_oracle_inventory.py
+      - name: Export original analyzer position frames to hosted temporary storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/csdm-position-oracle"
+          "$RUNNER_TEMP/csda" -demo-path="$RUNNER_TEMP/public-cs2-fixture.dem" \
+            -output="$RUNNER_TEMP/csdm-position-oracle" -format=csv -positions
+      - name: Compare native frame positions to pinned original analyzer
+        run: python tests/csdm_position_oracle.py
       - name: Fetch second public CS2 recording with bounded transient storage
         shell: bash
         run: |
@@ -96,6 +106,7 @@ jobs:
           path: |
             ${{ runner.temp }}/csdm-oracle-inventory.json
             ${{ runner.temp }}/csdm-oracle-comparison.json
+            ${{ runner.temp }}/csdm-position-comparison.json
             ${{ runner.temp }}/csdm-oracle/*.json
             ${{ runner.temp }}/ancient/csdm-oracle-inventory.json
             ${{ runner.temp }}/ancient/csdm-oracle-comparison.json

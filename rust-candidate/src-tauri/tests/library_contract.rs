@@ -1,5 +1,6 @@
 use demostrike_rust_candidate::library::{
-    ScoreRelation, get_match_detail, list_matches, score_relation,
+    get_match_detail, get_viewer_frames, get_viewer_round, list_matches, score_relation,
+    ScoreRelation,
 };
 use rusqlite::Connection;
 use tempfile::tempdir;
@@ -100,6 +101,49 @@ fn loads_rounds_players_and_utility_for_selected_match() {
 }
 
 #[test]
+fn viewer_reads_absolute_tick_frames_but_never_invents_legacy_positions() {
+    let (_dir, path) = fixture();
+    let before = std::fs::read(&path).unwrap();
+    let old = get_viewer_round(&path, 1, 1).unwrap();
+    assert!(!old.positions_available);
+    assert_eq!(old.player_sample_count, 0);
+    assert!(get_viewer_frames(&path, 1, 1, 100, 110).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+
+    let db = Connection::open(&path).unwrap();
+    db.execute_batch("PRAGMA user_version=10;
+        ALTER TABLE matches ADD COLUMN viewer_position_version INTEGER;
+        ALTER TABLE matches ADD COLUMN tick_rate REAL;
+        UPDATE matches SET viewer_position_version=1,tick_rate=64 WHERE id=1;
+        CREATE TABLE viewer_player_positions (match_id INTEGER,round_number INTEGER,tick INTEGER,
+          steamid TEXT,name TEXT,side TEXT,x REAL,y REAL,z REAL,is_alive INTEGER,health INTEGER,yaw REAL);
+        CREATE TABLE viewer_grenade_positions (match_id INTEGER,round_number INTEGER,tick INTEGER,
+          trajectory_index INTEGER,entity_id INTEGER,grenade_type TEXT,thrower_steamid TEXT,x REAL,y REAL,z REAL);
+        INSERT INTO viewer_player_positions VALUES
+          (1,1,100,'7656','Tester','CT',10,20,30,1,87,45),
+          (1,1,101,'7656','Tester','CT',11,21,31,1,87,46),
+          (1,1,102,'7656','Tester','CT',12,22,32,0,0,47);
+        INSERT INTO viewer_grenade_positions VALUES
+          (1,1,101,3,44,'CSmokeGrenadeProjectile','7656',40,50,60);").unwrap();
+    let meta = get_viewer_round(&path, 1, 1).unwrap();
+    assert!(meta.positions_available);
+    assert_eq!(meta.tick_rate, Some(64.0));
+    assert_eq!(
+        (meta.player_sample_count, meta.grenade_sample_count),
+        (3, 1)
+    );
+    let chunk = get_viewer_frames(&path, 1, 1, 101, 102).unwrap();
+    assert_eq!(
+        chunk.players.iter().map(|row| row.tick).collect::<Vec<_>>(),
+        vec![101, 102]
+    );
+    assert_eq!(chunk.players[1].is_alive, Some(false));
+    assert_eq!(chunk.grenades[0].entity_id, 44);
+    assert!(get_viewer_frames(&path, 1, 1, 100, 201).is_err());
+    assert!(get_viewer_frames(&path, 1, 1, 102, 101).is_err());
+}
+
+#[test]
 fn full_combat_is_read_only_and_gated_by_schema_and_parser_provenance() {
     let (_dir, path) = fixture();
     let db = Connection::open(&path).unwrap();
@@ -141,11 +185,9 @@ fn full_combat_is_read_only_and_gated_by_schema_and_parser_provenance() {
         [],
     )
     .unwrap();
-    assert!(
-        get_match_detail(&path, 1).unwrap().players[0]
-            .combat
-            .is_none()
-    );
+    assert!(get_match_detail(&path, 1).unwrap().players[0]
+        .combat
+        .is_none());
 }
 
 #[test]

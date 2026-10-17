@@ -43,9 +43,12 @@ pub struct RawDemo {
     pub trajectory_stats: RawTrajectoryStats,
     #[serde(default)]
     pub economy: Vec<RawEconomy>,
-    /// Alive player positions sampled at every detonation tick.
+    /// Frame-end player positions. Legacy raw facts may contain detonation-only samples.
     #[serde(default)]
     pub positions: Vec<RawPosition>,
+    /// Native frame-end player stream. Reference facts and older imports omit it.
+    #[serde(default)]
+    pub position_stream_available: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -65,6 +68,12 @@ pub struct RawPosition {
     pub x: Option<f64>,
     pub y: Option<f64>,
     pub z: Option<f64>,
+    #[serde(default)]
+    pub is_alive: Option<bool>,
+    #[serde(default)]
+    pub health: Option<i64>,
+    #[serde(default)]
+    pub yaw: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

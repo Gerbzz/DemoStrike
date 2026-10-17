@@ -77,6 +77,26 @@ export type MatchDetail = {
   }[];
 };
 
+export type ViewerRoundMeta = {
+  roundNumber: number; startTick: number | null; endTick: number | null;
+  tickRate: number | null; mapName: string; positionsAvailable: boolean;
+  playerSampleCount: number; grenadeSampleCount: number;
+};
+export type ViewerPlayerFrame = {
+  tick: number; steamid: string; name: string; side: string | null;
+  x: number; y: number; z: number; isAlive: boolean | null;
+  health: number | null; yaw: number | null;
+};
+export type ViewerGrenadeFrame = {
+  tick: number; trajectoryIndex: number; entityId: number;
+  grenadeType: string | null; throwerSteamid: string | null;
+  x: number; y: number; z: number;
+};
+export type ViewerFrameChunk = {
+  startTick: number; endTick: number;
+  players: ViewerPlayerFrame[]; grenades: ViewerGrenadeFrame[];
+};
+
 export const libraryPathKey = 'csdm-port-selected-library';
 export const matchRouteKey = (id: number) => `local-${id}`;
 export function matchIdFromRoute(key: string | undefined) {
