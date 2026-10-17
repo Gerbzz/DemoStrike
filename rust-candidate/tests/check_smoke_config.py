@@ -33,6 +33,9 @@ assert "--remote-debugging-address=127.0.0.1" in original_window["additionalBrow
 assert "--remote-debugging-port=19375" in original_window["additionalBrowserArgs"]
 assert original_window["dataDirectory"] == "demostrike-csdm-ci-webview2"
 assert "tauri.upstream.smoke.conf.json" in workflow
+assert "Rebuild release host without synthetic parser feature" in workflow
+assert "npm run tauri -- build --config src-tauri/tauri.upstream.smoke.conf.json\n" in workflow
+assert "EXPECT_FEATURE_FREE: '1'" in workflow
 assert original_normal["app"]["security"]["csp"] == normal["app"]["security"]["csp"]
 assert original_smoke["app"]["security"]["csp"] == normal["app"]["security"]["csp"]
 print("PASS: normal Tauri windows have no CDP flags; both hosted smoke windows bind loopback with distinct data")
