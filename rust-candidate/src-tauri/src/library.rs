@@ -89,8 +89,29 @@ pub struct RoundSummary {
     pub round_number: i64,
     pub winner: Option<String>,
     pub start_tick: Option<i64>,
+    pub freeze_end_tick: Option<i64>,
     pub end_tick: Option<i64>,
+    pub end_reason: Option<String>,
+    pub ct_equip_value: Option<i64>,
+    pub t_equip_value: Option<i64>,
     pub combat: Option<RoundCombat>,
+    /// None means this import has no verified ordered combat stream. An
+    /// empty array means the stream exists but this round has no deaths.
+    pub deaths: Option<Vec<RoundDeath>>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoundDeath {
+    pub source_index: i64,
+    pub event_order: Option<i64>,
+    pub tick: i64,
+    pub weapon: Option<String>,
+    pub attacker_steamid: Option<String>,
+    pub attacker_side: Option<String>,
+    pub victim_steamid: String,
+    pub victim_side: Option<String>,
+    pub assister_steamid: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -186,6 +207,38 @@ fn has_full_combat(connection: &Connection, capability: &str) -> Result<bool, Li
     ]
     .iter()
     .all(|required| columns.iter().any(|column| column == required)))
+}
+
+fn has_ordered_combat_deaths(
+    connection: &Connection,
+    capability: &str,
+) -> Result<bool, LibraryError> {
+    if capability != "native-combat-full-v2" {
+        return Ok(false);
+    }
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version < 8 {
+        return Ok(false);
+    }
+    let mut statement = connection.prepare("PRAGMA table_info(raw_combat_deaths)")?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok([
+        "match_id",
+        "source_index",
+        "event_order",
+        "tick",
+        "round_number",
+        "weapon",
+        "attacker_steamid",
+        "attacker_side",
+        "victim_steamid",
+        "victim_side",
+        "assister_steamid",
+    ]
+    .iter()
+    .all(|column| columns.iter().any(|name| name == column)))
 }
 
 fn open_library(path: &str) -> Result<Connection, LibraryError> {
@@ -377,19 +430,77 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
         }
     }
 
-    let mut rounds_query = connection.prepare(
-        "SELECT round_number, winner, start_tick, end_tick FROM rounds
-         WHERE match_id = ?1 ORDER BY round_number",
-    )?;
+    let mut deaths_by_round = None;
+    if full_combat_coverage && has_ordered_combat_deaths(&connection, &summary.parser_capability)? {
+        let mut query = connection.prepare(
+            "SELECT source_index, event_order, tick, round_number, weapon,
+                    attacker_steamid, attacker_side, victim_steamid, victim_side, assister_steamid
+             FROM raw_combat_deaths WHERE match_id = ?1
+             ORDER BY tick, event_order, source_index",
+        )?;
+        let records = query.query_map([match_id], |row| {
+            Ok((
+                row.get::<_, i64>(3)?,
+                RoundDeath {
+                    source_index: row.get(0)?,
+                    event_order: row.get(1)?,
+                    tick: row.get(2)?,
+                    weapon: row.get(4)?,
+                    attacker_steamid: row.get(5)?,
+                    attacker_side: row.get(6)?,
+                    victim_steamid: row.get(7)?,
+                    victim_side: row.get(8)?,
+                    assister_steamid: row.get(9)?,
+                },
+            ))
+        })?;
+        let mut grouped: HashMap<i64, Vec<RoundDeath>> = HashMap::new();
+        for record in records {
+            let (round, death) = record?;
+            grouped.entry(round).or_default().push(death);
+        }
+        // An older match can be migrated to schema v8 without ever having
+        // recorded raw events. Do not turn that absence into a measured zero.
+        if !grouped.is_empty() {
+            deaths_by_round = Some(grouped);
+        }
+    }
+
+    let mut columns_query = connection.prepare("PRAGMA table_info(rounds)")?;
+    let round_columns = columns_query
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let optional_round = |name: &str| {
+        if round_columns.iter().any(|column| column == name) {
+            name.to_owned()
+        } else {
+            "NULL".to_owned()
+        }
+    };
+
+    let rounds_sql = format!(
+        "SELECT round_number, winner, start_tick, end_tick, {}, {}, {}, {}
+         FROM rounds WHERE match_id = ?1 ORDER BY round_number",
+        optional_round("freeze_end_tick"),
+        optional_round("end_reason"),
+        optional_round("ct_equip_value"),
+        optional_round("t_equip_value"),
+    );
+    let mut rounds_query = connection.prepare(&rounds_sql)?;
     let rounds = rounds_query
         .query_map([match_id], |row| {
+            let round_number = row.get::<_, i64>(0)?;
             Ok(RoundSummary {
-                round_number: row.get(0)?,
+                round_number,
                 winner: row.get(1)?,
                 start_tick: row.get(2)?,
+                freeze_end_tick: row.get(4)?,
                 end_tick: row.get(3)?,
+                end_reason: row.get(5)?,
+                ct_equip_value: row.get(6)?,
+                t_equip_value: row.get(7)?,
                 combat: combat_by_round
-                    .get(&row.get::<_, i64>(0)?)
+                    .get(&round_number)
                     .map(|records| RoundCombat {
                         ct_players: records
                             .iter()
@@ -407,6 +518,9 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
                             .iter()
                             .try_fold(0_i64, |sum, item| Some(sum + item.enemy_kills?)),
                     }),
+                deaths: deaths_by_round
+                    .as_ref()
+                    .map(|groups| groups.get(&round_number).cloned().unwrap_or_default()),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
