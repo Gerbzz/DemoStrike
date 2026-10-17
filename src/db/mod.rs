@@ -555,6 +555,13 @@ mod capability_migration_tests {
                 |row| row.get(0),
             )
             .unwrap();
+        let bomb_capability: Option<i64> = conn
+            .query_row(
+                "SELECT viewer_bomb_version FROM matches WHERE id=7",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         let annotations: (i64, i64, i64, i64) = conn
             .query_row(
                 "SELECT e.favorite,
@@ -566,7 +573,8 @@ mod capability_migration_tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .unwrap();
-        assert_eq!(version, 10);
+        assert_eq!(version, 11);
+        assert_eq!(bomb_capability, None);
         assert_eq!(player, "preserved");
         assert_eq!(combat, 0);
         assert_eq!(raw_combat, 0);
