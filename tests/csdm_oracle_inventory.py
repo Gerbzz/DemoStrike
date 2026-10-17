@@ -154,6 +154,8 @@ def match_round(event):
 
 in_match_deaths = [dict(event, roundNumber=match_round(event))
                    for event in native_deaths if match_round(event) is not None]
+in_match_hurts = [dict(event, roundNumber=match_round(event))
+                  for event in native_hurts if match_round(event) is not None]
 
 player_comparison = []
 for steamid, upstream in sorted(oracle.get("players", {}).items()):
@@ -168,13 +170,17 @@ for steamid, upstream in sorted(oracle.get("players", {}).items()):
 comparison = {
     "status": "unreviewed independent comparison; differences do not update any expected fixture",
     "roundFieldDifferences": round_comparison,
-    "damageEventIdentityWithoutAmount": event_differences(
-        oracle.get("damages", []), native_hurts,
+    "damageEventIdentityWithinMatchWithoutAmount": event_differences(
+        oracle.get("damages", []), in_match_hurts,
         damage_fields,
     ),
     "damageAmountSemantics": {"upstream": "effective health removed",
                               "native": "raw dmg_health including overkill",
                               "differentEventCount": len(damage_amount_differences),
+                              "nativeHigherEventCount": sum(sum(item["nativeRaw"]) > sum(item["upstreamEffective"])
+                                                            for item in damage_amount_differences),
+                              "nativeLowerEventCount": sum(sum(item["nativeRaw"]) < sum(item["upstreamEffective"])
+                                                           for item in damage_amount_differences),
                               "samples": damage_amount_differences[:12]},
     "killVsInMatchDeathIdentity": event_differences(
         oracle.get("kills", []), in_match_deaths,
