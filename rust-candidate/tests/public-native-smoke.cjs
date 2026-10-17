@@ -304,12 +304,11 @@ async function main() {
       return Math.abs(Number(root?.getAttribute('data-current-tick')) - selectedTick) < 128
         && Number(root?.getAttribute('data-player-count')) > 0;
     }, viewerFacts.candidate.tick, { timeout: 30000 });
-    const seekTick = Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick'));
+    // The original CSDM timeline click calls play(newTick). Observe that
+    // transition before toggling Space so the smoke never samples a pause.
+    await page.locator('[data-is-playing="true"]').waitFor({ timeout: 15000 });
     await page.keyboard.press('Space');
-    await page.waitForFunction((tick) =>
-      Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')) >= tick + 8,
-    seekTick, { timeout: 15000 });
-    await page.keyboard.press('Space');
+    await page.locator('[data-is-playing="false"]').waitFor({ timeout: 15000 });
     const viewerText = await page.locator('[data-current-tick]').innerText();
     assert.ok(!viewerText.includes('\uFFFD'), 'Viewer contains a broken replacement glyph');
     assert.ok(await page.locator('[data-original-csdm-viewer="true"] canvas').count() >= 2,
@@ -319,6 +318,7 @@ async function main() {
     const viewerSeekShot = path.join(outputDir, 'real-demo-viewer-seek.png');
     await captureAppOnly(page, viewerSeekShot);
     await page.keyboard.press('Space');
+    await page.locator('[data-is-playing="true"]').waitFor({ timeout: 15000 });
     const playbackSample = () => page.evaluate(() => ({
       tick: Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')),
       wall: performance.now(),
@@ -327,6 +327,7 @@ async function main() {
     await sleep(1200);
     const oneXEnd = await playbackSample();
     await page.keyboard.press('Space');
+    await page.locator('[data-is-playing="false"]').waitFor({ timeout: 15000 });
     const oneXElapsed = (oneXEnd.wall - oneXStart.wall) / 1000;
     const pausedTick = Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick'));
     const oneXRate = (oneXEnd.tick - oneXStart.tick) / oneXElapsed;
@@ -338,10 +339,12 @@ async function main() {
     await page.keyboard.press('ArrowRight');
     await page.getByText('1.5x', { exact: true }).waitFor({ timeout: 5000 });
     await page.keyboard.press('Space');
+    await page.locator('[data-is-playing="true"]').waitFor({ timeout: 15000 });
     const fastStart = await playbackSample();
     await sleep(1200);
     const fastEnd = await playbackSample();
     await page.keyboard.press('Space');
+    await page.locator('[data-is-playing="false"]').waitFor({ timeout: 15000 });
     const fastElapsed = (fastEnd.wall - fastStart.wall) / 1000;
     const fastRate = (fastEnd.tick - fastStart.tick) / fastElapsed;
     const speedRatio = fastRate / oneXRate;

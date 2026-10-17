@@ -193,6 +193,7 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap }: {
   return <div className="original-viewer-bridge relative flex min-h-0 flex-1 flex-col" data-original-csdm-viewer="true"
     data-round-number={recorded.roundNumber}
     data-radar-selected={radarBitmap ? 'true' : 'false'}
+    data-is-playing={isPlaying ? 'true' : 'false'}
     data-current-tick={currentTick} data-player-count={frames.players.filter((row) => row.tick === currentTick).length}
     data-unknown-alive-count={frames.players.filter((row) => row.tick === currentTick && row.isAlive === null).length}
     data-grenade-detonation-count={lifecycle.recorded.length}
