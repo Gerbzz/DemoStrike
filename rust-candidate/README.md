@@ -6,7 +6,7 @@ The first implemented slice reads an existing DemoStrike SQLite import and shows
 
 ## Intended development run
 
-Install dependencies only in an environment with sufficient disk space, then run `npm install` and `npm run tauri dev`. Use Browse or the path field to open an existing DemoStrike `.sqlite` file. This work session did not install packages, compile Rust, run Tauri, or produce a native screenshot because the Office disk floor prohibits local builds and executable downloads. No release binary is provided.
+Install dependencies only in an environment with sufficient disk space, then run `npm install` and `npm run tauri dev`. Use Browse or the path field to open an existing DemoStrike `.sqlite` file. Local preparation did not install packages, compile Rust, run Tauri, or produce a native screenshot because the Office disk floor prohibits local builds and executable downloads. Hosted CI later built the source, but no release binary is provided.
 
 ## Source map
 
@@ -20,6 +20,6 @@ Install dependencies only in an environment with sufficient disk space, then run
 - `docs/REUSE_AUDIT.md`: exact upstream influence, copied notice, license gates and source scan.
 - `docs/INTEGRATION_PARITY.md`: integration boundaries and negative tests.
 
-The prepared GitHub Actions workflow runs only for a pull request or manual dispatch after publication is explicitly authorized. It has read-only repository permissions, no artifacts or release step, and has not run. Dependency lockfiles and a hosted license audit are still required before distribution.
+The repository-root [GitHub Actions workflow](../.github/workflows/rust-candidate-verify.yml) ran successfully on [draft PR #3](https://github.com/Gerbzz/DemoStrike/pull/3) at commit `5d9d80a` on hosted Windows: frontend typecheck/build, score contract, Rust tests, and native executable compilation passed. The executable was not launched or packaged, and no candidate GUI screenshot exists. The workflow has read-only repository permissions and no artifact or release step. Dependency lockfiles and a hosted license audit are still required before distribution.
 
 The current Rust service contract is deliberately narrower than the upstream PostgreSQL, analyzer, Game Coordinator, and plugin contracts. Their gaps are tracked in the ledger and parity document.
