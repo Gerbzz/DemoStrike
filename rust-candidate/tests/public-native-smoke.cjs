@@ -116,6 +116,15 @@ async function main() {
         deaths: detail.rounds.reduce((count, round) => count + (round.deaths?.length ?? 0), 0),
         hurts: detail.rounds.reduce((count, round) => count + (round.hurts?.length ?? 0), 0),
         missingStreams: detail.rounds.filter((round) => round.deaths === null || round.hurts === null).length,
+        unknownEffectiveHurts: detail.rounds.flatMap((round) => round.hurts ?? [])
+          .filter((hurt) => hurt.effectiveDamage === null).length,
+        overkillHurts: detail.rounds.flatMap((round) => round.hurts ?? [])
+          .filter((hurt) => hurt.effectiveDamage !== null && hurt.rawDamage > hurt.effectiveDamage).length,
+        teamSides: detail.rounds.map((round) => [round.teamASide, round.teamBSide]),
+        effectivePlayers: detail.players.filter((player) => player.combat?.effectiveEnemyHealthDamage !== null
+          && player.combat?.effectiveEnemyHealthDamage !== undefined).length,
+        stablePlayers: detail.players.filter((player) => player.combat?.stableTeam === 'A'
+          || player.combat?.stableTeam === 'B').length,
       };
     });
     const capability = nativeFacts.capability;
@@ -124,6 +133,12 @@ async function main() {
     assert.equal(nativeFacts.deaths, 64, 'Persisted in-match deaths were not attributed to recorded rounds');
     assert.equal(nativeFacts.hurts, 264, 'Persisted raw damage event identities did not reach the native service');
     assert.equal(nativeFacts.missingStreams, 0, 'A verified round lost its raw combat stream');
+    assert.equal(nativeFacts.unknownEffectiveHurts, 0, 'Native hurt stream has unavailable effective HP');
+    assert.ok(nativeFacts.overkillHurts > 0, 'Raw and effective HP were incorrectly collapsed');
+    assert.ok(nativeFacts.teamSides.every(([a, b]) => a === 'CT' && b === 'T'),
+      'Observed pre-halftime Team A/B sides did not reach the native service');
+    assert.equal(nativeFacts.effectivePlayers, 10, 'Effective player damage totals did not reach the native service');
+    assert.equal(nativeFacts.stablePlayers, 10, 'Observed stable Team A/B assignment did not reach players');
     const overviewShot = path.join(outputDir, 'real-demo-overview.png');
     await captureAppOnly(page, overviewShot);
     await page.getByRole('link', { name: 'Rounds', exact: true }).click();
@@ -145,6 +160,8 @@ async function main() {
     await page.getByRole('heading', { name: 'Recorded damage events' }).waitFor({ timeout: 30000 });
     assert.ok(await page.locator('section[aria-label="Round raw damage"] ol li').count() > 0,
       'Raw damage events did not reach the selected round route');
+    assert.ok(await page.locator('section[aria-label="Round raw damage"] ol li').getByText(/effective HP/).count() > 0,
+      'Effective HP is absent from the selected round detail');
     const selectedRoundShot = path.join(outputDir, 'real-demo-selected-round.png');
     await captureAppOnly(page, selectedRoundShot);
     await page.getByRole('link', { name: 'Next round' }).click();
@@ -173,6 +190,7 @@ async function main() {
     await page.waitForFunction(() => document.querySelectorAll('tbody tr').length >= 10, null, { timeout: 30000 });
     const playerRows = await page.locator('tbody tr').count();
     assert.ok(playerRows >= 10, `Unexpected player count: ${playerRows}`);
+    await page.getByText('DMG', { exact: true }).first().waitFor({ timeout: 30000 });
     const playersShot = path.join(outputDir, 'real-demo-players.png');
     await captureAppOnly(page, playersShot);
     const firstPlayerLink = page.locator('[aria-label="Recorded player scoreboard"] tbody tr').first().getByRole('link').first();
