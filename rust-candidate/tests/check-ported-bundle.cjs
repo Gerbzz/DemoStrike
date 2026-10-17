@@ -9,5 +9,6 @@ const scripts = fs.readdirSync(assets)
 assert.ok(scripts.length > 0, 'No compiled renderer JavaScript exists');
 const bundle = scripts.join('\n');
 assert.ok(bundle.includes('csdm_request'), 'Tauri request adapter was not included');
+assert.ok(bundle.includes('Existing CS Demo Manager PostgreSQL data is untouched.'), 'Accurate local-library settings pane was not included');
 assert.ok(!bundle.includes('WS:: connecting to server'), 'Electron WebSocket client remained in the ported bundle');
 console.log('PASS: ported original renderer contains the Tauri adapter and no Electron WebSocket startup');
