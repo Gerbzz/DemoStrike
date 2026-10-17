@@ -79,7 +79,7 @@ function Overview({ detail }: { detail: MatchDetail }) {
       </section>
       <section aria-labelledby="utility-heading">
         <h3 id="utility-heading">Utility recorded</h3>
-        <div className="metric-total">{detail.summary.utilityCount}<span> events</span></div>
+        <div className="metric-total">{detail.summary.utilityCount}<span> {detail.summary.utilityCount === 1 ? 'event' : 'events'}</span></div>
         <ul className="breakdown-list">
           {detail.utilityBreakdown.map((item) => <li key={item.utilityType}><span>{item.utilityType}</span><strong>{item.count}</strong></li>)}
         </ul>
@@ -104,7 +104,7 @@ function UtilityView({ detail }: { detail: MatchDetail }) {
   const [round, setRound] = useState('all');
   const filtered = useMemo(() => round === 'all' ? detail.utilityEvents : detail.utilityEvents.filter((event) => event.roundNumber === Number(round)), [detail, round]);
   return <>
-    <div className="sub-toolbar"><label htmlFor="round-filter">Round</label><select id="round-filter" value={round} onChange={(event) => setRound(event.target.value)}><option value="all">All rounds</option>{detail.rounds.map((item) => <option key={item.roundNumber} value={item.roundNumber}>Round {item.roundNumber}</option>)}</select><span className="muted">{filtered.length} events</span></div>
+    <div className="sub-toolbar"><label htmlFor="round-filter">Round</label><select id="round-filter" value={round} onChange={(event) => setRound(event.target.value)}><option value="all">All rounds</option>{detail.rounds.map((item) => <option key={item.roundNumber} value={item.roundNumber}>Round {item.roundNumber}</option>)}</select><span className="muted">{filtered.length} {filtered.length === 1 ? 'event' : 'events'}</span></div>
     {filtered.length === 0 ? <EmptyState title="No utility in this round" description="Choose another round to view recorded throws." /> : <UtilityTable events={filtered} />}
   </>;
 }

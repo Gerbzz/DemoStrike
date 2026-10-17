@@ -112,6 +112,7 @@ async function main() {
     assert.equal(await page.getByRole('cell', { name: 'Unavailable' }).count(), 4);
     await page.getByRole('combobox', { name: 'Round' }).selectOption('2');
     assert.equal(await page.locator('.tab-content tbody tr').count(), 1);
+    assert.ok((await page.getByRole('tabpanel').innerText()).includes('1 event'));
     assert.ok((await page.getByRole('tabpanel').innerText()).includes('flash'));
     assert.ok((await page.getByRole('tabpanel').innerText()).includes('Unavailable'));
     screenshots.push(await capture(page, 'utility-round-2'));
