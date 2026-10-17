@@ -1,6 +1,6 @@
 //! All SQL lives here. Commands call these; nothing else touches the DB.
 
-use crate::analysis::AnalyzedMatch;
+use crate::analysis::{AnalyzedMatch, AnalyzedRound};
 use crate::domain::*;
 use crate::error::{AppError, AppResult};
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row};
@@ -23,6 +23,52 @@ fn canonical_source_identity(path: &str) -> Option<String> {
 
 fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339()
+}
+
+// CSDM attributes a bomb event between two recorded rounds to the preceding
+// round. Keep that event without inventing playable frames outside the round.
+fn viewer_bomb_round(rounds: &[AnalyzedRound], tick: i64) -> Option<i64> {
+    if let Some(round) = rounds.iter().find(|round| {
+        matches!((round.start_tick, round.end_tick), (Some(start), Some(end)) if start <= tick && tick <= end)
+    }) {
+        return Some(round.round_number);
+    }
+    rounds
+        .windows(2)
+        .find_map(|pair| match (pair[0].end_tick, pair[1].start_tick) {
+            (Some(end), Some(next_start)) if end < tick && tick < next_start => {
+                Some(pair[0].round_number)
+            }
+            _ => None,
+        })
+}
+
+#[cfg(test)]
+mod viewer_bomb_round_tests {
+    use super::*;
+
+    fn round(number: i64, start: i64, end: i64) -> AnalyzedRound {
+        AnalyzedRound {
+            round_number: number,
+            start_tick: Some(start),
+            freeze_end_tick: None,
+            end_tick: Some(end),
+            winner: None,
+            end_reason: None,
+            team_a_side: None,
+            team_b_side: None,
+            ct_equip_value: None,
+            t_equip_value: None,
+        }
+    }
+
+    #[test]
+    fn inter_round_bomb_event_is_retained_with_preceding_round() {
+        let rounds = [round(3, 15680, 21457), round(4, 21905, 30000)];
+        assert_eq!(viewer_bomb_round(&rounds, 21853), Some(3));
+        assert_eq!(viewer_bomb_round(&rounds, 21905), Some(4));
+        assert_eq!(viewer_bomb_round(&rounds, 30001), None);
+    }
 }
 
 // ---------------------------------------------------------------- matches
@@ -366,7 +412,7 @@ pub fn insert_match_with_source_hash(
             )?;
             for (index, event) in m.bomb_events.iter().enumerate() {
                 check_cancel()?;
-                let Some(round_number) = round_at(event.tick) else {
+                let Some(round_number) = viewer_bomb_round(&m.rounds, event.tick) else {
                     continue;
                 };
                 insert.execute(params![

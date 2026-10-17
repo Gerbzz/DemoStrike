@@ -26,8 +26,9 @@ function eventRows(detail: MatchDetail, round: RecordedRound, meta: ViewerRoundM
   }
   if (meta.bombEventsAvailable) {
     for (const event of meta.bombEvents) {
+      const outsideReplay = event.tick < meta.startTick! || event.tick > meta.endTick!;
       rows.push({ key: `bomb-${event.sourceIndex}`, tick: event.tick, kind: 'bomb',
-        label: `${event.kind.replace('bomb_', 'Bomb ')} · ${event.actorName ?? 'actor unavailable'} · site unavailable` });
+        label: `${event.kind.replace('bomb_', 'Bomb ')} · ${event.actorName ?? 'actor unavailable'} · site unavailable${outsideReplay ? ' · between rounds' : ''}` });
     }
   }
   return rows.sort((a, b) => a.tick - b.tick || a.key.localeCompare(b.key));
@@ -47,8 +48,9 @@ export function NativeOriginalEventList({ detail, recorded, meta }: {
       {rows.length === 0 && <p className="px-8 py-4 text-gray-700">No recorded events in this round.</p>}
       {rows.map((event) => <button key={event.key} type="button"
         data-event-kind={event.kind} data-event-tick={event.tick}
+        disabled={event.tick < meta.startTick! || event.tick > meta.endTick!}
         aria-current={event.tick === currentTick ? 'true' : undefined}
-        className="flex w-full gap-8 border-b border-gray-300 px-8 py-4 text-left last:border-b-0 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
+        className="flex w-full gap-8 border-b border-gray-300 px-8 py-4 text-left last:border-b-0 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
         onClick={() => { pause(); setCurrentTick(event.tick); }}>
         <span className="w-48 shrink-0 tabular-nums text-gray-700">{event.tick}</span>
         <span className="min-w-0 break-words">{event.label}</span>
