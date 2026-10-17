@@ -25,6 +25,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Verify pinned upstream source baseline
+        run: python tests/check_upstream_snapshot.py
       - name: Install frontend dependencies on hosted runner
         run: npm ci --no-audit --no-fund
       - name: Typecheck and build frontend
