@@ -60,7 +60,8 @@ fn parse_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
         validate_combat_event_schema(parser.context())?;
         let state = observer.borrow();
         if !state.errors.is_empty() { return Err(format!("native CS2 facts incomplete: {}", state.errors.join("; "))); }
-        let round_events = state.round_events.clone();
+        let mut round_events = state.round_events.clone();
+        align_round_starts_to_game_events(&mut round_events, &state.round_start_game_ticks);
         validate_round_outcome_events(&round_events, &state.bomb_defused_ticks,
             &state.bomb_exploded_ticks, &state.ct_death_ticks)?;
         let map_name = state.map_name.clone().filter(|s| !s.trim().is_empty()).ok_or("unsupported CS2 schema: no server map name")?;
@@ -295,6 +296,28 @@ fn round_kind(prior: Option<(i32, bool, i32)>, next: (i32, bool, i32)) -> Option
     }
 }
 
+// GameRules can enter a provisional freeze period well before Valve emits
+// round_start (for example during a technical restart). Use the actual event
+// when it falls inside an inferred round's pre-live interval. The inferred
+// transition remains a fallback for recordings without this game event.
+fn align_round_starts_to_game_events(rounds: &mut [RawRoundEvent], ticks: &[i64]) {
+    for &tick in ticks {
+        let candidate = rounds.iter().filter(|event| event.kind == "round_start")
+            .filter_map(|event| Some((event.round?, event.tick?)))
+            .filter(|&(round, start)| start <= tick && !rounds.iter().any(|event| {
+                event.round == Some(round) && event.tick.is_some_and(|boundary| boundary < tick)
+                    && matches!(event.kind.as_str(), "round_freeze_end" | "round_end")
+            }))
+            .max_by_key(|&(_, start)| start);
+        if let Some((round, _)) = candidate {
+            for event in rounds.iter_mut().filter(|event| event.kind == "round_start"
+                && event.round == Some(round) && event.tick.is_some_and(|start| start <= tick)) {
+                event.tick = Some(tick);
+            }
+        }
+    }
+}
+
 fn validate_round_outcome_events(rounds: &[RawRoundEvent], defused: &BTreeSet<u32>,
     exploded: &BTreeSet<u32>, ct_deaths: &BTreeSet<u32>) -> Result<(), String> {
     let ticks_for = |reason: &str| -> BTreeSet<u32> {
@@ -351,7 +374,7 @@ struct GrenadeObserver {
     bomb_defused_ticks: BTreeSet<u32>, bomb_exploded_ticks: BTreeSet<u32>, ct_death_ticks: BTreeSet<u32>,
     dead_users_on_tick: BTreeMap<u32, BTreeSet<i32>>,
     dead_users_until_spawn: BTreeSet<i32>,
-    round_events: Vec<RawRoundEvent>, last_rules: Option<(i32, bool, i32)>,
+    round_events: Vec<RawRoundEvent>, round_start_game_ticks: Vec<i64>, last_rules: Option<(i32, bool, i32)>,
     last_start_count: Option<u8>,
     errors: Vec<String>,
 }
@@ -370,6 +393,9 @@ impl GrenadeObserver {
     #[on_game_event]
     fn on_event(&mut self, ctx: &Context, event: &GameEvent) -> ObserverResult {
         let name = event.name();
+        if name == "round_start" && warmup(ctx) == Some(false) {
+            self.round_start_game_ticks.push(i64::from(ctx.tick()));
+        }
         if name == "bomb_defused" { self.bomb_defused_ticks.insert(ctx.tick()); }
         if name == "bomb_exploded" { self.bomb_exploded_ticks.insert(ctx.tick()); }
         if matches!(name, "player_death" | "player_spawn") {
@@ -759,6 +785,22 @@ mod round_tests {
         assert_eq!(round_kind(Some((20, false, 0)), (20, true, 2)), Some("round_end"));
         assert_eq!(round_kind(Some((0, true, 0)), (3, true, 0)), Some("round_start"));
         assert_eq!(round_kind(Some((3, true, 0)), (3, false, 0)), Some("round_freeze_end"));
+    }
+
+    #[test]
+    fn direct_round_start_refines_provisional_freeze_without_crossing_round_end() {
+        let mut rounds = vec![
+            RawRoundEvent { kind: "round_end".into(), tick: Some(14199), round: Some(3), winner: None, reason: None },
+            RawRoundEvent { kind: "round_start".into(), tick: Some(14647), round: Some(4), winner: None, reason: None },
+            RawRoundEvent { kind: "round_freeze_end".into(), tick: Some(23607), round: Some(4), winner: None, reason: None },
+            RawRoundEvent { kind: "round_end".into(), tick: Some(26899), round: Some(4), winner: None, reason: None },
+            RawRoundEvent { kind: "round_start".into(), tick: Some(27347), round: Some(5), winner: None, reason: None },
+        ];
+        align_round_starts_to_game_events(&mut rounds, &[22327, 29901]);
+        assert_eq!(rounds[1].tick, Some(22327));
+        assert_eq!(rounds[4].tick, Some(29901));
+        align_round_starts_to_game_events(&mut rounds, &[25000]);
+        assert_eq!(rounds[1].tick, Some(22327));
     }
 
     #[test]
