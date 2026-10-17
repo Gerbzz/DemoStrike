@@ -185,6 +185,18 @@ in_match_hurts = [dict(event, roundNumber=match_round(event))
 in_match_effective = [dict(event, healthDamage=event["effectiveHealthDamage"])
                       for event in in_match_hurts]
 
+# The pinned Go Kill struct uses a uint64 assister field initialized to zero
+# when no assister exists; DemoStrike stores that absence as SQL NULL. This is
+# a source-specific, reviewed mapping, never a blanket zero/null coercion.
+def normalize_csdm_kill(kill):
+    if kill.get("assisterSteamId") == 0:
+        return dict(kill, assisterSteamId=None)
+    return kill
+
+
+assert normalize_csdm_kill({"assisterSteamId": 0})["assisterSteamId"] is None
+assert normalize_csdm_kill({"assisterSteamId": 42})["assisterSteamId"] == 42
+
 player_comparison = []
 for steamid, upstream in sorted(oracle.get("players", {}).items()):
     native = native_players.get(steamid, {})
@@ -226,7 +238,7 @@ comparison = {
         damage_fields + ("healthDamage",),
     ),
     "killVsInMatchDeathIdentity": event_differences(
-        oracle.get("kills", []), in_match_deaths,
+        [normalize_csdm_kill(kill) for kill in oracle.get("kills", [])], in_match_deaths,
         ("roundNumber", "tick", "killerSteamId", "victimSteamId", "assisterSteamId"),
     ),
     "retainedPostMatchRawDeaths": len(native_deaths) - len(in_match_deaths),
