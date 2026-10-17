@@ -69,6 +69,7 @@ jobs:
           name: csdm-oracle-discovery
           path: |
             ${{ runner.temp }}/csdm-oracle-inventory.json
+            ${{ runner.temp }}/csdm-oracle-comparison.json
             ${{ runner.temp }}/csdm-oracle/*.json
           if-no-files-found: warn
           retention-days: 1
