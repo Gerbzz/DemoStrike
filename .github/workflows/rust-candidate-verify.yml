@@ -11,6 +11,44 @@ permissions:
   contents: read
 
 jobs:
+  original-native:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: rust-candidate
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install hosted tooling
+        run: |
+          npm ci --no-audit --no-fund
+          npm install --global pnpm@12.6.0 --ignore-scripts --no-audit --no-fund
+      - name: Install original frontend dependencies
+        working-directory: rust-candidate/upstream/cs-demo-manager
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Bundle original renderer with Tauri startup adapters
+        working-directory: rust-candidate/upstream/cs-demo-manager
+        run: |
+          New-Item -ItemType Directory -Force static | Out-Null
+          ./node_modules/.bin/vp.cmd build --config ../../ported/vite.config.mjs
+      - name: Build native original renderer host
+        run: npm run tauri -- build --config src-tauri/tauri.upstream.smoke.conf.json
+      - name: Exercise original startup and capture native app
+        run: node tests/original-native-smoke.cjs
+      - name: Upload original app-only capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-original-native-startup
+          path: ${{ runner.temp }}/demostrike-original/*
+          if-no-files-found: warn
+          retention-days: 1
   upstream-renderer:
     runs-on: ubuntu-latest
     timeout-minutes: 35
