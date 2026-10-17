@@ -17,11 +17,35 @@ export type MatchSummary = {
 };
 
 export type LibrarySnapshot = { path: string; matches: MatchSummary[] };
+export type RoundDeath = {
+  sourceIndex: number;
+  eventOrder: number | null;
+  tick: number;
+  weapon: string | null;
+  attackerSteamid: string | null;
+  attackerSide: string | null;
+  victimSteamid: string;
+  victimSide: string | null;
+  assisterSteamid: string | null;
+};
+
+export type RecordedRound = {
+  roundNumber: number;
+  winner: string | null;
+  startTick: number | null;
+  freezeEndTick: number | null;
+  endTick: number | null;
+  endReason: string | null;
+  ctEquipValue: number | null;
+  tEquipValue: number | null;
+  combat: { ctPlayers: number; tPlayers: number; unassignedPlayers: number; enemyKills: number | null } | null;
+  deaths: RoundDeath[] | null;
+};
+
 export type MatchDetail = {
   summary: MatchSummary;
   fullCombatCoverage: boolean;
-  rounds: { roundNumber: number; winner: string | null; startTick: number | null; endTick: number | null;
-    combat: { ctPlayers: number; tPlayers: number; unassignedPlayers: number; enemyKills: number | null } | null }[];
+  rounds: RecordedRound[];
   players: { steamid: string; name: string; combat: {
     enemyKills: number | null; deaths: number; enemyAssists: number | null;
     enemyHealthDamage: number | null;
