@@ -8,6 +8,7 @@ import { Content } from 'csdm/ui/components/content';
 import { describe, invoke, libraryPathKey, matchIdFromRoute } from './match-data';
 import type { FinderThrow } from './match-data';
 import { useSourceMatch } from './match-loader';
+import { rememberSelectedRadar, selectedRadarFile } from './native-selected-radar';
 
 const calibration: Record<string, Pick<Map, 'posX' | 'posY' | 'scale' | 'radarSize'>> = {
   de_mirage: { posX: -3230, posY: 1713, scale: 5, radarSize: 1024 },
@@ -37,7 +38,10 @@ export function GrenadesFinderLoader() {
   const [round, setRound] = useState('all');
   const [side, setSide] = useState('all');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [radarUrl, setRadarUrl] = useState<string | null>(null);
+  const [radarUrl, setRadarUrl] = useState<string | null>(() => {
+    const file = selectedRadarFile(detail.summary.mapName);
+    return file ? URL.createObjectURL(file) : null;
+  });
   const [radarError, setRadarError] = useState('');
   const mapInfo = calibration[detail.summary.mapName];
 
@@ -83,6 +87,7 @@ export function GrenadesFinderLoader() {
       const valid = bitmap.width === 1024 && bitmap.height === 1024;
       bitmap.close();
       if (!valid) { setRadarError('This calibrated view needs a 1024 x 1024 radar PNG.'); return; }
+      rememberSelectedRadar(detail.summary.mapName, file);
       setRadarUrl(URL.createObjectURL(file));
     }).catch(() => setRadarError('The selected PNG could not be decoded.'));
   };

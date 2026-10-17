@@ -258,6 +258,8 @@ async function main() {
     await page.getByRole('link', { name: 'Open at throw in 2D Viewer' }).click();
     await page.getByRole('heading', { name: `2D Viewer - Round ${finderTarget.item.round}` })
       .waitFor({ timeout: 60000 });
+    await page.waitForFunction(() => document.querySelector('[data-radar-selected]')?.getAttribute('data-radar-selected') === 'true',
+      null, { timeout: 60000 });
     await page.waitForFunction((tick) => Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')) === tick,
       finderTarget.item.tick, { timeout: 60000 });
     const finderViewerShot = path.join(outputDir, 'real-demo-finder-viewer-link.png');

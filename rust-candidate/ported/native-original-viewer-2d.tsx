@@ -15,6 +15,7 @@ import { NativeRadarProvider } from './native-original-viewer-radar';
 import type { NativeObservedPosition } from './native-original-draw-players';
 import { observedBombTimeline, observedFireSubtypes, observedGrenadeEvents } from './native-original-viewer-events';
 import { NativeOriginalEventList } from './native-original-event-list';
+import { rememberSelectedRadar, selectedRadarFile } from './native-selected-radar';
 import './native-original-viewer.css';
 
 const calibratedMaps: Record<string, Pick<Map, 'posX' | 'posY' | 'scale' | 'radarSize'>> = {
@@ -270,6 +271,18 @@ export function Viewer2DLoader() {
 
   useEffect(() => () => { radarSelection?.bitmap.close(); }, [radarSelection]);
   useEffect(() => {
+    const mapName = meta?.mapName;
+    if (!mapName || radarSelection) return;
+    const file = selectedRadarFile(mapName);
+    if (!file) return;
+    let active = true;
+    void createImageBitmap(file).then((bitmap) => {
+      if (active) setRadarSelection({ mapName, bitmap });
+      else bitmap.close();
+    }).catch(() => { if (active) setRadarError('The selected PNG could not be decoded.'); });
+    return () => { active = false; };
+  }, [meta?.mapName, radarSelection]);
+  useEffect(() => {
     if (radarSelection && meta?.mapName && radarSelection.mapName !== meta.mapName) setRadarSelection(null);
   }, [meta?.mapName, radarSelection]);
   const chooseRadar = async (file: File | undefined) => {
@@ -282,6 +295,7 @@ export function Viewer2DLoader() {
       const bitmap = await createImageBitmap(file);
       const valid = bitmap.width === 1024 && bitmap.height === 1024;
       if (!valid) { bitmap.close(); setRadarError('This calibrated view needs a 1024 x 1024 radar PNG.'); return; }
+      rememberSelectedRadar(meta!.mapName, file);
       setRadarSelection({ mapName: meta!.mapName, bitmap });
     } catch { setRadarError('The selected PNG could not be decoded.'); }
   };
@@ -299,7 +313,7 @@ export function Viewer2DLoader() {
   return <div className="flex min-h-0 flex-1 flex-col">
     <header className="flex flex-wrap items-center justify-between gap-8 border-b border-gray-300 px-16 py-8">
       <div><h1 className="text-subtitle">2D Viewer - Round {roundNumber}</h1>
-        <p className="text-gray-700">Recorded positions and detonations. Smoke lifetime, fire cells, flash blindness, bomb sites, audio and equipment are unavailable.</p></div>
+        <p className="text-gray-700">Recorded positions and detonations. Smoke effect area and expiration, fire cells, flash blindness, bomb sites, audio and equipment are unavailable.</p></div>
       <label className="cursor-pointer rounded border border-gray-300 px-8 py-4 text-blue-600">Choose local radar PNG
         <input className="sr-only" type="file" accept="image/png" aria-label="Choose local radar PNG"
           onChange={(event) => void chooseRadar(event.target.files?.[0])} /></label>
