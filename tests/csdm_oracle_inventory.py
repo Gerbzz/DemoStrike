@@ -62,6 +62,11 @@ with sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True) as connect
             "FROM raw_combat_deaths ORDER BY source_index"
         )
     ]
+    native_teams = {}
+    for steamid, team in connection.execute(
+        "SELECT steamid, stable_team FROM player_round_combat ORDER BY steamid, round_number"
+    ):
+        native_teams.setdefault(steamid, set()).add(team)
     native_players = {
         steamid: dict(zip(("enemyKills", "enemyAssists", "deaths", "enemyHealthDamage", "effectiveHealthDamage", "unknownEffectiveRows"), row[1:]))
         for row in connection.execute(
@@ -180,6 +185,8 @@ for steamid, upstream in sorted(oracle.get("players", {}).items()):
         "name": upstream.get("name"),
         "upstream": {name: upstream.get(name) for name in ("killCount", "assistCount", "deathCount", "healthDamage")},
         "native": native,
+        "upstreamTeam": (upstream.get("team") or {}).get("letter"),
+        "nativeTeams": sorted(native_teams.get(steamid, set()), key=lambda value: value or ""),
     })
 
 comparison = {
@@ -274,6 +281,8 @@ for player in player_comparison:
     upstream, native = player["upstream"], player["native"]
     if native.get("unknownEffectiveRows"):
         failures.append(f"{player['steamId']} has unavailable effective damage rows")
+    if player["nativeTeams"] != [player["upstreamTeam"]]:
+        failures.append(f"{player['steamId']} stable team: upstream={player['upstreamTeam']} native={player['nativeTeams']}")
     for source, target in (("killCount", "enemyKills"), ("assistCount", "enemyAssists"),
                            ("deathCount", "deaths"), ("healthDamage", "effectiveHealthDamage")):
         if upstream[source] != native.get(target):
