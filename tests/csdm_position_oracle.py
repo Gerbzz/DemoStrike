@@ -31,6 +31,8 @@ player_files = [file for file in position_files if {"steamid", "is alive", "heal
 assert len(player_files) == 1, [str(file) for file in position_files]
 matched = {}
 player_attribute_differences = {"alive": [], "health": [], "yaw": []}
+player_attribute_samples = {"yaw": []}
+player_attribute_compared = {"alive": 0, "health": 0, "yaw": 0}
 with player_files[0].open(newline="", encoding="utf-8") as file:
     for row in csv.DictReader(file):
         key = (int(row["tick"]), row["steamid"])
@@ -41,15 +43,21 @@ with player_files[0].open(newline="", encoding="utf-8") as file:
             local = native_rows[key]
             alive = row["is alive"].lower()
             if local["is_alive"] is not None and alive in ("true", "false", "1", "0"):
+                player_attribute_compared["alive"] += 1
                 if bool(local["is_alive"]) != (alive in ("true", "1")):
                     player_attribute_differences["alive"].append(key)
             if local["health"] is not None and row["health"]:
+                player_attribute_compared["health"] += 1
                 if local["health"] != int(float(row["health"])):
                     player_attribute_differences["health"].append(key)
             if local["yaw"] is not None and row["yaw"]:
+                player_attribute_compared["yaw"] += 1
                 difference = abs(local["yaw"] - float(row["yaw"])) % 360
                 if min(difference, 360 - difference) > 0.1:
                     player_attribute_differences["yaw"].append(key)
+                    if len(player_attribute_samples["yaw"]) < 8:
+                        player_attribute_samples["yaw"].append({"tick": key[0],
+                            "nativeYaw": local["yaw"], "upstreamYaw": float(row["yaw"])})
 
 grenade_rows = database.execute("""SELECT round_number,tick,trajectory_index,entity_id,
                                    grenade_type,thrower_steamid,x,y,z FROM viewer_grenade_positions
@@ -138,6 +146,8 @@ report = {
     "grenadeMaxAxisDifference": max(grenade_matches, default=None),
     "playerAttributeDiagnostics": {field: {"mismatches": len(keys), "sampleKeys": keys[:8]}
         for field, keys in player_attribute_differences.items()},
+    "playerAttributeCompared": player_attribute_compared,
+    "playerAttributeSamples": player_attribute_samples,
     "projectilePathIdentityDiagnostics": {
         "nativePaths": len(native_paths), "oraclePaths": len(oracle_paths),
         "oneToOnePairs": len(path_pairs),
@@ -145,6 +155,18 @@ report = {
         "maxStartTickDifference": max((abs(pair["startTickDelta"]) for pair in path_pairs), default=None),
         "maxEndTickDifference": max((abs(pair["endTickDelta"]) for pair in path_pairs), default=None),
         "unmatchedNativeSamples": list(map(str, set(native_paths) - paired_native))[:8],
+        "unmatchedNativeDetails": [{"round": key[0], "trajectory": key[1],
+            "kind": native_paths[key]["kind"], "thrower": native_paths[key]["thrower"],
+            "startTick": min(native_paths[key]["ticks"]),
+            "endTick": max(native_paths[key]["ticks"]),
+            "rows": len(native_paths[key]["ticks"])}
+            for key in sorted(set(native_paths) - paired_native)[:8]],
+        "unmatchedOracleDetails": [{"round": key[0], "projectile": key[1],
+            "kind": oracle_paths[key]["kind"], "thrower": oracle_paths[key]["thrower"],
+            "startTick": min(oracle_paths[key]["ticks"]),
+            "endTick": max(oracle_paths[key]["ticks"]),
+            "rows": len(oracle_paths[key]["ticks"])}
+            for key in sorted(set(oracle_paths) - paired_oracle)[:8]],
     },
 }
 (root / "csdm-position-comparison.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -153,3 +175,5 @@ assert len(matched) == len(native), "Native player tick/identity samples missing
 assert report["playerWithin001Units"] == len(native), "Player world coordinates disagree with CSDM"
 assert len(grenade_matches) >= 5, "Too few overlapping native and CSDM projectile ticks"
 assert report["grenadeWithin16Units"] == len(grenade_matches), "Projectile world coordinates disagree with CSDM"
+assert player_attribute_compared["alive"] > 0 and not player_attribute_differences["alive"], "Observed alive state disagrees with CSDM"
+assert player_attribute_compared["health"] > 0 and not player_attribute_differences["health"], "Observed health disagrees with CSDM"
