@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
+use tauri_plugin_dialog::DialogExt;
 
 struct Store {
     root: PathBuf,
@@ -128,6 +129,26 @@ fn app_store(app: &tauri::AppHandle) -> Result<Store, String> {
         .app_data_dir()
         .map_err(|error| error.to_string())?;
     Ok(Store::new(root))
+}
+
+#[tauri::command]
+pub async fn csdm_choose_library(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .add_filter("SQLite library", &["sqlite", "sqlite3", "db"])
+            .blocking_pick_file()
+            .map(|file| {
+                file.into_path()
+                    .map_err(|error| error.to_string())?
+                    .into_os_string()
+                    .into_string()
+                    .map_err(|_| "The selected library path is not valid UTF-8.".to_owned())
+            })
+            .transpose()
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

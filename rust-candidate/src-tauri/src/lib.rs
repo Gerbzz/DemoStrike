@@ -24,7 +24,8 @@ pub fn run() {
             csdm::csdm_load_settings,
             csdm::csdm_save_settings,
             csdm::csdm_request,
-            csdm::csdm_window_action
+            csdm::csdm_window_action,
+            csdm::csdm_choose_library
         ])
         .run(tauri::generate_context!())
         .expect("DemoStrike candidate failed to start");

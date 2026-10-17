@@ -13,6 +13,7 @@ import { useFuzzySearchText } from 'csdm/ui/matches/use-fuzzy-search-text';
 // only the messages that would otherwise claim an unported demo import works.
 export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) => void }) {
   const [path, setPath] = useState('');
+  const [pickerError, setPickerError] = useState('');
   const table = useMatchesTable();
   const status = useMatchesStatus();
   const fetchMatches = useFetchMatches();
@@ -51,7 +52,18 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
               <p className="text-gray-700">Paste the path to a library file to inspect its matches, rounds, players, and utility in read-only mode.</p>
               <input id="local-library-path" className="w-full rounded-4 border border-gray-400 bg-gray-75 p-8 select-text"
                 value={path} onChange={(event) => setPath(event.target.value)} placeholder="C:\\path\\to\\matches.sqlite" />
-              <div><Button isDisabled={!path.trim()} onClick={() => onOpenLibrary(path.trim())}>Open local library</Button></div>
+              {pickerError && <p role="alert" className="text-red-500 select-text">{pickerError}</p>}
+              <div className="flex gap-x-8">
+                <Button isDisabled={!path.trim()} onClick={() => onOpenLibrary(path.trim())}>Open local library</Button>
+                <Button onClick={() => {
+                  setPickerError('');
+                  const native = (window as any).__TAURI_INTERNALS__;
+                  if (!native?.invoke) { setPickerError('The Tauri host is unavailable.'); return; }
+                  void native.invoke('csdm_choose_library').then((selected: string | null) => {
+                    if (selected) { setPath(selected); onOpenLibrary(selected); }
+                  }).catch((error: unknown) => setPickerError(String(error)));
+                }}>Browse…</Button>
+              </div>
             </div>
           )}
         </div>
