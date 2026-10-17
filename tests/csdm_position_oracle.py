@@ -30,6 +30,8 @@ def header(file):
 player_files = [file for file in position_files if {"steamid", "is alive", "health"} <= header(file)]
 assert len(player_files) == 1, [str(file) for file in position_files]
 matched = {}
+sampled_ticks = {tick for tick, _ in native}
+upstream_players_at_sampled_ticks = {}
 player_attribute_differences = {"alive": [], "health": [], "yaw": []}
 player_attribute_samples = {"yaw": [], "yawDirectOnly": [], "yawNeither": []}
 player_attribute_compared = {"alive": 0, "health": 0, "yaw": 0}
@@ -39,6 +41,8 @@ yaw_viewer_matches = 0
 with player_files[0].open(newline="", encoding="utf-8") as file:
     for row in csv.DictReader(file):
         key = (int(row["tick"]), row["steamid"])
+        if key[0] in sampled_ticks:
+            upstream_players_at_sampled_ticks.setdefault(key[0], set()).add(key[1])
         if key in native:
             expected = native[key]
             observed = tuple(float(row[axis]) for axis in "xyz")
@@ -162,6 +166,12 @@ report = {
     "sharedPlayerKeys": len(matched),
     "playerMaxAxisDifference": max(matched.values(), default=None),
     "playerWithin001Units": sum(value <= 0.001 for value in matched.values()),
+    "unmatchedPlayerSamples": [{"tick": tick, "steamid": steamid,
+        "nativeAlive": native_rows[(tick, steamid)]["is_alive"],
+        "nativeHealth": native_rows[(tick, steamid)]["health"],
+        "nativeXYZ": native[(tick, steamid)],
+        "upstreamPlayersAtTick": sorted(upstream_players_at_sampled_ticks.get(tick, set()))}
+        for tick, steamid in sorted(set(native) - set(matched))[:8]],
     "nativeGrenadeRowsAllRounds": len(grenade_rows),
     "sharedGrenadeTicks": len(oracle_grenades),
     "grenadeComparisons": len(grenade_matches),
