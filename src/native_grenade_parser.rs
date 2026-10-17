@@ -407,7 +407,8 @@ impl GrenadeObserver {
             eprintln!("ROUND_TRACE game={name} tick={} round={:?} warmup={:?}",
                 ctx.tick(), game_round(ctx), warmup(ctx));
         }
-        if name == "round_start" && warmup(ctx) == Some(false) {
+        if (name == "round_start" && warmup(ctx) == Some(false))
+            || (name == "begin_new_match" && game_round(ctx) == Some(1) && warmup(ctx) == Some(false)) {
             self.round_start_game_ticks.push(i64::from(ctx.tick()));
         }
         if name == "bomb_defused" { self.bomb_defused_ticks.insert(ctx.tick()); }
@@ -840,6 +841,17 @@ mod round_tests {
         assert_eq!(rounds[4].tick, Some(29901));
         align_round_starts_to_observed_ticks(&mut rounds, &[25000]);
         assert_eq!(rounds[1].tick, Some(22327));
+    }
+
+    #[test]
+    fn begin_new_match_refines_warmup_round_start_without_moving_freeze_end() {
+        let mut rounds = vec![
+            RawRoundEvent { kind: "round_start".into(), tick: Some(65), round: Some(1), winner: None, reason: None },
+            RawRoundEvent { kind: "round_freeze_end".into(), tick: Some(1761), round: Some(1), winner: None, reason: None },
+        ];
+        align_round_starts_to_observed_ticks(&mut rounds, &[67]);
+        assert_eq!(rounds[0].tick, Some(67));
+        assert_eq!(rounds[1].tick, Some(1761));
     }
 
     #[test]
