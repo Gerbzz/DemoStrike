@@ -29,7 +29,7 @@ jobs:
       - name: Compile original CS Demo Manager renderer source
         run: |
           mkdir -p static
-          ./node_modules/.bin/vite build --config vite.config.ts
+          ./node_modules/.bin/vp build --config vite.config.ts
   verify:
     runs-on: windows-latest
     timeout-minutes: 90
