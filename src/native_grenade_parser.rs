@@ -147,11 +147,13 @@ fn game_round(ctx: &Context) -> Option<i64> {
 }
 
 /// CS2 game-event user IDs pack a generation in the upper byte and a player
-/// slot in the low byte. Zero is a world actor, not a player controller.
+/// slot in the low byte. Slot zero is a real player; 0xffff is the absent actor.
 fn source2_user_slot(user: i32) -> Option<u32> {
     // GameEvent 'short' values can be signed after the generation byte sets
-    // bit 15. Keep those valid IDs; -1 is the all-bits sentinel.
-    if user == 0 || user == -1 || user < i32::from(i16::MIN) || user > i32::from(u16::MAX) {
+    // bit 15. Keep those valid IDs; both signed and unsigned all-bits
+    // representations identify the absent actor.
+    if user == -1 || user == i32::from(u16::MAX)
+        || user < i32::from(i16::MIN) || user > i32::from(u16::MAX) {
         return None;
     }
     Some((user as u32) & 0xff)
@@ -696,11 +698,12 @@ mod round_tests {
         assert_eq!(source2_user_slot(0x100), Some(0));
         assert_eq!(source2_user_slot(0x201), Some(1));
         assert_eq!(source2_user_slot(-255), Some(1));
-        assert_eq!(source2_user_slot(0), None);
+        assert_eq!(source2_user_slot(0), Some(0));
         assert_eq!(source2_user_slot(-1), None);
         assert_eq!(source2_user_slot(0xffff), None);
         assert_eq!(source2_user_slot(0x10000), None);
         assert_eq!(source2_user_slot(i32::MIN), None);
+        assert_eq!(source2_user_slot(0).unwrap() + 1, 1);
         assert_eq!(source2_user_slot(0x101).unwrap() + 1, 2);
     }
 
