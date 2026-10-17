@@ -45,9 +45,15 @@ export default {
       { find: 'csdm/ui/match/duels/opening-duels-stats/opening-duels-stats', replacement: path.resolve(portedRoot, 'unsupported-match-view.tsx') },
       { find: 'csdm/ui/match/duels/players-duels-matrix', replacement: path.resolve(portedRoot, 'observed-duels.tsx') },
       { find: 'csdm/ui/match/weapons/weapons', replacement: path.resolve(portedRoot, 'unsupported-match-view.tsx') },
-      // Keep the original route and pinned map transform; replace only the
-      // Electron data loader with the native absolute-tick replay adapter.
-      { find: 'csdm/ui/match/viewer-2d/viewer-2d-loader', replacement: path.resolve(portedRoot, 'native-viewer-2d.tsx') },
+      // Mount the pinned CSDM canvas, controls, and drawing hooks. Only the
+      // Electron data/radar edges and unrecorded equipment/audio panels adapt.
+      { find: 'csdm/ui/match/viewer-2d/viewer-2d-loader', replacement: path.resolve(portedRoot, 'native-original-viewer-2d.tsx') },
+      { find: 'csdm/ui/match/use-current-match', replacement: path.resolve(portedRoot, 'native-original-viewer-match.ts') },
+      { find: '../use-current-match', replacement: path.resolve(portedRoot, 'native-original-viewer-match.ts') },
+      { find: '../../use-current-match', replacement: path.resolve(portedRoot, 'native-original-viewer-match.ts') },
+      { find: './drawing/use-draw-map-radar', replacement: path.resolve(portedRoot, 'native-original-viewer-radar.tsx') },
+      { find: 'csdm/ui/match/viewer-2d/teams-panel/team-panel', replacement: path.resolve(portedRoot, 'native-original-team-panel.tsx') },
+      { find: './audio-selector-button', replacement: path.resolve(portedRoot, 'native-viewer-no-audio.tsx') },
       { find: 'csdm/ui/match/video/video-loader', replacement: path.resolve(portedRoot, 'unsupported-match-view.tsx') },
       { find: 'csdm/ui/match/chat-messages/chat-messages', replacement: path.resolve(portedRoot, 'unsupported-match-view.tsx') },
       { find: 'csdm/ui/match/economy/economy', replacement: path.resolve(portedRoot, 'unsupported-match-view.tsx') },
