@@ -503,6 +503,15 @@ impl GrenadeObserver {
                         match event_int(event, "dmg_health") {
                             Some(damage) if damage >= 0 => {
                                 self.combat_event_order += 1;
+                                if std::env::var_os("DEMO_HEALTH_DIAGNOSTICS").is_some()
+                                    && (self.combat_hurts.len() < 12 || event_int(event, "health") == Some(0)) {
+                                    let pawn_health = event_int(event, "userid")
+                                        .and_then(|user| controller_by_user(ctx, user))
+                                        .and_then(|controller| pawn_of(ctx, controller))
+                                        .map(|pawn| format!("{:?}", pawn.get_property("m_iHealth")));
+                                    eprintln!("HEALTH_TRACE tick={} round={round} order={} raw={damage} post={:?} pawn={pawn_health:?}",
+                                        ctx.tick(), self.combat_event_order, event_int(event, "health"));
+                                }
                                 self.combat_hurts.push(RawCombatHurt {
                                 event_order: Some(self.combat_event_order),
                                 tick: i64::from(ctx.tick()), round,
