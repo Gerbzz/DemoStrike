@@ -1,6 +1,6 @@
 use demostrike_rust_candidate::library::{
-    get_match_detail, get_viewer_frames, get_viewer_round, list_matches, score_relation,
-    ScoreRelation,
+    ScoreRelation, get_match_detail, get_viewer_frames, get_viewer_round, list_matches,
+    score_relation,
 };
 use rusqlite::Connection;
 use tempfile::tempdir;
@@ -225,9 +225,11 @@ fn full_combat_is_read_only_and_gated_by_schema_and_parser_provenance() {
         [],
     )
     .unwrap();
-    assert!(get_match_detail(&path, 1).unwrap().players[0]
-        .combat
-        .is_none());
+    assert!(
+        get_match_detail(&path, 1).unwrap().players[0]
+            .combat
+            .is_none()
+    );
 }
 
 #[test]
