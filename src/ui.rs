@@ -1744,6 +1744,8 @@ mod tests {
     use std::sync::Arc;
     use crate::demo_import::ImportControl;
     use std::time::Duration;
+    use filmcraft_engine::Session;
+    use serde_json::json;
 
     #[test]
     fn stale_discard_confirmation_cannot_close_an_exporting_editor() {
@@ -1804,6 +1806,11 @@ mod tests {
         assert!(app.error.is_none());
         let saved = crate::db::queries::list_matches(&crate::db::open(Path::new(&app.database_path)).unwrap()).unwrap();
         assert_eq!(saved.len(), 1);
+        app.refresh_library().unwrap();
+        assert!(app.library_opened);
+        assert_eq!(app.library_matches.len(), 1);
+        assert_eq!(app.library_match_id, Some(saved[0].id));
+        assert_eq!(app.library_matches[0].file_name, "fixture.dem");
 
         app.start_demo_import_with_parser(&demo, Arc::new(UiFixtureParser { wait_for_cancel: true })).unwrap();
         app.import_cancel.request_cancel();
@@ -1817,6 +1824,22 @@ mod tests {
         let cancel_signal = Arc::clone(&app.import_cancel);
         drop(app);
         assert!(cancel_signal.is_cancelled());
+    }
+
+    #[test]
+    fn synthetic_filmcraft_project_opens_through_demo_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("synthetic.fcproj");
+        let mut source = Session::default();
+        source.execute("file.openDemoProject", json!({})).unwrap();
+        source.execute("file.saveAs", json!({"path": project.to_string_lossy()})).unwrap();
+
+        let (_, legacy) = load_editor_session(&project).unwrap();
+        assert!(!legacy);
+        let mut app = DemoStrikeApp::default();
+        app.open_saved_project(&project).unwrap();
+        assert!(app.embedded_editor.is_some());
+        assert!(app.open_saved_project(&project).unwrap_err().contains("return from the current edit"));
     }
 
     #[test]
