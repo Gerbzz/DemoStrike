@@ -103,12 +103,14 @@ async function main() {
     await page.waitForFunction(() => document.querySelectorAll('section[aria-label="Round entries"] details').length >= 10, null, { timeout: 30000 });
     const roundRows = await page.locator('section[aria-label="Round entries"] details').count();
     assert.ok(roundRows >= 10, `Unexpected round count: ${roundRows}`);
+    const roundsShot = path.join(outputDir, 'real-demo-rounds.png');
+    await captureAppOnly(page, roundsShot);
     await page.locator('section[aria-label="Round entries"] details').first().locator('summary').click();
     await page.getByRole('heading', { name: 'Recorded death events' }).first().waitFor({ timeout: 30000 });
     assert.ok(await page.locator('section[aria-label="Round entries"] ol li').count() > 0,
       'Native raw death events did not reach the partial CSDM round view');
-    const roundsShot = path.join(outputDir, 'real-demo-rounds.png');
-    await captureAppOnly(page, roundsShot);
+    const roundDetailShot = path.join(outputDir, 'real-demo-round-detail.png');
+    await captureAppOnly(page, roundDetailShot);
     await page.getByRole('link', { name: 'Players' }).click();
     await page.getByRole('heading', { name: 'Recorded players' }).waitFor({ timeout: 30000 });
     await page.waitForFunction(() => document.querySelectorAll('tbody tr').length >= 10, null, { timeout: 30000 });
@@ -151,7 +153,7 @@ async function main() {
       commit: process.env.GITHUB_SHA || null,
       executableSha256: sha256(appPath),
       observed: { roundRows, playerRows, utilityRows },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, playersShot, utilityShot, duplicateShot, invalidShot]
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, playersShot, utilityShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',
