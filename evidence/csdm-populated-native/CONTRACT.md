@@ -29,9 +29,7 @@ Those columns and screens are not filled with zeros or estimated values.
 Direct links to unsupported match analyses show an explanatory state.
 
 Hosted CI generates only synthetic public data and checks its file hashes
-after browsing. A separate private, read-only check of the already available
-imported library confirmed recorded match, round, player, utility, tick, and
-source-provenance fields, as well as unchanged SQLite bytes. No private
-demo, library, names, or screenshots were uploaded to CI or this PR. A
-current-build GUI run on that private library is not claimed: local builds
-and executable downloads are outside this task's disk constraint.
+after browsing. No private demo, library, names, or screenshots were uploaded
+to CI or this PR. A current-build GUI run on private data is not claimed:
+local builds and executable downloads are outside this task's disk constraint.
+
