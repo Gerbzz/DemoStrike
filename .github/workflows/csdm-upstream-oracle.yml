@@ -21,6 +21,7 @@ jobs:
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
       DEMO_ROUND_DIAGNOSTICS: '1'
+      DEMO_HEALTH_DIAGNOSTICS: '1'
     steps:
       - uses: actions/checkout@v4
       - name: Check out exact CSDM 3.20.1 analyzer source
