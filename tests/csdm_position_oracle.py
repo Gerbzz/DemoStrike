@@ -31,8 +31,10 @@ player_files = [file for file in position_files if {"steamid", "is alive", "heal
 assert len(player_files) == 1, [str(file) for file in position_files]
 matched = {}
 player_attribute_differences = {"alive": [], "health": [], "yaw": []}
-player_attribute_samples = {"yaw": []}
+player_attribute_samples = {"yaw": [], "yawDirectOnly": [], "yawNeither": []}
 player_attribute_compared = {"alive": 0, "health": 0, "yaw": 0}
+yaw_rotated_matches = 0
+yaw_direct_matches = 0
 with player_files[0].open(newline="", encoding="utf-8") as file:
     for row in csv.DictReader(file):
         key = (int(row["tick"]), row["steamid"])
@@ -52,12 +54,25 @@ with player_files[0].open(newline="", encoding="utf-8") as file:
                     player_attribute_differences["health"].append(key)
             if local["yaw"] is not None and row["yaw"]:
                 player_attribute_compared["yaw"] += 1
-                difference = abs(local["yaw"] - float(row["yaw"])) % 360
-                if min(difference, 360 - difference) > 0.1:
+                original = float(row["yaw"])
+                difference = abs(local["yaw"] - original) % 360
+                direct = min(difference, 360 - difference) <= 0.1
+                rotated = ((local["yaw"] % 360) - 180)
+                rotated_difference = abs(rotated - original) % 360
+                rotated_match = min(rotated_difference, 360 - rotated_difference) <= 0.1
+                yaw_direct_matches += direct
+                yaw_rotated_matches += rotated_match
+                if not direct:
                     player_attribute_differences["yaw"].append(key)
                     if len(player_attribute_samples["yaw"]) < 8:
                         player_attribute_samples["yaw"].append({"tick": key[0],
-                            "nativeYaw": local["yaw"], "upstreamYaw": float(row["yaw"])})
+                            "nativeYaw": local["yaw"], "upstreamYaw": original})
+                if direct and not rotated_match and len(player_attribute_samples["yawDirectOnly"]) < 8:
+                    player_attribute_samples["yawDirectOnly"].append({"tick": key[0],
+                        "nativeYaw": local["yaw"], "upstreamYaw": original})
+                if not direct and not rotated_match and len(player_attribute_samples["yawNeither"]) < 8:
+                    player_attribute_samples["yawNeither"].append({"tick": key[0],
+                        "nativeYaw": local["yaw"], "upstreamYaw": original})
 
 grenade_rows = database.execute("""SELECT round_number,tick,trajectory_index,entity_id,
                                    grenade_type,thrower_steamid,x,y,z FROM viewer_grenade_positions
@@ -73,20 +88,22 @@ def kind(value):
     text = (value or "").lower()
     for name in ("smoke", "flash", "hegrenade", "he grenade", "high explosive", "molotov", "incendiary", "decoy"):
         if name in text:
+            if name in ("molotov", "incendiary"):
+                return "fire"
             return "he" if name in ("hegrenade", "he grenade", "high explosive") else name
     return None
 
 for row in grenade_rows:
     key = (row["round_number"], row["trajectory_index"])
     path = native_paths.setdefault(key, {"kind": kind(row["grenade_type"]),
-        "thrower": row["thrower_steamid"], "ticks": {}})
+        "label": row["grenade_type"], "thrower": row["thrower_steamid"], "ticks": {}})
     path["ticks"][row["tick"]] = tuple(row[axis] for axis in "xyz")
 with grenade_file[0].open(newline="", encoding="utf-8") as file:
     for row in csv.DictReader(file):
         tick = int(row["tick"])
         path_key = (int(row["round"]), row["projectile id"])
         path = oracle_paths.setdefault(path_key, {"kind": kind(row["grenade name"]),
-            "thrower": row["thrower steamid"], "ticks": {}})
+            "label": row["grenade name"], "thrower": row["thrower steamid"], "ticks": {}})
         path["ticks"][tick] = tuple(float(row[axis]) for axis in "xyz")
         if tick in grenade_ticks:
             oracle_grenades.setdefault(tick, []).append(tuple(float(row[axis]) for axis in "xyz"))
@@ -129,6 +146,9 @@ for count, neg_delta, native_key, oracle_key in candidate_pairs:
     native_ticks = native_paths[native_key]["ticks"]
     oracle_ticks = oracle_paths[oracle_key]["ticks"]
     path_pairs.append({"sharedTicks": count, "maxAxisDelta": -neg_delta,
+        "kind": native_paths[native_key]["kind"],
+        "nativeLabel": native_paths[native_key]["label"],
+        "upstreamLabel": oracle_paths[oracle_key]["label"],
         "startTickDelta": min(native_ticks) - min(oracle_ticks),
         "endTickDelta": max(native_ticks) - max(oracle_ticks)})
 
@@ -148,12 +168,17 @@ report = {
         for field, keys in player_attribute_differences.items()},
     "playerAttributeCompared": player_attribute_compared,
     "playerAttributeSamples": player_attribute_samples,
+    "yawDirectMatches": yaw_direct_matches,
+    "yawRotatedMatches": yaw_rotated_matches,
     "projectilePathIdentityDiagnostics": {
         "nativePaths": len(native_paths), "oraclePaths": len(oracle_paths),
         "oneToOnePairs": len(path_pairs),
         "sharedPositionRows": sum(pair["sharedTicks"] for pair in path_pairs),
         "maxStartTickDifference": max((abs(pair["startTickDelta"]) for pair in path_pairs), default=None),
         "maxEndTickDifference": max((abs(pair["endTickDelta"]) for pair in path_pairs), default=None),
+        "lifetimeDifferenceCount": sum(pair["endTickDelta"] != 0 for pair in path_pairs),
+        "lifetimeDifferenceSamples": [pair for pair in path_pairs if pair["endTickDelta"] != 0][:8],
+        "fireSubtypeSamples": [pair for pair in path_pairs if pair["kind"] == "fire"][:8],
         "unmatchedNativeSamples": list(map(str, set(native_paths) - paired_native))[:8],
         "unmatchedNativeDetails": [{"round": key[0], "trajectory": key[1],
             "kind": native_paths[key]["kind"], "thrower": native_paths[key]["thrower"],
@@ -177,3 +202,6 @@ assert len(grenade_matches) >= 5, "Too few overlapping native and CSDM projectil
 assert report["grenadeWithin16Units"] == len(grenade_matches), "Projectile world coordinates disagree with CSDM"
 assert player_attribute_compared["alive"] > 0 and not player_attribute_differences["alive"], "Observed alive state disagrees with CSDM"
 assert player_attribute_compared["health"] > 0 and not player_attribute_differences["health"], "Observed health disagrees with CSDM"
+assert len(path_pairs) == len(native_paths) == len(oracle_paths), "Projectile identities do not pair one-to-one"
+assert sum(pair["sharedTicks"] for pair in path_pairs) == len(grenade_rows), "Projectile trajectory samples do not pair one-to-one"
+assert all(pair["startTickDelta"] == 0 for pair in path_pairs), "Projectile release/start ticks disagree with CSDM"
