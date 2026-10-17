@@ -1,0 +1,28 @@
+name: Candidate source and build checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install frontend dependencies on hosted runner
+        run: npm install --no-audit --no-fund
+      - name: Typecheck and build frontend
+        run: npm run build
+      - name: Test upstream score contract
+        run: npm run test:contracts
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Run Rust library and contract tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets -- --test-threads=1
