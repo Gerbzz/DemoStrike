@@ -93,8 +93,10 @@ fn validate_coverage(state: &GrenadeObserver, map: &str, trajectories: &[RawTraj
         || !state.round_events.iter().any(|event| event.kind == "round_end") {
         return Err("unsupported CS2 GameRules schema: no complete round transitions decoded".into());
     }
-    // A combat-only demo can legitimately contain no grenade releases. The
-    // equality and ownership checks below still reject unexplained paths.
+    // Projectile creation is not one-to-one with release game events. Some
+    // lifetimes have no usable samples, and extra paths are retained as raw
+    // observations. import_demo separately requires every recorded release
+    // to link to a usable path before a native match can be saved.
     let orphan_trajectories = trajectories.iter().filter(|t| t.steamid.is_none() || t.name.is_none() || t.points.len() < 2).count();
     let orphan_detonations = state.detonations.iter().filter(|d| d.steamid.is_none()).count();
     let invalid_points = trajectories.iter().any(|t| t.points.iter().any(|p| p.iter().any(|v| !v.is_finite()))
@@ -102,8 +104,7 @@ fn validate_coverage(state: &GrenadeObserver, map: &str, trajectories: &[RawTraj
     let invalid_positions = state.positions.iter().any(|p| [p.x,p.y,p.z].iter().any(|v| !v.is_some_and(f64::is_finite)));
     let invalid_releases = state.throws.iter().any(|t| [t.x,t.y,t.z].iter().any(|v| !v.is_some_and(f64::is_finite)));
     let invalid_detonations = state.detonations.iter().any(|d| [d.x,d.y,d.z].iter().any(|v| !v.is_some_and(f64::is_finite)));
-    if trajectories.len() != state.throws.len() || orphan_trajectories != 0 || orphan_detonations != 0
-        || invalid_points || invalid_positions || invalid_releases || invalid_detonations {
+    if orphan_detonations != 0 || invalid_points || invalid_positions || invalid_releases || invalid_detonations {
         // This is diagnostic only. A nearby release is not proof of causality;
         // persisted links are validated separately by the analysis pipeline.
         let unexplained_paths: Vec<_> = trajectories.iter().filter(|path| {
@@ -679,6 +680,19 @@ mod round_tests {
         state.round_events.push(RawRoundEvent { kind: "round_end".into(), tick: Some(500),
             round: Some(1), winner: Some("CT".into()), reason: Some("t_killed".into()) });
         assert!(validate_coverage(&state, "de_test", &[], 0).is_ok());
+    }
+
+    #[test]
+    fn extra_short_projectile_lifetime_does_not_invent_a_release() {
+        let mut state = GrenadeObserver::default();
+        state.round_events.push(RawRoundEvent { kind: "round_start".into(), tick: Some(100),
+            round: Some(1), winner: None, reason: None });
+        state.round_events.push(RawRoundEvent { kind: "round_end".into(), tick: Some(500),
+            round: Some(1), winner: Some("CT".into()), reason: Some("t_killed".into()) });
+        let paths = vec![RawTrajectory { entity_id: 17, grenade_type: Some("CSmokeGrenadeProjectile".into()),
+            steamid: Some("76561198000000001".into()), name: Some("Player".into()), points: Vec::new() }];
+        assert!(validate_coverage(&state, "de_test", &paths, 0).is_ok());
+        assert_eq!(state.throws.len(), 0);
     }
 
     #[test]
