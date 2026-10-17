@@ -113,7 +113,7 @@ pub fn build_match(raw: &RawDemo) -> AnalyzedMatch {
     let rounds = build_rounds(raw);
     let mut events = build_events(raw, &rounds, tick_rate);
     let effect_facts = attribute_effects(raw, &mut events, tick_rate);
-    let player_round_combat = build_player_round_combat(raw);
+    let player_round_combat = build_player_round_combat(raw, &rounds);
     let score_ct = rounds.iter().filter(|r| r.winner.as_deref() == Some("CT")).count() as i64;
     let score_t = rounds.iter().filter(|r| r.winner.as_deref() == Some("T")).count() as i64;
 
@@ -149,11 +149,27 @@ fn observed_enemy(attacker: Option<&str>, victim: Option<&str>) -> Option<bool> 
     Some(normalize_team(attacker)? != normalize_team(victim)?)
 }
 
-fn build_player_round_combat(raw: &RawDemo) -> Vec<AnalyzedPlayerRoundCombat> {
+// Source 2 can increment totalRoundsPlayed immediately after round_end. A
+// death before the next round_start still belongs to the round just ended.
+// Events after the final completed round have no match round and must not
+// inflate the displayed scoreboard. Raw event rows remain lossless in v8.
+fn completed_combat_round(round: i64, tick: i64, rounds: &[AnalyzedRound]) -> Option<i64> {
+    let current = rounds.iter().find(|item| item.round_number == round)?;
+    if current.start_tick.is_some_and(|start| tick < start) {
+        return rounds.iter().filter(|item| item.round_number < round)
+            .filter(|item| item.end_tick.is_some_and(|end| end <= tick))
+            .max_by_key(|item| item.end_tick)
+            .map(|item| item.round_number);
+    }
+    Some(round)
+}
+
+fn build_player_round_combat(raw: &RawDemo, rounds: &[AnalyzedRound]) -> Vec<AnalyzedPlayerRoundCombat> {
     let mut rows = HashMap::new();
     let mut conflicting_sides = std::collections::HashSet::new();
     for assignment in &raw.round_sides {
-        if assignment.round < 1 || assignment.steamid.is_empty() { continue; }
+        if assignment.round < 1 || assignment.steamid.is_empty()
+            || !rounds.iter().any(|round| round.round_number == assignment.round) { continue; }
         let key = (assignment.round, assignment.steamid.clone());
         let side = normalize_team(Some(&assignment.side));
         let row = combat_row(&mut rows, assignment.round, &assignment.steamid);
@@ -167,9 +183,10 @@ fn build_player_round_combat(raw: &RawDemo) -> Vec<AnalyzedPlayerRoundCombat> {
     }
     for hurt in &raw.combat_hurts {
         if hurt.round < 1 || hurt.damage < 0 { continue; }
-        combat_row(&mut rows, hurt.round, &hurt.victim_steamid);
+        let Some(round) = completed_combat_round(hurt.round, hurt.tick, rounds) else { continue; };
+        combat_row(&mut rows, round, &hurt.victim_steamid);
         if let Some(attacker) = hurt.attacker_steamid.as_deref() {
-            let row = combat_row(&mut rows, hurt.round, attacker);
+            let row = combat_row(&mut rows, round, attacker);
             if attacker != hurt.victim_steamid {
                 match observed_enemy(hurt.attacker_team.as_deref(), hurt.victim_team.as_deref()) {
                     Some(true) => add_known(&mut row.enemy_health_damage, hurt.damage),
@@ -181,9 +198,10 @@ fn build_player_round_combat(raw: &RawDemo) -> Vec<AnalyzedPlayerRoundCombat> {
     }
     for death in &raw.combat_deaths {
         if death.round < 1 { continue; }
-        combat_row(&mut rows, death.round, &death.victim_steamid).deaths += 1;
+        let Some(round) = completed_combat_round(death.round, death.tick, rounds) else { continue; };
+        combat_row(&mut rows, round, &death.victim_steamid).deaths += 1;
         if let Some(attacker) = death.attacker_steamid.as_deref() {
-            let row = combat_row(&mut rows, death.round, attacker);
+            let row = combat_row(&mut rows, round, attacker);
             if attacker != death.victim_steamid {
                 match observed_enemy(death.attacker_team.as_deref(), death.victim_team.as_deref()) {
                     Some(true) => add_known(&mut row.enemy_kills, 1),
@@ -193,7 +211,7 @@ fn build_player_round_combat(raw: &RawDemo) -> Vec<AnalyzedPlayerRoundCombat> {
             }
         }
         if let Some(assister) = death.assister_steamid.as_deref() {
-            let row = combat_row(&mut rows, death.round, assister);
+            let row = combat_row(&mut rows, round, assister);
             if assister != death.victim_steamid && death.attacker_steamid.as_deref() != Some(assister) {
                 match observed_enemy(death.assister_team.as_deref(), death.victim_team.as_deref()) {
                     Some(true) => add_known(&mut row.enemy_assists, 1),
@@ -933,6 +951,27 @@ mod tests {
     }
 
     #[test]
+    fn combat_between_rounds_stays_in_prior_round_and_post_match_deaths_stay_raw_only() {
+        let mut raw = minimal_raw();
+        raw.round_events.extend(serde_json::from_value::<Vec<_>>(serde_json::json!([
+            {"kind":"round_start","tick":8500,"round":2,"winner":null,"reason":null},
+            {"kind":"round_end","tick":12000,"round":2,"winner":"T","reason":"ct_killed"}
+        ])).unwrap());
+        raw.combat_deaths = serde_json::from_value(serde_json::json!([
+            {"tick":8200,"round":2,"weapon":"ak47","attackerSteamid":"s1","attackerTeam":"CT",
+             "victimSteamid":"s2","victimTeam":"T","assisterSteamid":null,"assisterTeam":null},
+            {"tick":12100,"round":3,"weapon":"world","attackerSteamid":"s2","attackerTeam":"T",
+             "victimSteamid":"s2","victimTeam":"T","assisterSteamid":null,"assisterTeam":null}
+        ])).unwrap();
+        let analyzed = build_match(&raw);
+        assert_eq!(analyzed.raw_combat_deaths.len(), 2);
+        assert!(!analyzed.player_round_combat.iter().any(|row| row.round_number == 3));
+        let victim = analyzed.player_round_combat.iter().find(|row| row.steamid == "s2").unwrap();
+        assert_eq!(victim.round_number, 1);
+        assert_eq!(victim.deaths, 1);
+    }
+
+    #[test]
     fn full_pipeline_flash() {
         let raw = minimal_raw();
         let m = build_match(&raw);
@@ -1176,4 +1215,3 @@ mod tests {
         assert_eq!(events.iter().map(|e| e.detonate_tick).collect::<Vec<_>>(), [Some(111), Some(311)]);
     }
 }
-
