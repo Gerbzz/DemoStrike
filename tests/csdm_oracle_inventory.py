@@ -11,7 +11,7 @@ import sqlite3
 from collections import Counter
 
 
-root = Path(os.environ["RUNNER_TEMP"])
+root = Path(os.environ.get("ORACLE_RUN_ROOT") or os.environ["RUNNER_TEMP"])
 exports = list((root / "csdm-oracle").rglob("*.json"))
 if len(exports) != 1:
     raise RuntimeError(f"Expected one analyzer JSON export, found {len(exports)}")
