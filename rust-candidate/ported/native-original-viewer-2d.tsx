@@ -13,7 +13,7 @@ import { useSourceMatch } from './match-loader';
 import { nativeSide, originalRound } from './native-original-viewer-match';
 import { NativeRadarProvider } from './native-original-viewer-radar';
 import type { NativeObservedPosition } from './native-original-draw-players';
-import { observedBombTimeline, observedGrenadeEvents } from './native-original-viewer-events';
+import { observedBombTimeline, observedFireSubtypes, observedGrenadeEvents } from './native-original-viewer-events';
 import { NativeOriginalEventList } from './native-original-event-list';
 import './native-original-viewer.css';
 
@@ -26,12 +26,13 @@ const chunkTicks = 512;
 type Frames = { players: ViewerPlayerFrame[]; grenades: ViewerGrenadeFrame[] };
 type ViewerValue = NonNullable<React.ContextType<typeof ViewerContext>>;
 
-function grenadeName(kind: string | null): GrenadeName | null {
+function grenadeName(kind: string | null, fireSubtype?: 'molotov' | 'incendiary'): GrenadeName | null {
   if (kind?.includes('Smoke')) return GrenadeName.Smoke;
   if (kind?.includes('Flash')) return GrenadeName.Flashbang;
   if (kind?.includes('HEGrenade')) return GrenadeName.HE;
   if (kind?.includes('Incendiary')) return GrenadeName.Incendiary;
-  if (kind?.includes('Molotov')) return GrenadeName.Molotov;
+  if (kind?.includes('Molotov')) return fireSubtype === 'incendiary' ? GrenadeName.Incendiary
+    : fireSubtype === 'molotov' ? GrenadeName.Molotov : null;
   if (kind?.includes('Decoy')) return GrenadeName.Decoy;
   return null;
 }
@@ -79,8 +80,9 @@ function playerPosition(frame: ViewerPlayerFrame, checksum: string, roundNumber:
   };
 }
 
-function grenadePosition(frame: ViewerGrenadeFrame, checksum: string, roundNumber: number): GrenadePosition | null {
-  const name = grenadeName(frame.grenadeType);
+function grenadePosition(frame: ViewerGrenadeFrame, checksum: string, roundNumber: number,
+  fireSubtype?: 'molotov' | 'incendiary'): GrenadePosition | null {
+  const name = grenadeName(frame.grenadeType, fireSubtype);
   if (!name) return null;
   return {
     id: `${frame.trajectoryIndex}-${frame.tick}`,
@@ -156,7 +158,10 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap }: {
   const [lowerRadarOffsetY, setLowerRadarOffsetY] = useState(0);
   const [lowerRadarOpacity, setLowerRadarOpacity] = useState(1);
   const playerPositions = useMemo(() => frames.players.map((frame) => playerPosition(frame, checksum!, recorded.roundNumber)), [frames.players, checksum, recorded.roundNumber]);
-  const grenadePositions = useMemo(() => frames.grenades.map((frame) => grenadePosition(frame, checksum!, recorded.roundNumber)).filter((row): row is GrenadePosition => row !== null), [frames.grenades, checksum, recorded.roundNumber]);
+  const fireSubtypes = useMemo(() => observedFireSubtypes(meta, frames.grenades), [meta, frames.grenades]);
+  const grenadePositions = useMemo(() => frames.grenades.map((frame) =>
+    grenadePosition(frame, checksum!, recorded.roundNumber, fireSubtypes.get(frame.trajectoryIndex)))
+    .filter((row): row is GrenadePosition => row !== null), [frames.grenades, checksum, recorded.roundNumber, fireSubtypes]);
   const lifecycle = useMemo(() => observedGrenadeEvents(meta, frames.grenades, checksum!), [meta, frames.grenades, checksum]);
   const bombs = useMemo(() => observedBombTimeline(meta, checksum!), [meta, checksum]);
   const kills = useMemo(() => observedKills(detail, recorded, frames, checksum!, start, end), [detail, recorded, frames, checksum, start, end]);
@@ -197,6 +202,7 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap }: {
     data-current-tick={currentTick} data-player-count={frames.players.filter((row) => row.tick === currentTick).length}
     data-unknown-alive-count={frames.players.filter((row) => row.tick === currentTick && row.isAlive === null).length}
     data-grenade-detonation-count={lifecycle.recorded.length}
+    data-incendiary-trajectory-count={[...fireSubtypes.values()].filter((type) => type === 'incendiary').length}
     data-bomb-event-count={bombs.observedCount}
     data-bomb-plant-tick={bombs.bombPlanted?.tick ?? ''}
     data-bomb-events-available={meta.bombEventsAvailable ? 'true' : 'false'}

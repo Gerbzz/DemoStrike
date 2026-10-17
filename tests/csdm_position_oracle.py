@@ -251,3 +251,14 @@ assert yaw_viewer_matches == player_attribute_compared["yaw"], "Viewer yaw conve
 assert len(path_pairs) == len(native_paths) == len(oracle_paths), "Projectile identities do not pair one-to-one"
 assert sum(pair["sharedTicks"] for pair in path_pairs) == len(grenade_rows), "Projectile trajectory samples do not pair one-to-one"
 assert all(pair["startTickDelta"] == 0 for pair in path_pairs), "Projectile release/start ticks disagree with CSDM"
+assert all(pair["endTickDelta"] == 0 for pair in path_pairs), "Projectile lifetime/end ticks disagree with CSDM"
+fire_paths = [pair for pair in path_pairs if pair["kind"] == "fire"]
+assert fire_paths, "No observed fire paths to verify subtype mapping"
+for pair in fire_paths:
+    releases = [event for event in pair["releaseCandidates"]
+        if event["throw_tick"] <= pair["nativeStartTick"] <= event["throw_tick"] + 32
+        and (event["detonate_tick"] is None or
+            pair["nativeEndTick"] <= event["detonate_tick"] <= pair["nativeEndTick"] + 16)]
+    assert len(releases) == 1, "Fire trajectory lacks one observed subtype release"
+    assert releases[0]["utility_type"] in pair["upstreamLabel"].lower(), \
+        "Observed fire release subtype disagrees with pinned CSDM weapon instance"

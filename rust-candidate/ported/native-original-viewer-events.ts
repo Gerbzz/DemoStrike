@@ -16,6 +16,42 @@ type Lifecycle = {
   recorded: ViewerUtilityEvent[];
 };
 
+// Source 2 uses CMolotovProjectile for both fire grenades. The observed
+// weapon_fire release retains the actual subtype. Pair it with one projectile
+// lifetime by entity, thrower and tick window; an ambiguous link stays unknown.
+export function observedFireSubtypes(
+  meta: ViewerRoundMeta, frames: ViewerGrenadeFrame[],
+): Map<number, 'molotov' | 'incendiary'> {
+  const paths = new Map<number, { entity: number; thrower: string | null; start: number; end: number }>();
+  for (const frame of frames) {
+    if (!frame.grenadeType?.includes('MolotovProjectile')) continue;
+    const path = paths.get(frame.trajectoryIndex);
+    if (path) {
+      path.start = Math.min(path.start, frame.tick);
+      path.end = Math.max(path.end, frame.tick);
+    } else {
+      paths.set(frame.trajectoryIndex, { entity: frame.entityId,
+        thrower: frame.throwerSteamid, start: frame.tick, end: frame.tick });
+    }
+  }
+  const assignments = new Map<number, Array<'molotov' | 'incendiary'>>();
+  for (const event of meta.utilityEvents) {
+    if ((event.utilityType !== 'molotov' && event.utilityType !== 'incendiary')
+      || event.projectileEntityId === null) continue;
+    const candidates = [...paths].filter(([, path]) =>
+      path.entity === event.projectileEntityId
+      && path.thrower === event.throwerSteamid
+      && path.start >= event.throwTick - 2 && path.start <= event.throwTick + 32
+      && (event.detonateTick === null
+        || (event.detonateTick >= path.end && event.detonateTick <= path.end + 16)));
+    if (candidates.length !== 1) continue;
+    const index = candidates[0]![0];
+    assignments.set(index, [...(assignments.get(index) ?? []), event.utilityType]);
+  }
+  return new Map([...assignments].filter(([, types]) => types.length === 1)
+    .map(([index, types]) => [index, types[0]!]));
+}
+
 // The imported utility table stores observed detonation ticks and positions.
 // Match a projectile only when its recorded entity, thrower and tick window
 // identify a trajectory. A missing match never creates a synthetic path.

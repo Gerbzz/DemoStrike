@@ -375,6 +375,8 @@ async function main() {
       document.querySelector('[data-round-number]')?.getAttribute('data-round-number') === '3'
       && Number(document.querySelector('[data-player-count]')?.getAttribute('data-player-count')) > 0,
     null, { timeout: 30000 });
+    assert.ok(Number(await page.locator('[data-incendiary-trajectory-count]').getAttribute('data-incendiary-trajectory-count')) >= 3,
+      'Observed incendiary releases did not label the generic Source 2 fire projectile paths');
     const betweenRounds = page.locator('details.native-recorded-events');
     await betweenRounds.locator('summary').click();
     const outsideReplay = betweenRounds.locator('[data-event-kind="bomb"][data-event-tick="21853"]');

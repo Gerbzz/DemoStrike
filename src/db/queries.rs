@@ -25,9 +25,9 @@ fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339()
 }
 
-// CSDM attributes a bomb event between two recorded rounds to the preceding
-// round. Keep that event without inventing playable frames outside the round.
-fn viewer_bomb_round(rounds: &[AnalyzedRound], tick: i64) -> Option<i64> {
+// Retain observed bomb events and projectile tails between recorded rounds
+// under the preceding round, without inventing playable player frames there.
+fn viewer_observation_round(rounds: &[AnalyzedRound], tick: i64) -> Option<i64> {
     if let Some(round) = rounds.iter().find(|round| {
         matches!((round.start_tick, round.end_tick), (Some(start), Some(end)) if start <= tick && tick <= end)
     }) {
@@ -44,7 +44,7 @@ fn viewer_bomb_round(rounds: &[AnalyzedRound], tick: i64) -> Option<i64> {
 }
 
 #[cfg(test)]
-mod viewer_bomb_round_tests {
+mod viewer_observation_round_tests {
     use super::*;
 
     fn round(number: i64, start: i64, end: i64) -> AnalyzedRound {
@@ -65,9 +65,9 @@ mod viewer_bomb_round_tests {
     #[test]
     fn inter_round_bomb_event_is_retained_with_preceding_round() {
         let rounds = [round(3, 15680, 21457), round(4, 21905, 30000)];
-        assert_eq!(viewer_bomb_round(&rounds, 21853), Some(3));
-        assert_eq!(viewer_bomb_round(&rounds, 21905), Some(4));
-        assert_eq!(viewer_bomb_round(&rounds, 30001), None);
+        assert_eq!(viewer_observation_round(&rounds, 21853), Some(3));
+        assert_eq!(viewer_observation_round(&rounds, 21905), Some(4));
+        assert_eq!(viewer_observation_round(&rounds, 30001), None);
     }
 }
 
@@ -412,7 +412,7 @@ pub fn insert_match_with_source_hash(
             )?;
             for (index, event) in m.bomb_events.iter().enumerate() {
                 check_cancel()?;
-                let Some(round_number) = viewer_bomb_round(&m.rounds, event.tick) else {
+                let Some(round_number) = viewer_observation_round(&m.rounds, event.tick) else {
                     continue;
                 };
                 insert.execute(params![
@@ -483,7 +483,7 @@ pub fn insert_match_with_source_hash(
                 for point in &trajectory.points {
                     check_cancel()?;
                     let tick = point[0] as i64;
-                    let Some(round_number) = round_at(tick) else {
+                    let Some(round_number) = viewer_observation_round(&m.rounds, tick) else {
                         continue;
                     };
                     insert.execute(params![
@@ -1415,6 +1415,12 @@ mod tests {
     fn viewer_frames_keep_absolute_ticks_and_completed_round_boundaries() {
         let mut conn = open_in_memory().unwrap();
         let mut analyzed = sample_match();
+        let mut next_round = analyzed.rounds[0].clone();
+        next_round.round_number = 2;
+        next_round.start_tick = Some(9000);
+        next_round.freeze_end_tick = Some(9500);
+        next_round.end_tick = Some(16000);
+        analyzed.rounds.push(next_round);
         analyzed.position_stream_available = true;
         analyzed.viewer_positions = [999, 1000, 3000, 8000, 8001]
             .into_iter()
@@ -1453,12 +1459,22 @@ mod tests {
             .unwrap()
             .map(Result::unwrap)
             .collect();
-        let grenade: (i64, i64, String) = conn.query_row(
-            "SELECT tick,entity_id,grenade_type FROM viewer_grenade_positions WHERE match_id=?1",
-            [id], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).unwrap();
+        let grenade: Vec<(i64, i64, i64, String)> = conn
+            .prepare("SELECT round_number,tick,entity_id,grenade_type FROM viewer_grenade_positions WHERE match_id=?1 ORDER BY tick")
+            .unwrap()
+            .query_map([id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
         assert_eq!(version, Some(1));
         assert_eq!(ticks, vec![1000, 3000, 8000]);
-        assert_eq!(grenade, (3000, 7, "CSmokeGrenadeProjectile".into()));
+        assert_eq!(
+            grenade,
+            vec![
+                (1, 3000, 7, "CSmokeGrenadeProjectile".into()),
+                (1, 8001, 7, "CSmokeGrenadeProjectile".into()),
+            ]
+        );
     }
 
     #[test]
