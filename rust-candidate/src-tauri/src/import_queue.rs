@@ -77,7 +77,8 @@ impl ImportQueue {
             [id], |row| {
                 let receipt: Option<String> = row.get(4)?;
                 Ok(ImportJob {
-                    id: row.get(0)?, demo_path: row.get(1)?, state: row.get(2)?, recovered: row.get(3)?,
+                    id: row.get(0)?, demo_path: row.get(1)?, state: row.get(2)?,
+                    recovered: row.get(3)?,
                     receipt: receipt.and_then(|text| serde_json::from_str(&text).ok()),
                     error: row.get(5)?, created_at: row.get(6)?,
                 })
