@@ -65,6 +65,7 @@ export function MatchLoader() {
     <TabLinks>
       <TabLink url="">Overview</TabLink>
       <TabLink url="rounds" end={false}>Rounds</TabLink>
+      <TabLink url="duels" end={false}>Duels</TabLink>
       <TabLink url="players" end={false}>Players</TabLink>
       <TabLink url="grenades" end={false}>Utility</TabLink>
     </TabLinks>
