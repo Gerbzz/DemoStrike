@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { Button } from 'csdm/ui/components/buttons/button';
 import { describe, invoke } from './match-data';
 
-type ImportReceipt = { path: string; matchId: number; mapName: string; playerCount: number; roundCount: number };
+export type ImportReceipt = { path: string; matchId: number; mapName: string; playerCount: number; roundCount: number };
+export type ImportJob = { id: number; demoPath: string; state: 'queued' | 'running' | 'completed' | 'failed';
+  receipt: ImportReceipt | null; error: string | null; createdAt: string };
 
-export function DemoImport({ onImported }: { onImported: (receipt: ImportReceipt) => void }) {
+export function DemoImport({ onQueued }: { onQueued: (job: ImportJob) => void }) {
   const [demoPath, setDemoPath] = useState('');
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
@@ -12,8 +14,8 @@ export function DemoImport({ onImported }: { onImported: (receipt: ImportReceipt
     setWorking(true);
     setError('');
     try {
-      const receipt = await invoke<ImportReceipt>('csdm_import_demo', { demoPath: demoPath.trim() });
-      onImported(receipt);
+      const job = await invoke<ImportJob>('csdm_enqueue_demo', { demoPath: demoPath.trim() });
+      onQueued(job);
     } catch (failure) {
       setError(describe(failure));
     } finally {
@@ -39,7 +41,7 @@ export function DemoImport({ onImported }: { onImported: (receipt: ImportReceipt
       <Button isDisabled={working || !demoPath.trim()} onClick={() => void importDemo()}>Import demo</Button>
       <Button isDisabled={working} onClick={() => void chooseDemo()}>Browse demos</Button>
     </div>
-    {working && <p role="status" className="text-gray-700">Reading and analyzing the demo. Large matches may take several minutes.</p>}
+    {working && <p role="status" className="text-gray-700">Adding demo to the import queue.</p>}
     {error && <p role="alert" className="text-red-500 select-text">Import failed: {error}</p>}
   </div>;
 }
