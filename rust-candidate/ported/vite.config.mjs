@@ -9,6 +9,12 @@ const upstreamModules = path.resolve(portedRoot, '../upstream/cs-demo-manager/no
 export default {
   ...upstream,
   root: portedRoot,
+  define: {
+    ...upstream.define,
+    // Electron injected this at runtime; the Tauri renderer must supply it
+    // at build time. Keep a single production startup/effect cycle.
+    REACT_STRICT_MODE_ENABLED: 'false',
+  },
   resolve: {
     ...upstream.resolve,
     alias: [
