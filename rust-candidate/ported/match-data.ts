@@ -19,8 +19,15 @@ export type MatchSummary = {
 export type LibrarySnapshot = { path: string; matches: MatchSummary[] };
 export type MatchDetail = {
   summary: MatchSummary;
-  rounds: { roundNumber: number; winner: string | null; startTick: number | null; endTick: number | null }[];
-  players: { steamid: string; name: string }[];
+  fullCombatCoverage: boolean;
+  rounds: { roundNumber: number; winner: string | null; startTick: number | null; endTick: number | null;
+    combat: { ctPlayers: number; tPlayers: number; unassignedPlayers: number; enemyKills: number | null } | null }[];
+  players: { steamid: string; name: string; combat: {
+    enemyKills: number | null; deaths: number; enemyAssists: number | null;
+    enemyHealthDamage: number | null;
+    rounds: { roundNumber: number; side: string | null; enemyKills: number | null;
+      deaths: number; enemyAssists: number | null; enemyHealthDamage: number | null }[];
+  } | null }[];
   utilityEvents: {
     id: number; roundNumber: number; utilityType: string; throwerName: string;
     throwerTeam: string; throwTick: number; enemiesBlinded: number | null;

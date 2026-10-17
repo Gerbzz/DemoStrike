@@ -154,6 +154,18 @@ pub fn insert_match_with_source_hash(
             ])?;
         }
 
+        let mut combat = tx.prepare(
+            "INSERT INTO player_round_combat
+                (match_id, round_number, steamid, side, enemy_kills, deaths,
+                 enemy_assists, enemy_health_damage)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        )?;
+        for row in &m.player_round_combat {
+            check_cancel()?;
+            combat.execute(params![match_id, row.round_number, row.steamid, row.side,
+                row.enemy_kills, row.deaths, row.enemy_assists, row.enemy_health_damage])?;
+        }
+
         let winners: HashMap<i64, Option<String>> = m
             .rounds
             .iter()
@@ -960,7 +972,7 @@ pub fn render_job_status(conn: &Connection, job_id: i64) -> AppResult<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::{AnalyzedEvent, AnalyzedRound};
+    use crate::analysis::{AnalyzedEvent, AnalyzedPlayerRoundCombat, AnalyzedRound};
     use crate::db::open_in_memory;
     use crate::parser::raw::RawPlayer;
 
@@ -1026,6 +1038,11 @@ mod tests {
                 nearby_players: vec![],
             }],
             effect_facts: vec![],
+            player_round_combat: vec![AnalyzedPlayerRoundCombat {
+                round_number: 1, steamid: "s1".into(), side: Some("CT".into()),
+                enemy_kills: Some(2), deaths: 1, enemy_assists: Some(1),
+                enemy_health_damage: Some(87),
+            }],
             score_ct: 13,
             score_t: 7,
         }
@@ -1041,6 +1058,12 @@ mod tests {
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].event_count, 1);
         assert_eq!(matches[0].players[0].name, "alice");
+        let combat: (String, i64, i64, i64) = conn.query_row(
+            "SELECT side, enemy_kills, enemy_assists, enemy_health_damage
+             FROM player_round_combat WHERE match_id = ?1 AND steamid = 's1'",
+            [id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        ).unwrap();
+        assert_eq!(combat, ("CT".into(), 2, 1, 87));
 
         let events = query_events(&conn, &EventFilter::default()).unwrap();
         assert_eq!(events.len(), 1);

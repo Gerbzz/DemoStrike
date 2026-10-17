@@ -14,6 +14,7 @@ import { useTable } from 'csdm/ui/components/table/use-table';
 import type { Column } from 'csdm/ui/components/table/table-types';
 import { MatchesTable } from './matches-table';
 import { describe, durationSeconds, invoke, libraryPathKey, matchRouteKey } from './match-data';
+import { DemoImport } from './demo-import';
 import type { LibrarySnapshot, MatchSummary } from './match-data';
 
 const columns: readonly Column<MatchSummary>[] = [
@@ -34,7 +35,7 @@ const columns: readonly Column<MatchSummary>[] = [
     } },
 ];
 
-function SourceMatches({ path, onChangeLibrary }: { path: string; onChangeLibrary: () => void }) {
+function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string; onChangeLibrary: () => void; onOpenLibrary: (path: string) => void }) {
   const navigate = useNavigate();
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -42,6 +43,7 @@ function SourceMatches({ path, onChangeLibrary }: { path: string; onChangeLibrar
   const [refresh, setRefresh] = useState(0);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [showImport, setShowImport] = useState(false);
   const table = useTable<MatchSummary>({
     columns,
     data: matches,
@@ -79,6 +81,7 @@ function SourceMatches({ path, onChangeLibrary }: { path: string; onChangeLibrar
         left={<>
           <Button onClick={onChangeLibrary}>Change library</Button>
           <Button onClick={() => setRefresh((value) => value + 1)}>Refresh</Button>
+          <Button onClick={() => setShowImport((value) => !value)}>{showImport ? 'Close import' : 'Import demo'}</Button>
           <Button isDisabled={selectedId === null} onClick={() => {
             if (selectedId !== null) void navigate(matchRouteKey(selectedId));
           }}>Open match</Button>
@@ -92,6 +95,13 @@ function SourceMatches({ path, onChangeLibrary }: { path: string; onChangeLibrar
             }} />
         </label>}
       />
+      {showImport && <div className="border-b border-gray-300 px-16 py-12">
+        <div className="max-w-[540px]"><DemoImport onImported={(receipt) => {
+          setShowImport(false);
+          if (receipt.path === path) setRefresh((value) => value + 1);
+          else onOpenLibrary(receipt.path);
+        }} /></div>
+      </div>}
       <div className="border-b border-gray-300 px-16 py-8">
         <span className="text-body-strong">Existing DemoStrike library</span>
         <span className="ml-8 break-all text-gray-700 select-text">{path}</span>
@@ -132,7 +142,7 @@ function OriginalEmptyMatches({ onOpenLibrary }: { onOpenLibrary: (path: string)
 export function Matches() {
   const [path, setPath] = useState(() => localStorage.getItem(libraryPathKey) ?? '');
   if (!path) return <OriginalEmptyMatches onOpenLibrary={setPath} />;
-  return <SourceMatches path={path} onChangeLibrary={() => {
+  return <SourceMatches path={path} onOpenLibrary={setPath} onChangeLibrary={() => {
     localStorage.removeItem(libraryPathKey);
     setPath('');
   }} />;

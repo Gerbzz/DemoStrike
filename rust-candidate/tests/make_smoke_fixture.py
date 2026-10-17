@@ -69,6 +69,10 @@ def main() -> None:
         assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     digest = hashlib.sha256(db_path.read_bytes()).hexdigest()
     print(f"Synthetic fixture: {db_path}; SHA-256: {digest}")
+    demo_path = output_dir / "synthetic-combat.dem"
+    with demo_path.open("xb") as demo:
+        demo.write(b"PBDEMS2\0synthetic public import contract fixture")
+    print(f"Synthetic import input: {demo_path}; SHA-256: {hashlib.sha256(demo_path.read_bytes()).hexdigest()}")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ const { chromium } = require('playwright-core');
 
 const outputDir = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-original');
 const fixturePath = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-smoke', 'synthetic-library.sqlite');
+const importDemoPath = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-smoke', 'synthetic-combat.dem');
 const appPath = path.resolve(__dirname, '../src-tauri/target/release/demostrike-rust-candidate.exe');
 const cdpUrl = 'http://127.0.0.1:19375';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -19,7 +20,9 @@ async function main() {
   assert.equal(process.platform, 'win32');
   assert.ok(fs.existsSync(appPath), `Native app missing: ${appPath}`);
   assert.ok(fs.existsSync(fixturePath), `Synthetic library missing: ${fixturePath}`);
+  assert.ok(fs.existsSync(importDemoPath), `Synthetic import source missing: ${importDemoPath}`);
   const fixtureSha256 = sha256(fixturePath);
+  const importDemoSha256 = sha256(importDemoPath);
   fs.mkdirSync(outputDir, { recursive: true });
   const app = spawn(appPath, [], { cwd: path.dirname(appPath), windowsHide: false, stdio: 'pipe' });
   let exit = null;
@@ -58,7 +61,7 @@ async function main() {
       if (message.type() === 'error') consoleErrors.push(message.text());
     });
     await page.getByText('Your local library is empty').waitFor({ timeout: 25000 });
-    await page.getByText('Demo import and populated match data are still being ported.').waitFor({ timeout: 25000 });
+    await page.getByText('Import a CS2 demo for round and player combat analysis').waitFor({ timeout: 25000 });
     assert.equal(await page.locator('a[href="#/matches"]').count(), 1, 'Original Matches sidebar route missing');
     assert.equal(await page.locator('a[href="#/demos"]').count(), 1, 'Original Demos sidebar route missing');
     assert.equal(await page.locator('a[href="#/players"]').count(), 1, 'Original Players sidebar route missing');
@@ -67,6 +70,27 @@ async function main() {
     const screenshot = path.join(outputDir, 'original-matches-empty.png');
     await page.screenshot({ path: screenshot, animations: 'disabled' });
     assert.ok(fs.statSync(screenshot).size > 10000, 'Native screenshot is unexpectedly small');
+    await page.getByRole('textbox', { name: 'Import a CS2 demo' }).fill(importDemoPath);
+    await page.getByRole('button', { name: 'Import demo' }).click();
+    await page.getByText('1 recorded match').waitFor({ timeout: 30000 });
+    const importedRow = page.getByRole('row').filter({ hasText: 'synthetic-combat.dem' });
+    assert.equal(await importedRow.count(), 1, 'Imported synthetic demo missing from Matches');
+    const importedScreenshot = path.join(outputDir, 'imported-combat-matches.png');
+    await page.screenshot({ path: importedScreenshot, animations: 'disabled' });
+    await importedRow.dblclick();
+    await page.getByRole('heading', { name: 'Recorded combat' }).waitFor({ timeout: 20000 });
+    await page.getByText('complete non-warmup native event stream').waitFor({ timeout: 20000 });
+    const importedOverviewScreenshot = path.join(outputDir, 'imported-combat-overview.png');
+    await page.screenshot({ path: importedOverviewScreenshot, animations: 'disabled' });
+    await page.getByRole('link', { name: 'Players' }).click();
+    await page.getByRole('cell', { name: 'Synthetic Ada' }).waitFor({ timeout: 20000 });
+    await page.waitForFunction(() => document.querySelectorAll('tbody tr').length === 3, null, { timeout: 20000 });
+    const importedPlayersScreenshot = path.join(outputDir, 'imported-combat-players.png');
+    await page.screenshot({ path: importedPlayersScreenshot, animations: 'disabled' });
+    await page.locator('a[href="#/matches"]').click();
+    await page.getByRole('button', { name: 'Change library' }).click();
+    await page.getByText('Your local library is empty').waitFor({ timeout: 20000 });
+    assert.equal(sha256(importDemoPath), importDemoSha256, 'Native import changed source demo bytes');
     await page.getByRole('textbox', { name: 'Open an existing DemoStrike SQLite library' }).fill(fixturePath);
     await page.getByRole('button', { name: 'Open local library' }).click();
     await page.getByText('2 recorded matches').waitFor({ timeout: 20000 });
@@ -133,11 +157,15 @@ async function main() {
     assert.equal(sha256(betaDemo), betaHash, 'Read-only browser changed a synthetic demo file');
     const proof = {
       source: 'actual hosted Tauri WebView2 window with original CS Demo Manager renderer',
-      data: 'new empty local SQLite plus a separate sanitized synthetic DemoStrike library',
-      scope: 'original CSDM shell and table engine with data-limited match, rounds, players, and demo-folder routes; import and other backend contracts remain unported',
+      data: 'synthetic facts imported through the production UI/transaction behind a smoke-only parser feature, plus a separate sanitized read-only library',
+      scope: 'original CSDM shell and table engine with native import route and data-limited combat, rounds, players, and demo-folder routes; real demo decoding is not proven by this synthetic smoke',
       commit: process.env.GITHUB_SHA || null,
       executableSha256: sha256(appPath),
       screenshotSha256: sha256(screenshot),
+      importedMatchesScreenshotSha256: sha256(importedScreenshot),
+      importedOverviewScreenshotSha256: sha256(importedOverviewScreenshot),
+      importedPlayersScreenshotSha256: sha256(importedPlayersScreenshot),
+      syntheticImportDemoSha256: importDemoSha256,
       matchesScreenshotSha256: sha256(matchesScreenshot),
       overviewScreenshotSha256: sha256(overviewScreenshot),
       roundsScreenshotSha256: sha256(roundsScreenshot),

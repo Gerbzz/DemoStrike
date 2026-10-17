@@ -75,6 +75,19 @@ pub struct EffectAttribution {
     pub candidate_events: Vec<usize>,
 }
 
+/// Event-derived combat facts for one player in one round. The side is the
+/// observed CT/T side, never an inferred stable CSDM team identity.
+#[derive(Debug, Clone)]
+pub struct AnalyzedPlayerRoundCombat {
+    pub round_number: i64,
+    pub steamid: String,
+    pub side: Option<String>,
+    pub enemy_kills: Option<i64>,
+    pub deaths: i64,
+    pub enemy_assists: Option<i64>,
+    pub enemy_health_damage: Option<i64>,
+}
+
 #[derive(Debug, Clone)]
 pub struct AnalyzedMatch {
     pub map_name: String,
@@ -84,6 +97,7 @@ pub struct AnalyzedMatch {
     pub rounds: Vec<AnalyzedRound>,
     pub events: Vec<AnalyzedEvent>,
     pub effect_facts: Vec<EffectAttribution>,
+    pub player_round_combat: Vec<AnalyzedPlayerRoundCombat>,
     pub score_ct: i64,
     pub score_t: i64,
 }
@@ -93,6 +107,7 @@ pub fn build_match(raw: &RawDemo) -> AnalyzedMatch {
     let rounds = build_rounds(raw);
     let mut events = build_events(raw, &rounds, tick_rate);
     let effect_facts = attribute_effects(raw, &mut events, tick_rate);
+    let player_round_combat = build_player_round_combat(raw);
     let score_ct = rounds.iter().filter(|r| r.winner.as_deref() == Some("CT")).count() as i64;
     let score_t = rounds.iter().filter(|r| r.winner.as_deref() == Some("T")).count() as i64;
 
@@ -104,9 +119,88 @@ pub fn build_match(raw: &RawDemo) -> AnalyzedMatch {
         rounds,
         events,
         effect_facts,
+        player_round_combat,
         score_ct,
         score_t,
     }
+}
+
+fn combat_row<'a>(rows: &'a mut HashMap<(i64, String), AnalyzedPlayerRoundCombat>,
+    round: i64, steamid: &str) -> &'a mut AnalyzedPlayerRoundCombat {
+    rows.entry((round, steamid.to_owned())).or_insert_with(|| AnalyzedPlayerRoundCombat {
+        round_number: round, steamid: steamid.to_owned(), side: None,
+        enemy_kills: Some(0), deaths: 0, enemy_assists: Some(0), enemy_health_damage: Some(0),
+    })
+}
+
+fn add_known(metric: &mut Option<i64>, value: i64) {
+    if let Some(current) = metric { *current += value; }
+}
+
+fn observed_enemy(attacker: Option<&str>, victim: Option<&str>) -> Option<bool> {
+    Some(normalize_team(attacker)? != normalize_team(victim)?)
+}
+
+fn build_player_round_combat(raw: &RawDemo) -> Vec<AnalyzedPlayerRoundCombat> {
+    let mut rows = HashMap::new();
+    let mut conflicting_sides = std::collections::HashSet::new();
+    for assignment in &raw.round_sides {
+        if assignment.round < 1 || assignment.steamid.is_empty() { continue; }
+        let key = (assignment.round, assignment.steamid.clone());
+        let side = normalize_team(Some(&assignment.side));
+        let row = combat_row(&mut rows, assignment.round, &assignment.steamid);
+        if let Some(side) = side {
+            if row.side.is_some() && row.side.as_ref() != Some(&side) {
+                conflicting_sides.insert(key);
+            } else if !conflicting_sides.contains(&key) {
+                row.side = Some(side);
+            }
+        }
+    }
+    for hurt in &raw.combat_hurts {
+        if hurt.round < 1 || hurt.damage < 0 { continue; }
+        combat_row(&mut rows, hurt.round, &hurt.victim_steamid);
+        if let Some(attacker) = hurt.attacker_steamid.as_deref() {
+            let row = combat_row(&mut rows, hurt.round, attacker);
+            if attacker != hurt.victim_steamid {
+                match observed_enemy(hurt.attacker_team.as_deref(), hurt.victim_team.as_deref()) {
+                    Some(true) => add_known(&mut row.enemy_health_damage, hurt.damage),
+                    Some(false) => {},
+                    None => row.enemy_health_damage = None,
+                }
+            }
+        }
+    }
+    for death in &raw.combat_deaths {
+        if death.round < 1 { continue; }
+        combat_row(&mut rows, death.round, &death.victim_steamid).deaths += 1;
+        if let Some(attacker) = death.attacker_steamid.as_deref() {
+            let row = combat_row(&mut rows, death.round, attacker);
+            if attacker != death.victim_steamid {
+                match observed_enemy(death.attacker_team.as_deref(), death.victim_team.as_deref()) {
+                    Some(true) => add_known(&mut row.enemy_kills, 1),
+                    Some(false) => {},
+                    None => row.enemy_kills = None,
+                }
+            }
+        }
+        if let Some(assister) = death.assister_steamid.as_deref() {
+            let row = combat_row(&mut rows, death.round, assister);
+            if assister != death.victim_steamid && death.attacker_steamid.as_deref() != Some(assister) {
+                match observed_enemy(death.assister_team.as_deref(), death.victim_team.as_deref()) {
+                    Some(true) => add_known(&mut row.enemy_assists, 1),
+                    Some(false) => {},
+                    None => row.enemy_assists = None,
+                }
+            }
+        }
+    }
+    for key in conflicting_sides {
+        if let Some(row) = rows.get_mut(&key) { row.side = None; }
+    }
+    let mut result: Vec<_> = rows.into_values().collect();
+    result.sort_by(|a, b| (a.round_number, &a.steamid).cmp(&(b.round_number, &b.steamid)));
+    result
 }
 
 pub fn validate_import(raw: &RawDemo, analyzed: &AnalyzedMatch) -> AppResult<ImportSummary> {
@@ -742,6 +836,37 @@ mod tests {
             ]
         }))
         .expect("valid raw json")
+    }
+
+    #[test]
+    fn combat_counts_only_observed_enemy_events_and_preserves_unknown_damage() {
+        let mut raw = minimal_raw();
+        raw.round_sides = serde_json::from_value(serde_json::json!([
+            {"round":1,"steamid":"s1","side":"CT"},
+            {"round":1,"steamid":"s2","side":"T"},
+            {"round":1,"steamid":"s3","side":"CT"}
+        ])).unwrap();
+        raw.combat_deaths = serde_json::from_value(serde_json::json!([
+            {"tick":3200,"round":1,"weapon":"ak47","attackerSteamid":"s1","attackerTeam":"CT",
+             "victimSteamid":"s2","victimTeam":"T","assisterSteamid":"s3","assisterTeam":"CT"},
+            {"tick":3300,"round":1,"weapon":"world","attackerSteamid":null,"attackerTeam":null,
+             "victimSteamid":"s3","victimTeam":"CT","assisterSteamid":null,"assisterTeam":null}
+        ])).unwrap();
+        raw.combat_hurts = serde_json::from_value(serde_json::json!([
+            {"tick":3100,"round":1,"weapon":"ak47","attackerSteamid":"s1","attackerTeam":"CT",
+             "victimSteamid":"s2","victimTeam":"T","damage":27},
+            {"tick":3150,"round":1,"weapon":"ak47","attackerSteamid":"s1","attackerTeam":"CT",
+             "victimSteamid":"s2","victimTeam":null,"damage":8}
+        ])).unwrap();
+        let result = build_match(&raw);
+        let find = |steamid: &str| result.player_round_combat.iter()
+            .find(|row| row.steamid == steamid).unwrap();
+        assert_eq!(find("s1").side.as_deref(), Some("CT"));
+        assert_eq!(find("s1").enemy_kills, Some(1));
+        assert_eq!(find("s1").enemy_health_damage, None);
+        assert_eq!(find("s2").deaths, 1);
+        assert_eq!(find("s3").enemy_assists, Some(1));
+        assert_eq!(find("s3").deaths, 1);
     }
 
     #[test]

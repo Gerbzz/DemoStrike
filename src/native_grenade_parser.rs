@@ -30,7 +30,7 @@ fn validate_format(path: &Path, control: &ImportControl) -> Result<(), String> {
 }
 
 impl DemoFactsParser for NativeGrenadeParser {
-    fn capabilities(&self) -> ParserCapabilities { ParserCapabilities::NativeCombatFlashV1 }
+    fn capabilities(&self) -> ParserCapabilities { ParserCapabilities::NativeCombatFullV2 }
 
     fn parse(&self, path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
         let path = path.to_path_buf();
@@ -75,6 +75,8 @@ fn parse_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
             throws: state.throws.clone(),
             detonations: state.detonations.clone(),
             blinds: state.blinds.clone(), hurts: state.hurts.clone(), deaths: state.deaths.clone(),
+            combat_hurts: state.combat_hurts.clone(), combat_deaths: state.combat_deaths.clone(),
+            round_sides: state.round_sides.clone(),
             trajectories,
             trajectory_stats: RawTrajectoryStats { total_rows: points, valid_rows: points, skipped_rows: 0 },
             economy: Vec::new(), positions: state.positions.clone(),
@@ -160,6 +162,15 @@ fn controller_identity(controller: &Entity) -> Option<(String, String, String)> 
     let name = match controller.get_property("m_iszPlayerName").ok()? { FieldValue::String(v) => v.clone(), _ => return None };
     let side = match controller.get_property("m_iTeamNum").ok()? { FieldValue::Unsigned8(v) => team(*v)?.to_string(), _ => return None };
     Some((steam, name, side))
+}
+
+fn remember_identity(players: &mut BTreeMap<String, RawPlayer>, sides: &mut Vec<RawRoundSide>,
+    identity: &(String, String, String), round: i64) {
+    let (steamid, name, side) = identity;
+    players.entry(steamid.clone()).or_insert_with(|| RawPlayer {
+        steamid: steamid.clone(), name: name.clone(),
+    });
+    sides.push(RawRoundSide { round, steamid: steamid.clone(), side: side.clone() });
 }
 
 /// The event's userid is accepted as a POV candidate only when the live
@@ -288,6 +299,8 @@ struct GrenadeObserver {
     players: BTreeMap<String, RawPlayer>,
     throws: Vec<RawThrow>, detonations: Vec<RawDetonation>,
     blinds: Vec<RawBlind>, hurts: Vec<RawHurt>, deaths: Vec<RawDeath>,
+    combat_hurts: Vec<RawCombatHurt>, combat_deaths: Vec<RawCombatDeath>,
+    round_sides: Vec<RawRoundSide>,
     trajectories: Vec<RawTrajectory>, active_projectiles: BTreeMap<u32, usize>,
     projectile_owners: BTreeMap<u32, (String, String)>,
     positions: Vec<RawPosition>, detonation_ticks: BTreeSet<u32>,
@@ -378,6 +391,50 @@ impl GrenadeObserver {
             let identity = |key: &str| event_int(event, key)
                 .and_then(|user| controller_by_user(ctx, user))
                 .and_then(controller_identity);
+            if matches!(name, "player_hurt" | "player_death") {
+                let victim = identity("userid");
+                let attacker = identity("attacker");
+                let expected_attacker = event_int(event, "attacker").is_some_and(|user| user > 0);
+                let assister = if name == "player_death" { identity("assister") } else { None };
+                let expected_assister = name == "player_death"
+                    && event_int(event, "assister").is_some_and(|user| user > 0);
+                if let (Some(round), Some(victim)) = (round, victim) {
+                    remember_identity(&mut self.players, &mut self.round_sides, &victim, round);
+                    if let Some(ref attacker) = attacker {
+                        remember_identity(&mut self.players, &mut self.round_sides, attacker, round);
+                    }
+                    if let Some(ref assister) = assister {
+                        remember_identity(&mut self.players, &mut self.round_sides, assister, round);
+                    }
+                    if (expected_attacker && attacker.is_none()) || (expected_assister && assister.is_none()) {
+                        self.errors.push(format!("incomplete combat {name} identity at tick {}", ctx.tick()));
+                    } else if name == "player_hurt" {
+                        match event_int(event, "dmg_health") {
+                            Some(damage) if damage >= 0 => self.combat_hurts.push(RawCombatHurt {
+                                tick: i64::from(ctx.tick()), round,
+                                weapon: event_string(event, "weapon").map(str::to_owned),
+                                attacker_steamid: attacker.as_ref().map(|value| value.0.clone()),
+                                attacker_team: attacker.as_ref().map(|value| value.2.clone()),
+                                victim_steamid: victim.0, victim_team: Some(victim.2),
+                                damage: i64::from(damage),
+                            }),
+                            _ => self.errors.push(format!("incomplete combat player_hurt damage at tick {}", ctx.tick())),
+                        }
+                    } else {
+                        self.combat_deaths.push(RawCombatDeath {
+                            tick: i64::from(ctx.tick()), round,
+                            weapon: event_string(event, "weapon").map(str::to_owned),
+                            attacker_steamid: attacker.as_ref().map(|value| value.0.clone()),
+                            attacker_team: attacker.as_ref().map(|value| value.2.clone()),
+                            victim_steamid: victim.0, victim_team: Some(victim.2),
+                            assister_steamid: assister.as_ref().map(|value| value.0.clone()),
+                            assister_team: assister.as_ref().map(|value| value.2.clone()),
+                        });
+                    }
+                } else {
+                    self.errors.push(format!("incomplete combat {name} round or victim at tick {}", ctx.tick()));
+                }
+            }
             match name {
                 "player_blind" => {
                     let fact = (|| {
@@ -464,6 +521,14 @@ impl GrenadeObserver {
                         if !self.round_events.iter().any(|r| r.kind == kind && r.tick == Some(i64::from(ctx.tick()))) {
                             self.round_events.push(RawRoundEvent { kind: kind.into(), tick: Some(i64::from(ctx.tick())),
                                 round: Some(i64::from(total) + 1), winner, reason });
+                        }
+                        if kind == "round_freeze_end" {
+                            let round = i64::from(total) + 1;
+                            for controller in ctx.entities().iter().filter(|item| item.class().name().contains("PlayerController")) {
+                                if let Some(identity) = controller_identity(controller) {
+                                    remember_identity(&mut self.players, &mut self.round_sides, &identity, round);
+                                }
+                            }
                         }
                     }
                     self.last_rules = Some((total, frozen, win));

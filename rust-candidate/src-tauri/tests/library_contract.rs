@@ -90,10 +90,50 @@ fn loads_rounds_players_and_utility_for_selected_match() {
     assert_eq!(detail.summary.map_name, "de_cache");
     assert_eq!(detail.rounds.len(), 1);
     assert_eq!(detail.players[0].name, "Tester");
+    assert!(!detail.full_combat_coverage);
+    assert!(detail.players[0].combat.is_none());
+    assert!(detail.rounds[0].combat.is_none());
     assert_eq!(detail.utility_events[0].utility_type, "smoke");
     assert_eq!(detail.utility_events[0].enemies_blinded, None);
     assert_eq!(detail.utility_events[0].damage_enemy, None);
     assert_eq!(detail.utility_breakdown[0].count, 1);
+}
+
+#[test]
+fn full_combat_is_read_only_and_gated_by_schema_and_parser_provenance() {
+    let (_dir, path) = fixture();
+    let db = Connection::open(&path).unwrap();
+    db.execute_batch(
+        "PRAGMA user_version = 7;
+         CREATE TABLE player_round_combat (
+           match_id INTEGER, round_number INTEGER, steamid TEXT, side TEXT,
+           enemy_kills INTEGER, deaths INTEGER, enemy_assists INTEGER,
+           enemy_health_damage INTEGER);
+         INSERT INTO player_round_combat VALUES (1,1,'7656','CT',2,1,1,88);
+         UPDATE matches SET parser_capability = 'native-combat-full-v2';",
+    )
+    .unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let detail = get_match_detail(&path, 1).unwrap();
+    assert!(detail.full_combat_coverage);
+    let combat = detail.players[0].combat.as_ref().unwrap();
+    assert_eq!(combat.enemy_kills, Some(2));
+    assert_eq!(combat.deaths, 1);
+    assert_eq!(combat.enemy_assists, Some(1));
+    assert_eq!(combat.enemy_health_damage, Some(88));
+    assert_eq!(detail.rounds[0].combat.as_ref().unwrap().ct_players, 1);
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+
+    db.execute(
+        "UPDATE matches SET parser_capability = 'native-combat-flash-v1'",
+        [],
+    )
+    .unwrap();
+    assert!(
+        get_match_detail(&path, 1).unwrap().players[0]
+            .combat
+            .is_none()
+    );
 }
 
 #[test]

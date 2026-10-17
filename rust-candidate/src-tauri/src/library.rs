@@ -1,5 +1,6 @@
 use rusqlite::{Connection, OpenFlags, params};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 
@@ -89,6 +90,16 @@ pub struct RoundSummary {
     pub winner: Option<String>,
     pub start_tick: Option<i64>,
     pub end_tick: Option<i64>,
+    pub combat: Option<RoundCombat>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoundCombat {
+    pub ct_players: i64,
+    pub t_players: i64,
+    pub unassigned_players: i64,
+    pub enemy_kills: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -96,6 +107,28 @@ pub struct RoundSummary {
 pub struct PlayerSummary {
     pub steamid: String,
     pub name: String,
+    pub combat: Option<PlayerCombat>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerCombat {
+    pub enemy_kills: Option<i64>,
+    pub deaths: i64,
+    pub enemy_assists: Option<i64>,
+    pub enemy_health_damage: Option<i64>,
+    pub rounds: Vec<PlayerRoundCombat>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerRoundCombat {
+    pub round_number: i64,
+    pub side: Option<String>,
+    pub enemy_kills: Option<i64>,
+    pub deaths: i64,
+    pub enemy_assists: Option<i64>,
+    pub enemy_health_damage: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -126,6 +159,33 @@ pub struct MatchDetail {
     pub players: Vec<PlayerSummary>,
     pub utility_events: Vec<UtilityEvent>,
     pub utility_breakdown: Vec<UtilityCount>,
+    pub full_combat_coverage: bool,
+}
+
+fn has_full_combat(connection: &Connection, capability: &str) -> Result<bool, LibraryError> {
+    if capability != "native-combat-full-v2" {
+        return Ok(false);
+    }
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version < 7 {
+        return Ok(false);
+    }
+    let mut statement = connection.prepare("PRAGMA table_info(player_round_combat)")?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok([
+        "match_id",
+        "round_number",
+        "steamid",
+        "side",
+        "enemy_kills",
+        "deaths",
+        "enemy_assists",
+        "enemy_health_damage",
+    ]
+    .iter()
+    .all(|required| columns.iter().any(|column| column == required)))
 }
 
 fn open_library(path: &str) -> Result<Connection, LibraryError> {
@@ -284,6 +344,38 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
         .into_iter()
         .find(|item| item.id == match_id)
         .ok_or(LibraryError::MatchNotFound(match_id))?;
+    let full_combat_coverage = has_full_combat(&connection, &summary.parser_capability)?;
+    let mut combat_by_player: HashMap<String, Vec<PlayerRoundCombat>> = HashMap::new();
+    let mut combat_by_round: HashMap<i64, Vec<PlayerRoundCombat>> = HashMap::new();
+    if full_combat_coverage {
+        let mut query = connection.prepare(
+            "SELECT round_number, steamid, side, enemy_kills, deaths,
+                    enemy_assists, enemy_health_damage
+             FROM player_round_combat WHERE match_id = ?1 ORDER BY round_number, steamid",
+        )?;
+        let records = query.query_map([match_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                PlayerRoundCombat {
+                    round_number: row.get(0)?,
+                    side: row.get(2)?,
+                    enemy_kills: row.get(3)?,
+                    deaths: row.get(4)?,
+                    enemy_assists: row.get(5)?,
+                    enemy_health_damage: row.get(6)?,
+                },
+            ))
+        })?;
+        for record in records {
+            let (round, steamid, combat) = record?;
+            combat_by_round
+                .entry(round)
+                .or_default()
+                .push(combat.clone());
+            combat_by_player.entry(steamid).or_default().push(combat);
+        }
+    }
 
     let mut rounds_query = connection.prepare(
         "SELECT round_number, winner, start_tick, end_tick FROM rounds
@@ -296,6 +388,25 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
                 winner: row.get(1)?,
                 start_tick: row.get(2)?,
                 end_tick: row.get(3)?,
+                combat: combat_by_round
+                    .get(&row.get::<_, i64>(0)?)
+                    .map(|records| RoundCombat {
+                        ct_players: records
+                            .iter()
+                            .filter(|item| item.side.as_deref() == Some("CT"))
+                            .count() as i64,
+                        t_players: records
+                            .iter()
+                            .filter(|item| item.side.as_deref() == Some("T"))
+                            .count() as i64,
+                        unassigned_players: records
+                            .iter()
+                            .filter(|item| item.side.is_none())
+                            .count() as i64,
+                        enemy_kills: records
+                            .iter()
+                            .try_fold(0_i64, |sum, item| Some(sum + item.enemy_kills?)),
+                    }),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -308,6 +419,21 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
             Ok(PlayerSummary {
                 steamid: row.get(0)?,
                 name: row.get(1)?,
+                combat: combat_by_player
+                    .get(&row.get::<_, String>(0)?)
+                    .map(|records| PlayerCombat {
+                        enemy_kills: records
+                            .iter()
+                            .try_fold(0_i64, |sum, item| Some(sum + item.enemy_kills?)),
+                        deaths: records.iter().map(|item| item.deaths).sum(),
+                        enemy_assists: records
+                            .iter()
+                            .try_fold(0_i64, |sum, item| Some(sum + item.enemy_assists?)),
+                        enemy_health_damage: records
+                            .iter()
+                            .try_fold(0_i64, |sum, item| Some(sum + item.enemy_health_damage?)),
+                        rounds: records.clone(),
+                    }),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -357,5 +483,6 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
         players,
         utility_events,
         utility_breakdown,
+        full_combat_coverage,
     })
 }

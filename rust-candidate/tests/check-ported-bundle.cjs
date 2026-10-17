@@ -20,6 +20,7 @@ assert.ok(bundle.includes('list_matches') && bundle.includes('get_match_detail')
 assert.ok(bundle.includes('Recorded rounds') && bundle.includes('Recorded players'), 'Nested match routes were not included');
 assert.ok(bundle.includes('Recorded utility') && bundle.includes('This match analysis is still being ported'), 'Utility and unsupported-route states were not included');
 assert.ok(bundle.includes('csdm_choose_library'), 'Native library picker was not included');
+assert.ok(bundle.includes('csdm_import_demo') && bundle.includes('csdm_choose_demo'), 'Native demo import route was not included');
 assert.ok(bundle.includes('csdm_list_demo_files') && bundle.includes('csdm_choose_demo_folder'), 'Read-only demo-folder route was not included');
 assert.ok(!bundle.includes('WS:: connecting to server'), 'Electron WebSocket client remained in the ported bundle');
 assert.ok(styles.includes('.gap-x-8'), 'Original UI spacing classes were not generated');

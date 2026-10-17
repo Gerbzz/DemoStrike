@@ -191,6 +191,23 @@ const MIGRATIONS: &[&str] = &[
            e.nearby_players, e.round_winner, e.favorite
     FROM utility_events e JOIN matches m ON m.id = e.match_id;
     "#,
+    // v7 - complete native combat is independent of utility attribution.
+    // Nullable metrics preserve unknown side attribution. Older imported
+    // matches remain unchanged and cannot claim this coverage version.
+    r#"
+    CREATE TABLE player_round_combat (
+        match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+        round_number INTEGER NOT NULL,
+        steamid TEXT NOT NULL,
+        side TEXT CHECK (side IN ('CT','T') OR side IS NULL),
+        enemy_kills INTEGER,
+        deaths INTEGER NOT NULL,
+        enemy_assists INTEGER,
+        enemy_health_damage INTEGER,
+        PRIMARY KEY (match_id, round_number, steamid)
+    );
+    CREATE INDEX player_round_combat_player ON player_round_combat(match_id, steamid);
+    "#,
 ];
 
 pub fn open(path: &Path) -> AppResult<Connection> {

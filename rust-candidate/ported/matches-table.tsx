@@ -8,6 +8,7 @@ import { useMatchesTable } from 'csdm/ui/matches/table/use-matches-table';
 import { useFetchMatches } from 'csdm/ui/matches/use-fetch-matches';
 import { useActiveMatchesFilters } from 'csdm/ui/matches/use-active-matches-filters';
 import { useFuzzySearchText } from 'csdm/ui/matches/use-fuzzy-search-text';
+import { DemoImport } from './demo-import';
 
 // Keep the original action bar, table, status bar, and route. This replaces
 // only the messages that would otherwise claim an unported demo import works.
@@ -44,10 +45,12 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
           <p>
             {hasActiveFilter || search
               ? 'Try a different search or filter.'
-              : 'The original CS Demo Manager workspace is running in Tauri. Demo import and populated match data are still being ported.'}
+              : 'Import a CS2 demo for round and player combat analysis, or open an existing DemoStrike library.'}
           </p>
           {!hasActiveFilter && !search && (
-            <div className="flex w-full flex-col gap-y-8 border-t border-gray-300 pt-16 text-left">
+            <div className="flex w-full flex-col gap-y-16 text-left">
+              <DemoImport onImported={(receipt) => onOpenLibrary(receipt.path)} />
+              <div className="flex w-full flex-col gap-y-8 border-t border-gray-300 pt-16">
               <label htmlFor="local-library-path" className="text-body-strong">Open an existing DemoStrike SQLite library</label>
               <p className="text-gray-700">Paste the path to a library file to inspect its matches, rounds, players, and utility in read-only mode.</p>
               <input id="local-library-path" className="w-full rounded-4 border border-gray-400 bg-gray-75 p-8 select-text"
@@ -63,6 +66,7 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
                     if (selected) { setPath(selected); onOpenLibrary(selected); }
                   }).catch((error: unknown) => setPickerError(String(error)));
                 }}>Browse…</Button>
+              </div>
               </div>
             </div>
           )}

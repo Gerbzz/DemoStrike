@@ -21,6 +21,13 @@ pub struct RawDemo {
     pub hurts: Vec<RawHurt>,
     #[serde(default)]
     pub deaths: Vec<RawDeath>,
+    /// Complete non-warmup combat stream. Older raw facts omit these arrays.
+    #[serde(default)]
+    pub combat_hurts: Vec<RawCombatHurt>,
+    #[serde(default)]
+    pub combat_deaths: Vec<RawCombatDeath>,
+    #[serde(default)]
+    pub round_sides: Vec<RawRoundSide>,
     #[serde(default)]
     pub trajectories: Vec<RawTrajectory>,
     #[serde(default)]
@@ -142,6 +149,42 @@ pub struct RawDeath {
     pub assister_steamid: Option<String>,
     pub assisted_flash: bool,
     pub utility_kill: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawCombatHurt {
+    pub tick: i64,
+    pub round: i64,
+    pub weapon: Option<String>,
+    pub attacker_steamid: Option<String>,
+    pub attacker_team: Option<String>,
+    pub victim_steamid: String,
+    pub victim_team: Option<String>,
+    pub damage: i64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawCombatDeath {
+    pub tick: i64,
+    pub round: i64,
+    pub weapon: Option<String>,
+    pub attacker_steamid: Option<String>,
+    pub attacker_team: Option<String>,
+    pub victim_steamid: String,
+    pub victim_team: Option<String>,
+    pub assister_steamid: Option<String>,
+    pub assister_team: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawRoundSide {
+    pub round: i64,
+    pub steamid: String,
+    /// Observed CT/T side at freeze end or a combat event, not a stable team.
+    pub side: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -1,5 +1,6 @@
 pub mod capture_provider;
 pub mod csdm;
+pub mod import;
 pub mod library;
 
 use library::{LibrarySnapshot, MatchDetail};
@@ -21,6 +22,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_matches,
             get_match_detail,
+            import::csdm_import_demo,
+            import::csdm_choose_demo,
             csdm::csdm_load_settings,
             csdm::csdm_save_settings,
             csdm::csdm_request,
