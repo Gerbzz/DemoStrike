@@ -45,4 +45,23 @@ jobs:
         env:
           PUBLIC_CS2_DEMO: ${{ runner.temp }}/public-cs2-fixture.dem
         run: cargo test --locked --test public_demo_integration -- --ignored --nocapture
+      - name: Reopen real import from a separate process
+        shell: bash
+        run: |
+          set -euo pipefail
+          database="$RUNNER_TEMP/public-process.sqlite"
+          cargo run --locked --bin demostrike-cli -- import-demo "$RUNNER_TEMP/public-cs2-fixture.dem" "$database"
+          python - <<'PY'
+          import os, sqlite3
+          connection = sqlite3.connect(os.path.join(os.environ['RUNNER_TEMP'], 'public-process.sqlite'))
+          count = lambda table: connection.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0]
+          assert count('matches') == 1
+          assert count('utility_events') == 150
+          assert count('raw_combat_hurts') == 264
+          assert count('raw_combat_deaths') == 73
+          assert count('player_round_combat') > 0
+          assert connection.execute('SELECT parser_capability FROM matches').fetchone()[0] == 'native-combat-full-v2'
+          assert connection.execute('SELECT COUNT(*) FROM rounds WHERE start_tick >= end_tick').fetchone()[0] == 0
+          print('PASS: separate-process SQLite reopen retains real decoded facts and ordered rounds')
+          PY
 
