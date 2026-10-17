@@ -329,4 +329,3 @@ fn empty_valid_library_is_valid_and_missing_match_is_an_error() {
     assert!(list_matches(&path).unwrap().matches.is_empty());
     assert!(get_match_detail(&path, 1).is_err());
 }
-
