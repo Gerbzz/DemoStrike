@@ -98,6 +98,8 @@ pub struct RoundSummary {
     /// None means this import has no verified ordered combat stream. An
     /// empty array means the stream exists but this round has no deaths.
     pub deaths: Option<Vec<RoundDeath>>,
+    /// Raw damage events are absent for older imports; zero means a verified empty round.
+    pub hurts: Option<Vec<RoundHurt>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -112,6 +114,21 @@ pub struct RoundDeath {
     pub victim_steamid: String,
     pub victim_side: Option<String>,
     pub assister_steamid: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoundHurt {
+    pub source_index: i64,
+    pub event_order: Option<i64>,
+    pub tick: i64,
+    pub weapon: Option<String>,
+    pub attacker_steamid: Option<String>,
+    pub attacker_side: Option<String>,
+    pub victim_steamid: String,
+    pub victim_side: Option<String>,
+    /// Demo event raw_dmg_health, not CSDM's effective health damage.
+    pub raw_damage: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -239,6 +256,49 @@ fn has_ordered_combat_deaths(
     ]
     .iter()
     .all(|column| columns.iter().any(|name| name == column)))
+}
+
+fn has_ordered_combat_hurts(
+    connection: &Connection,
+    capability: &str,
+) -> Result<bool, LibraryError> {
+    if capability != "native-combat-full-v2" {
+        return Ok(false);
+    }
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version < 8 {
+        return Ok(false);
+    }
+    let mut statement = connection.prepare("PRAGMA table_info(raw_combat_hurts)")?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok([
+        "match_id", "source_index", "event_order", "tick", "round_number",
+        "weapon", "attacker_steamid", "attacker_side", "victim_steamid",
+        "victim_side", "raw_dmg_health",
+    ]
+    .iter()
+    .all(|column| columns.iter().any(|name| name == column)))
+}
+
+/// Source 2 can advance its raw round counter before the next live round.
+/// Assign events in that gap to the last completed earlier round. Raw rows
+/// remain unchanged, as with the persisted per-player combat attribution.
+fn effective_event_round(
+    raw_round: i64,
+    tick: i64,
+    boundaries: &[(i64, Option<i64>, Option<i64>)],
+) -> Option<i64> {
+    let (_, start, _) = boundaries.iter().find(|(number, _, _)| *number == raw_round)?;
+    if start.is_some_and(|value| tick < value) {
+        return boundaries
+            .iter()
+            .filter(|(number, _, end)| *number < raw_round && end.is_some_and(|value| value <= tick))
+            .max_by_key(|(_, _, end)| *end)
+            .map(|(number, _, _)| *number);
+    }
+    Some(raw_round)
 }
 
 fn open_library(path: &str) -> Result<Connection, LibraryError> {
@@ -430,6 +490,13 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
         }
     }
 
+    let mut boundary_query = connection.prepare(
+        "SELECT round_number, start_tick, end_tick FROM rounds WHERE match_id = ?1 ORDER BY round_number",
+    )?;
+    let boundaries = boundary_query
+        .query_map([match_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<Vec<(i64, Option<i64>, Option<i64>)>, _>>()?;
+
     let mut deaths_by_round = None;
     if full_combat_coverage && has_ordered_combat_deaths(&connection, &summary.parser_capability)? {
         let mut query = connection.prepare(
@@ -457,12 +524,50 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
         let mut grouped: HashMap<i64, Vec<RoundDeath>> = HashMap::new();
         for record in records {
             let (round, death) = record?;
-            grouped.entry(round).or_default().push(death);
+            if let Some(effective) = effective_event_round(round, death.tick, &boundaries) {
+                grouped.entry(effective).or_default().push(death);
+            }
         }
         // An older match can be migrated to schema v8 without ever having
         // recorded raw events. Do not turn that absence into a measured zero.
         if !grouped.is_empty() {
             deaths_by_round = Some(grouped);
+        }
+    }
+
+    let mut hurts_by_round = None;
+    if full_combat_coverage && has_ordered_combat_hurts(&connection, &summary.parser_capability)? {
+        let mut query = connection.prepare(
+            "SELECT source_index, event_order, tick, round_number, weapon,
+                    attacker_steamid, attacker_side, victim_steamid, victim_side, raw_dmg_health
+             FROM raw_combat_hurts WHERE match_id = ?1
+             ORDER BY tick, event_order, source_index",
+        )?;
+        let records = query.query_map([match_id], |row| {
+            Ok((
+                row.get::<_, i64>(3)?,
+                RoundHurt {
+                    source_index: row.get(0)?,
+                    event_order: row.get(1)?,
+                    tick: row.get(2)?,
+                    weapon: row.get(4)?,
+                    attacker_steamid: row.get(5)?,
+                    attacker_side: row.get(6)?,
+                    victim_steamid: row.get(7)?,
+                    victim_side: row.get(8)?,
+                    raw_damage: row.get(9)?,
+                },
+            ))
+        })?;
+        let mut grouped: HashMap<i64, Vec<RoundHurt>> = HashMap::new();
+        for record in records {
+            let (round, hurt) = record?;
+            if let Some(effective) = effective_event_round(round, hurt.tick, &boundaries) {
+                grouped.entry(effective).or_default().push(hurt);
+            }
+        }
+        if !grouped.is_empty() {
+            hurts_by_round = Some(grouped);
         }
     }
 
@@ -519,6 +624,9 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
                             .try_fold(0_i64, |sum, item| Some(sum + item.enemy_kills?)),
                     }),
                 deaths: deaths_by_round
+                    .as_ref()
+                    .map(|groups| groups.get(&round_number).cloned().unwrap_or_default()),
+                hurts: hurts_by_round
                     .as_ref()
                     .map(|groups| groups.get(&round_number).cloned().unwrap_or_default()),
             })
