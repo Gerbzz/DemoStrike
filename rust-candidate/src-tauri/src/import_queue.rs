@@ -42,7 +42,7 @@ impl ImportQueue {
         // native import transaction handles an interrupted database write.
         connection
             .execute(
-                "UPDATE import_jobs SET state = 'queued' WHERE state = 'running'",
+                "UPDATE import_jobs SET state = 'queued', recovered = 1 WHERE state = 'running'",
                 [],
             )
             .map_err(|error| error.to_string())?;
@@ -60,6 +60,7 @@ impl ImportQueue {
             id INTEGER PRIMARY KEY,
             demo_path TEXT NOT NULL,
             state TEXT NOT NULL CHECK(state IN ('queued','running','completed','failed')),
+            recovered INTEGER NOT NULL DEFAULT 0,
             receipt TEXT,
             error TEXT,
             created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -127,20 +128,20 @@ impl ImportQueue {
         Ok(jobs)
     }
 
-    fn claim(&self) -> Result<Option<(i64, String)>, String> {
+    fn claim(&self) -> Result<Option<(i64, String, bool)>, String> {
         let mut connection = self.open()?;
         let transaction = connection
             .transaction()
             .map_err(|error| error.to_string())?;
-        let next: Option<(i64, String)> = transaction
+        let next: Option<(i64, String, bool)> = transaction
             .query_row(
-                "SELECT id, demo_path FROM import_jobs WHERE state = 'queued' ORDER BY id LIMIT 1",
+                "SELECT id, demo_path, recovered FROM import_jobs WHERE state = 'queued' ORDER BY id LIMIT 1",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()
             .map_err(|error| error.to_string())?;
-        if let Some((id, _)) = next {
+        if let Some((id, _, _)) = next {
             transaction
                 .execute(
                     "UPDATE import_jobs SET state = 'running' WHERE id = ?1",
@@ -172,6 +173,22 @@ impl ImportQueue {
         Ok(())
     }
 
+    fn recovered_receipt(&self, source: &str) -> Option<ImportReceipt> {
+        let library = self.library.to_string_lossy();
+        let snapshot = crate::library::list_matches(&library).ok()?;
+        let match_row = snapshot
+            .matches
+            .into_iter()
+            .find(|item| item.demo_file_path.as_deref() == Some(source))?;
+        Some(ImportReceipt {
+            path: library.into_owned(),
+            match_id: match_row.id,
+            map_name: match_row.map_name,
+            player_count: usize::try_from(match_row.player_count).ok()?,
+            round_count: usize::try_from(match_row.round_count).ok()?,
+        })
+    }
+
     pub fn start(self: &Arc<Self>) {
         if self.active.swap(true, Ordering::AcqRel) {
             return;
@@ -180,8 +197,14 @@ impl ImportQueue {
         std::thread::spawn(move || {
             loop {
                 match queue.claim() {
-                    Ok(Some((id, path))) => {
+                    Ok(Some((id, path, recovered))) => {
                         let result = import_native(Path::new(&path), &queue.library);
+                        let result = match result {
+                            Err(error) if recovered && error.contains("already imported") => {
+                                queue.recovered_receipt(&path).ok_or(error)
+                            }
+                            other => other,
+                        };
                         if let Err(error) = queue.finish(id, result) {
                             eprintln!("Could not persist import job {id}: {error}");
                         }
@@ -250,6 +273,12 @@ mod tests {
             ImportQueue::read_job(&connection, 1).unwrap().state,
             "queued"
         );
+        let recovered_flag: bool = connection
+            .query_row("SELECT recovered FROM import_jobs WHERE id=1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert!(recovered_flag);
         assert_eq!(
             ImportQueue::read_job(&connection, 2)
                 .unwrap()
