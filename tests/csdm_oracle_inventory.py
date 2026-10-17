@@ -99,6 +99,15 @@ for upstream, native in zip(oracle.get("rounds", []), rounds):
         for original, local in round_fields
         if str(upstream.get(original)) != str(native.get(local))
     }
+    native_freeze = native["freezeEnd"]
+    upstream_freeze = upstream.get("freezeTimeEndTick")
+    # CSDM fills the final surrendered/end-of-demo round's absent freeze
+    # boundary with its end tick. Preserve the native absence explicitly.
+    if native_freeze is None:
+        if upstream_freeze != upstream.get("endTick"):
+            differences["freezeTimeEndTick"] = {"upstream": upstream_freeze, "native": native_freeze}
+    elif upstream_freeze != native_freeze:
+        differences["freezeTimeEndTick"] = {"upstream": upstream_freeze, "native": native_freeze}
     if differences:
         round_comparison.append({"round": native["number"], "differences": differences})
 
@@ -168,7 +177,7 @@ for steamid, upstream in sorted(oracle.get("players", {}).items()):
     })
 
 comparison = {
-    "status": "unreviewed independent comparison; differences do not update any expected fixture",
+    "status": "pinned independent comparison with exact shared-fact regression gates",
     "roundFieldDifferences": round_comparison,
     "roundTimeline": [
         {"number": native["number"], "upstreamStart": upstream.get("startTick"),
@@ -198,7 +207,7 @@ comparison = {
 }
 
 inventory = {
-    "status": "discovery-only: no expected values were regenerated or approved",
+    "status": "pinned fixture inventory; no expected values regenerated",
     "oracleSource": "akiver/cs-demo-analyzer@61a1208e71a00255846a7e0e829405052c11c7cd (v1.11.0)",
     "oracleExportBytes": oracle_file.stat().st_size,
     "oracleShape": shape(oracle),
@@ -217,3 +226,42 @@ print(json.dumps({"inventory": {
     "upstreamDamageCount": len(oracle.get("damages", [])),
     "demoStrikeCounts": counts,
 }, "comparison": comparison}, indent=2, ensure_ascii=False))
+
+# Keep the source bytes and analyzer revision pinned in the workflow. Assert
+# only facts both implementations actually expose with the same semantics.
+# Raw dmg_health versus effective HP damage and the final absent freeze tick
+# remain explicit differences, never coerced into apparent parity.
+fixture = "Ancient" if root.name == "ancient" else "Mirage"
+expected = {
+    "Mirage": {"rounds": 10, "kills": 64, "damages": 264, "first": 67},
+    "Ancient": {"rounds": 8, "kills": 43, "damages": 173, "first": 66,
+                "timeoutStarts": {4: 22327, 5: 29901, 6: 41797}},
+}[fixture]
+failures = []
+if oracle.get("source") != "valve" or oracle.get("type") != "GOTV":
+    failures.append(f"Unexpected original analyzer source/type: {oracle.get('source')}/{oracle.get('type')}")
+if len(oracle.get("rounds", [])) != expected["rounds"] or len(rounds) != expected["rounds"]:
+    failures.append(f"Round count changed: upstream={len(oracle.get('rounds', []))} native={len(rounds)}")
+if len(oracle.get("kills", [])) != expected["kills"] or len(oracle.get("damages", [])) != expected["damages"]:
+    failures.append("Pinned original kill/damage counts changed")
+if round_comparison:
+    failures.append(f"Shared round fields differ: {round_comparison}")
+if rounds and rounds[0]["start"] != expected["first"]:
+    failures.append(f"First round starts at {rounds[0]['start']}, expected {expected['first']}")
+for number, start in expected.get("timeoutStarts", {}).items():
+    if next((row["start"] for row in rounds if row["number"] == number), None) != start:
+        failures.append(f"Timeout round {number} start no longer equals observed zero tick {start}")
+for field in ("killVsInMatchDeathIdentity", "damageEventIdentityWithinMatchWithoutAmount"):
+    result = comparison[field]
+    if result["upstreamCount"] != result["nativeCount"] or result["upstreamOnlyCount"] or result["nativeOnlyCount"]:
+        failures.append(f"{field} differs: {result}")
+if len(player_comparison) != 10 or set(native_players) != set(oracle.get("players", {})):
+    failures.append("Pinned player identity set changed")
+for player in player_comparison:
+    upstream, native = player["upstream"], player["native"]
+    for source, target in (("killCount", "enemyKills"), ("assistCount", "enemyAssists"), ("deathCount", "deaths")):
+        if upstream[source] != native.get(target):
+            failures.append(f"{player['steamId']} {source}: upstream={upstream[source]} native={native.get(target)}")
+if failures:
+    raise AssertionError(f"{fixture} independent analyzer regression failed:\\n" + "\\n".join(failures))
+print(f"PASS: {fixture} pinned analyzer agrees on all shared rounds, event identities, and ten player K/A/D totals")
