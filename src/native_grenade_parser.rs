@@ -582,7 +582,10 @@ impl GrenadeObserver {
                         } else { (None, None) };
                         if !self.round_events.iter().any(|r| r.kind == kind && r.tick == Some(i64::from(ctx.tick()))) {
                             self.round_events.push(RawRoundEvent { kind: kind.into(), tick: Some(i64::from(ctx.tick())),
-                                round: Some(i64::from(total) + 1), winner, reason });
+                                // GameRules has already incremented totalRoundsPlayed
+                                // when it reports a round win. Start/freeze events
+                                // still describe the next round.
+                                round: Some(i64::from(total) + if kind == "round_end" { 0 } else { 1 }), winner, reason });
                         }
                         if kind == "round_freeze_end" {
                             let round = i64::from(total) + 1;
