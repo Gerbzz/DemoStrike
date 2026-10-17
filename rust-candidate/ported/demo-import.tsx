@@ -4,7 +4,7 @@ import { describe, invoke } from './match-data';
 
 export type ImportReceipt = { path: string; matchId: number; mapName: string; playerCount: number; roundCount: number };
 export type ImportJob = { id: number; demoPath: string; state: 'queued' | 'running' | 'completed' | 'failed';
-  receipt: ImportReceipt | null; error: string | null; createdAt: string };
+  recovered: boolean; receipt: ImportReceipt | null; error: string | null; createdAt: string };
 
 export function DemoImport({ onQueued }: { onQueued: (job: ImportJob) => void }) {
   const [demoPath, setDemoPath] = useState('');
