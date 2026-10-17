@@ -48,12 +48,12 @@ type ScoreboardRow = {
 };
 const fact = (value: number | null) => value === null ? 'Unavailable' : value;
 const columns: readonly Column<ScoreboardRow>[] = [
-  { id: 'name', accessor: 'name', headerText: 'Player', headerTooltip: 'Open the recorded player', width: 220, allowHiding: false },
-  { id: 'kills', accessor: (row) => fact(row.kills), headerText: 'K', headerTooltip: 'Enemy eliminations', width: 90, textAlign: 'right' },
-  { id: 'assists', accessor: (row) => fact(row.assists), headerText: 'A', headerTooltip: 'Enemy assists', width: 90, textAlign: 'right' },
-  { id: 'deaths', accessor: (row) => fact(row.deaths), headerText: 'D', headerTooltip: 'Deaths', width: 90, textAlign: 'right' },
-  { id: 'rawDamage', accessor: (row) => fact(row.rawDamage), headerText: 'Raw DMG', headerTooltip: 'Raw enemy dmg_health; may include overkill', width: 135, textAlign: 'right' },
-  { id: 'observedRounds', accessor: (row) => fact(row.observedRounds), headerText: 'Rounds', headerTooltip: 'Rounds with observed player-side facts', width: 105, textAlign: 'right' },
+  { id: 'name', accessor: 'name', headerText: 'Player', headerTooltip: 'Open the recorded player', width: 280, allowHiding: false },
+  { id: 'kills', accessor: (row) => fact(row.kills), headerText: 'K', headerTooltip: 'Enemy eliminations', width: 105, textAlign: 'right' },
+  { id: 'assists', accessor: (row) => fact(row.assists), headerText: 'A', headerTooltip: 'Enemy assists', width: 105, textAlign: 'right' },
+  { id: 'deaths', accessor: (row) => fact(row.deaths), headerText: 'D', headerTooltip: 'Deaths', width: 105, textAlign: 'right' },
+  { id: 'rawDamage', accessor: (row) => fact(row.rawDamage), headerText: 'Raw DMG', headerTooltip: 'Raw enemy dmg_health; may include overkill', width: 155, textAlign: 'right' },
+  { id: 'observedRounds', accessor: (row) => fact(row.observedRounds), headerText: 'Rounds', headerTooltip: 'Rounds with observed player-side facts', width: 130, textAlign: 'right' },
 ];
 
 function Scoreboard({ detail }: { detail: MatchDetail }) {
@@ -82,7 +82,7 @@ function Scoreboard({ detail }: { detail: MatchDetail }) {
     </div>
     <p className="mt-4 max-w-[760px] text-gray-700">The original CSDM scoreboard groups stable teams and includes ratings. This import records players and observed combat, without verified stable teams or ratings.</p>
     {rows.length === 0 ? <p className="mt-12" role="status">No players were recorded for this match.</p> :
-      <div className="mt-12 h-[360px] border border-gray-300"><Table<ScoreboardRow> table={table} /></div>}
+      <div className="mt-12 h-[400px] border border-gray-300"><Table<ScoreboardRow> table={table} /></div>}
     <p className="mt-8 text-gray-700">Raw DMG sums enemy <code>dmg_health</code> events and may include overkill. It is not effective HP removed. Unavailable values were not recorded by this import.</p>
   </section>;
 }
