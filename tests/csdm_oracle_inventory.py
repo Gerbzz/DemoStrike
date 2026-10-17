@@ -90,8 +90,7 @@ def event_differences(oracle_events, native_events, fields):
 
 
 round_fields = (
-    ("number", "number"), ("winnerSide", "winner"),
-    ("startTick", "start"), ("endTick", "end"), ("endReason", "reason"),
+    ("number", "number"), ("startTick", "start"), ("endTick", "end"),
 )
 round_comparison = []
 for upstream, native in zip(oracle.get("rounds", []), rounds):
@@ -102,6 +101,59 @@ for upstream, native in zip(oracle.get("rounds", []), rounds):
     }
     if differences:
         round_comparison.append({"round": native["number"], "differences": differences})
+
+# Original analyzer exports Source 2 enum numbers. Keep the mapping explicit,
+# sourced from the pinned analyzer and GameRules round outcome contract.
+side_names = {2: "T", 3: "CT"}
+reason_names = {1: "bomb_exploded", 7: "bomb_defused", 8: "t_killed",
+                9: "ct_killed", 12: "time_ran_out", 17: "t_surrender",
+                18: "ct_surrender"}
+for upstream, native in zip(oracle.get("rounds", []), rounds):
+    differences = {}
+    for source, target, mapping in (("winnerSide", "winner", side_names),
+                                    ("endReason", "reason", reason_names)):
+        translated = mapping.get(upstream.get(source), "unmapped")
+        if translated != native.get(target):
+            differences[source] = {"upstream": upstream.get(source),
+                                   "mapped": translated, "native": native.get(target)}
+    if differences:
+        item = next((item for item in round_comparison if item["round"] == native["number"]), None)
+        if item is None:
+            round_comparison.append({"round": native["number"], "differences": differences})
+        else:
+            item["differences"].update(differences)
+
+damage_fields = ("roundNumber", "tick", "attackerSteamId", "victimSteamId")
+upstream_damage = {}
+native_damage = {}
+for target, events in ((upstream_damage, oracle.get("damages", [])),
+                       (native_damage, native_hurts)):
+    for event in events:
+        target.setdefault(key(event, damage_fields), []).append(event.get("healthDamage"))
+damage_amount_differences = [
+    {"event": identity, "upstreamEffective": sorted(upstream_damage[identity]),
+     "nativeRaw": sorted(native_damage[identity])}
+    for identity in upstream_damage.keys() & native_damage.keys()
+    if sorted(upstream_damage[identity]) != sorted(native_damage[identity])
+]
+damage_amount_differences.sort(key=lambda item: item["event"])
+
+# The native v8 ledger intentionally retains all raw deaths. Its displayed
+# player-round totals now assign inter-round deaths to the preceding completed
+# round and omit post-match events; compare that equivalent match scope.
+def match_round(event):
+    round_number = event["roundNumber"]
+    current = next((item for item in rounds if item["number"] == round_number), None)
+    if current is None:
+        return None
+    if current["start"] is not None and event["tick"] < current["start"]:
+        earlier = [item for item in rounds if item["number"] < round_number
+                   and item["end"] is not None and item["end"] <= event["tick"]]
+        return max(earlier, key=lambda item: item["end"])["number"] if earlier else None
+    return round_number
+
+in_match_deaths = [dict(event, roundNumber=match_round(event))
+                   for event in native_deaths if match_round(event) is not None]
 
 player_comparison = []
 for steamid, upstream in sorted(oracle.get("players", {}).items()):
@@ -116,14 +168,19 @@ for steamid, upstream in sorted(oracle.get("players", {}).items()):
 comparison = {
     "status": "unreviewed independent comparison; differences do not update any expected fixture",
     "roundFieldDifferences": round_comparison,
-    "damageEventIdentity": event_differences(
+    "damageEventIdentityWithoutAmount": event_differences(
         oracle.get("damages", []), native_hurts,
-        ("roundNumber", "tick", "attackerSteamId", "victimSteamId", "healthDamage"),
+        damage_fields,
     ),
-    "killVsRawDeathIdentity": event_differences(
-        oracle.get("kills", []), native_deaths,
+    "damageAmountSemantics": {"upstream": "effective health removed",
+                              "native": "raw dmg_health including overkill",
+                              "differentEventCount": len(damage_amount_differences),
+                              "samples": damage_amount_differences[:12]},
+    "killVsInMatchDeathIdentity": event_differences(
+        oracle.get("kills", []), in_match_deaths,
         ("roundNumber", "tick", "killerSteamId", "victimSteamId", "assisterSteamId"),
     ),
+    "retainedPostMatchRawDeaths": len(native_deaths) - len(in_match_deaths),
     "playerTotals": player_comparison,
 }
 
