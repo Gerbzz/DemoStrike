@@ -60,12 +60,13 @@ fn parse_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
         validate_combat_event_schema(parser.context())?;
         let state = observer.borrow();
         if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
-            eprintln!("ROUND_TRACE direct_start_ticks={:?}", state.round_start_game_ticks);
+            eprintln!("ROUND_TRACE direct_start_ticks={:?} timeout_zero_ticks={:?}", state.round_start_game_ticks, state.round_timeout_zero_ticks);
             eprintln!("ROUND_TRACE inferred={:?}", state.round_events);
         }
         if !state.errors.is_empty() { return Err(format!("native CS2 facts incomplete: {}", state.errors.join("; "))); }
         let mut round_events = state.round_events.clone();
-        align_round_starts_to_game_events(&mut round_events, &state.round_start_game_ticks);
+        align_round_starts_to_observed_ticks(&mut round_events, &state.round_start_game_ticks);
+        align_round_starts_to_observed_ticks(&mut round_events, &state.round_timeout_zero_ticks);
         validate_round_outcome_events(&round_events, &state.bomb_defused_ticks,
             &state.bomb_exploded_ticks, &state.ct_death_ticks)?;
         let map_name = state.map_name.clone().filter(|s| !s.trim().is_empty()).ok_or("unsupported CS2 schema: no server map name")?;
@@ -300,11 +301,11 @@ fn round_kind(prior: Option<(i32, bool, i32)>, next: (i32, bool, i32)) -> Option
     }
 }
 
-// GameRules can enter a provisional freeze period well before Valve emits
-// round_start (for example during a technical restart). Use the actual event
-// when it falls inside an inferred round's pre-live interval. The inferred
-// transition remains a fallback for recordings without this game event.
-fn align_round_starts_to_game_events(rounds: &mut [RawRoundEvent], ticks: &[i64]) {
+// GameRules can enter a provisional freeze period well before Valve's
+// final start, especially during a team timeout. A round_start game event or
+// a GameRules timeout reaching zero can refine that start only while the
+// inferred round is still frozen. The last observed timeout completion wins.
+fn align_round_starts_to_observed_ticks(rounds: &mut [RawRoundEvent], ticks: &[i64]) {
     for &tick in ticks {
         let candidate = rounds.iter().filter(|event| event.kind == "round_start")
             .filter_map(|event| Some((event.round?, event.tick?)))
@@ -320,6 +321,10 @@ fn align_round_starts_to_game_events(rounds: &mut [RawRoundEvent], ticks: &[i64]
             }
         }
     }
+}
+
+fn timeout_reached_zero(previous: (f32, f32), current: (f32, f32)) -> bool {
+    (previous.0 > 0.0 && current.0 == 0.0) || (previous.1 > 0.0 && current.1 == 0.0)
 }
 
 fn validate_round_outcome_events(rounds: &[RawRoundEvent], defused: &BTreeSet<u32>,
@@ -378,7 +383,7 @@ struct GrenadeObserver {
     bomb_defused_ticks: BTreeSet<u32>, bomb_exploded_ticks: BTreeSet<u32>, ct_death_ticks: BTreeSet<u32>,
     dead_users_on_tick: BTreeMap<u32, BTreeSet<i32>>,
     dead_users_until_spawn: BTreeSet<i32>,
-    round_events: Vec<RawRoundEvent>, round_start_game_ticks: Vec<i64>, last_rules: Option<(i32, bool, i32)>,
+    round_events: Vec<RawRoundEvent>, round_start_game_ticks: Vec<i64>, round_timeout_zero_ticks: Vec<i64>, last_rules: Option<(i32, bool, i32)>,
     last_timeout: Option<(f32, f32)>, last_match_started: Option<bool>,
     last_start_count: Option<u8>,
     errors: Vec<String>,
@@ -613,6 +618,10 @@ impl GrenadeObserver {
             let get_float = |n: &str| match entity.get_property(&format!("m_pGameRules.{n}")) { Ok(FieldValue::Float(v)) => Some(*v), _ => None };
             let timeout = get_float("m_flCTTimeOutRemaining").zip(get_float("m_flTerroristTimeOutRemaining"));
             if let Some(values) = timeout {
+                if self.last_timeout.is_some_and(|old| timeout_reached_zero(old, values))
+                    && frozen == Some(true) && win == Some(0) {
+                    self.round_timeout_zero_ticks.push(i64::from(ctx.tick()));
+                }
                 if self.last_timeout != Some(values) {
                     if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
                         eprintln!("ROUND_TRACE timeout tick={} ct={} t={} total={total:?} frozen={frozen:?} win={win:?}",
@@ -826,11 +835,24 @@ mod round_tests {
             RawRoundEvent { kind: "round_end".into(), tick: Some(26899), round: Some(4), winner: None, reason: None },
             RawRoundEvent { kind: "round_start".into(), tick: Some(27347), round: Some(5), winner: None, reason: None },
         ];
-        align_round_starts_to_game_events(&mut rounds, &[22327, 29901]);
+        align_round_starts_to_observed_ticks(&mut rounds, &[22327, 29901]);
         assert_eq!(rounds[1].tick, Some(22327));
         assert_eq!(rounds[4].tick, Some(29901));
-        align_round_starts_to_game_events(&mut rounds, &[25000]);
+        align_round_starts_to_observed_ticks(&mut rounds, &[25000]);
         assert_eq!(rounds[1].tick, Some(22327));
+    }
+
+    #[test]
+    fn timeout_zero_refines_start_within_freeze_and_last_completion_wins() {
+        assert!(timeout_reached_zero((31.0, 0.015625), (31.0, 0.0)));
+        assert!(!timeout_reached_zero((31.0, 0.0), (31.0, 0.0)));
+        let mut rounds = vec![
+            RawRoundEvent { kind: "round_start".into(), tick: Some(37381), round: Some(6), winner: None, reason: None },
+            RawRoundEvent { kind: "round_freeze_end".into(), tick: Some(43077), round: Some(6), winner: None, reason: None },
+            RawRoundEvent { kind: "round_end".into(), tick: Some(45615), round: Some(6), winner: None, reason: None },
+        ];
+        align_round_starts_to_observed_ticks(&mut rounds, &[39365, 41797, 44000]);
+        assert_eq!(rounds[0].tick, Some(41797));
     }
 
     #[test]
