@@ -62,6 +62,30 @@ jobs:
         run: cargo run --locked --bin demostrike-cli -- import-demo "$RUNNER_TEMP/public-cs2-fixture.dem" "$RUNNER_TEMP/oracle-demostrike.sqlite"
       - name: Inventory both outputs for explicit reviewed field mapping
         run: python tests/csdm_oracle_inventory.py
+      - name: Fetch second public CS2 recording with bounded transient storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ancient"
+          fixture="$RUNNER_TEMP/ancient/public-cs2-fixture.dem"
+          curl --fail --location --retry 2 --max-filesize 350000000 --max-time 600 \
+            --output "$fixture" 'https://api.figshare.com/v2/file/download/52456259'
+          test "$(sha256sum "$fixture" | cut -d' ' -f1)" = b29a9cb537a181deef97b15cfed10ee722a37999644a27bb2226fdd77a1337fc
+          python -c 'import pathlib,os; p=pathlib.Path(os.environ["RUNNER_TEMP"])/"ancient/public-cs2-fixture.dem"; assert p.open("rb").read(8)==b"PBDEMS2\0"; print(f"Ancient source bytes: {p.stat().st_size}")'
+      - name: Analyze second public recording with same pinned CSDM binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ancient/csdm-oracle"
+          "$RUNNER_TEMP/csda" -demo-path="$RUNNER_TEMP/ancient/public-cs2-fixture.dem" \
+            -output="$RUNNER_TEMP/ancient/csdm-oracle" -format=json -minify
+      - name: Import second public recording through same DemoStrike decoder
+        shell: bash
+        run: cargo run --locked --bin demostrike-cli -- import-demo "$RUNNER_TEMP/ancient/public-cs2-fixture.dem" "$RUNNER_TEMP/ancient/oracle-demostrike.sqlite"
+      - name: Compare second public recording
+        env:
+          ORACLE_RUN_ROOT: ${{ runner.temp }}/ancient
+        run: python tests/csdm_oracle_inventory.py
       - name: Upload public-demo oracle discovery output
         if: always()
         uses: actions/upload-artifact@v4
@@ -71,5 +95,8 @@ jobs:
             ${{ runner.temp }}/csdm-oracle-inventory.json
             ${{ runner.temp }}/csdm-oracle-comparison.json
             ${{ runner.temp }}/csdm-oracle/*.json
+            ${{ runner.temp }}/ancient/csdm-oracle-inventory.json
+            ${{ runner.temp }}/ancient/csdm-oracle-comparison.json
+            ${{ runner.temp }}/ancient/csdm-oracle/*.json
           if-no-files-found: warn
           retention-days: 1
