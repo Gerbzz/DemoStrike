@@ -145,6 +145,8 @@ async function main() {
     await page.getByRole('heading', { name: 'Recorded damage events' }).waitFor({ timeout: 30000 });
     assert.ok(await page.locator('section[aria-label="Round raw damage"] ol li').count() > 0,
       'Raw damage events did not reach the selected round route');
+    const selectedRoundShot = path.join(outputDir, 'real-demo-selected-round.png');
+    await captureAppOnly(page, selectedRoundShot);
     await page.getByRole('link', { name: 'Next round' }).click();
     await page.getByRole('heading', { name: 'Round 2', exact: true }).waitFor({ timeout: 30000 });
     await page.evaluate(() => { location.hash = location.hash.split('/rounds/')[0] + '/rounds/999'; });
@@ -232,7 +234,7 @@ async function main() {
       syntheticEnvironmentDeliberatelySet: featureFree,
       parserCapability: capability,
       observed: { roundRows, playerRows, playerDetailRows, utilityRows, nativeFacts },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, duelsShot, playersShot, playerDetailShot, utilityShot, duplicateShot, invalidShot]
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, duelsShot, playersShot, playerDetailShot, utilityShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',
