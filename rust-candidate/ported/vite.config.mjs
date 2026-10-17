@@ -11,6 +11,7 @@ export default {
   resolve: {
     ...upstream.resolve,
     alias: [
+      { find: 'csdm/ui/matches/table/matches-table', replacement: path.resolve(portedRoot, 'matches-table.tsx') },
       { find: 'csdm/ui/web-socket-client', replacement: path.resolve(portedRoot, 'web-socket-client.ts') },
       // The preserved provider imports this client relatively; redirect that
       // edge too so the app never attempts a localhost Electron WebSocket.

@@ -50,7 +50,8 @@ async function main() {
     assert.ok(page, 'No Tauri IPC-enabled page appeared');
     const pageErrors = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    await page.getByText('No match found yet, you have to analyze demos to generate matches.').waitFor({ timeout: 25000 });
+    await page.getByText('Your local library is empty').waitFor({ timeout: 25000 });
+    await page.getByText('Demo import and populated match data are still being ported.').waitFor({ timeout: 25000 });
     assert.equal(await page.locator('a[href="#/matches"]').count(), 1, 'Original Matches sidebar route missing');
     assert.equal(await page.locator('a[href="#/demos"]').count(), 1, 'Original Demos sidebar route missing');
     assert.equal(await page.locator('a[href="#/players"]').count(), 1, 'Original Players sidebar route missing');
