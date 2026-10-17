@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 normal = json.loads((ROOT / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
 smoke = json.loads((ROOT / "src-tauri" / "tauri.smoke.conf.json").read_text(encoding="utf-8"))
 original_smoke = json.loads((ROOT / "src-tauri" / "tauri.upstream.smoke.conf.json").read_text(encoding="utf-8"))
+original_normal = json.loads((ROOT / "src-tauri" / "tauri.upstream.conf.json").read_text(encoding="utf-8"))
 workflow = (ROOT.parent / ".github" / "workflows" / "rust-candidate-verify.yml").read_text(encoding="utf-8")
 
 for config_path in (ROOT / "src-tauri").glob("tauri*.conf.json"):
@@ -32,4 +33,6 @@ assert "--remote-debugging-address=127.0.0.1" in original_window["additionalBrow
 assert "--remote-debugging-port=19375" in original_window["additionalBrowserArgs"]
 assert original_window["dataDirectory"] == "demostrike-csdm-ci-webview2"
 assert "tauri.upstream.smoke.conf.json" in workflow
+assert original_normal["app"]["security"]["csp"] == normal["app"]["security"]["csp"]
+assert original_smoke["app"]["security"]["csp"] == normal["app"]["security"]["csp"]
 print("PASS: normal Tauri windows have no CDP flags; both hosted smoke windows bind loopback with distinct data")
