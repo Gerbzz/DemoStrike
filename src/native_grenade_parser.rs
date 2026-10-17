@@ -379,7 +379,7 @@ struct GrenadeObserver {
     dead_users_on_tick: BTreeMap<u32, BTreeSet<i32>>,
     dead_users_until_spawn: BTreeSet<i32>,
     round_events: Vec<RawRoundEvent>, round_start_game_ticks: Vec<i64>, last_rules: Option<(i32, bool, i32)>,
-    last_timeout: Option<(f32, f32)>,
+    last_timeout: Option<(f32, f32)>, last_match_started: Option<bool>,
     last_start_count: Option<u8>,
     errors: Vec<String>,
 }
@@ -398,7 +398,7 @@ impl GrenadeObserver {
     #[on_game_event]
     fn on_event(&mut self, ctx: &Context, event: &GameEvent) -> ObserverResult {
         let name = event.name();
-        if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() && name.starts_with("round_") {
+        if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() && (name.starts_with("round_") || name.contains("match")) {
             eprintln!("ROUND_TRACE game={name} tick={} round={:?} warmup={:?}",
                 ctx.tick(), game_round(ctx), warmup(ctx));
         }
@@ -600,6 +600,16 @@ impl GrenadeObserver {
             let total = get_i32("m_totalRoundsPlayed");
             let frozen = match entity.get_property("m_pGameRules.m_bFreezePeriod") { Ok(FieldValue::Boolean(v)) => Some(*v), _ => None };
             let win = get_i32("m_iRoundWinStatus");
+            let match_started = match entity.get_property("m_pGameRules.m_bHasMatchStarted") {
+                Ok(FieldValue::Boolean(value)) => Some(*value), _ => None,
+            };
+            if match_started != self.last_match_started {
+                if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
+                    eprintln!("ROUND_TRACE match_started tick={} old={:?} new={match_started:?} total={total:?}",
+                        ctx.tick(), self.last_match_started);
+                }
+                self.last_match_started = match_started;
+            }
             let get_float = |n: &str| match entity.get_property(&format!("m_pGameRules.{n}")) { Ok(FieldValue::Float(v)) => Some(*v), _ => None };
             let timeout = get_float("m_flCTTimeOutRemaining").zip(get_float("m_flTerroristTimeOutRemaining"));
             if let Some(values) = timeout {
