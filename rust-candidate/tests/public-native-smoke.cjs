@@ -320,7 +320,7 @@ async function main() {
     assert.equal(viewerFacts.meta.bombEventsAvailable, true, 'New native import lost bomb event provenance');
     assert.ok(viewerFacts.candidate, 'No synchronized player and projectile frame was found');
     const eventList = page.locator('details.native-recorded-events');
-    await eventList.locator('summary').click();
+    await eventList.locator('summary').click({ noWaitAfter: true });
     const damageEvent = eventList.locator('[data-event-kind="damage"]').first();
     await damageEvent.waitFor({ timeout: 15000 });
     const damageTick = Number(await damageEvent.getAttribute('data-event-tick'));
@@ -331,7 +331,7 @@ async function main() {
     assert.equal(await damageEvent.getAttribute('aria-current'), 'true');
     const eventShot = path.join(outputDir, 'real-demo-viewer-recorded-events.png');
     await captureAppOnly(page, eventShot);
-    await eventList.locator('summary').click();
+    await eventList.locator('summary').click({ noWaitAfter: true });
     await page.evaluate(() => document.activeElement?.blur());
     const timeline = page.locator('[data-original-csdm-viewer="true"] div.border-x-gray-300').first();
     await timeline.evaluate((element, selected) => {
@@ -419,7 +419,9 @@ async function main() {
     assert.ok(Number(await page.locator('[data-incendiary-trajectory-count]').getAttribute('data-incendiary-trajectory-count')) >= 3,
       'Observed incendiary releases did not label the generic Source 2 fire projectile paths');
     const betweenRounds = page.locator('details.native-recorded-events');
-    await betweenRounds.locator('summary').click();
+    if (!(await betweenRounds.evaluate((element) => element.open))) {
+      await betweenRounds.locator('summary').click({ noWaitAfter: true });
+    }
     const outsideReplay = betweenRounds.locator('[data-event-kind="bomb"][data-event-tick="21853"]');
     await outsideReplay.waitFor({ timeout: 15000 });
     assert.ok(await outsideReplay.isDisabled(), 'Inter-round bomb plant must not seek to an invented playable frame');
@@ -452,7 +454,9 @@ async function main() {
       document.querySelector('[data-bomb-plant-tick]')?.getAttribute('data-bomb-plant-tick') === String(tick),
     bombRound.tick, { timeout: 60000 });
     const bombList = page.locator('details.native-recorded-events');
-    await bombList.locator('summary').click();
+    if (!(await bombList.evaluate((element) => element.open))) {
+      await bombList.locator('summary').click({ noWaitAfter: true });
+    }
     await bombList.locator(`[data-event-kind="bomb"][data-event-tick="${bombRound.tick}"]`).click();
     await page.waitForFunction((tick) =>
       Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')) === tick,
