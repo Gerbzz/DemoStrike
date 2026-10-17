@@ -91,9 +91,23 @@ fn parse_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
         eprintln!("ROUND_TRACE inferred={:?}", state.round_events);
     }
     if std::env::var_os("DEMO_POSITION_DIAGNOSTICS").is_some() {
-        eprintln!("POSITION_TRACE player_samples={} first={:?} last={:?} projectile_paths={} projectile_samples={}",
-                state.positions.len(), state.positions.first(), state.positions.last(),
-                state.trajectories.len(), state.trajectories.iter().map(|path| path.points.len()).sum::<usize>());
+        eprintln!(
+            "POSITION_TRACE player_samples={} first={:?} last={:?} projectile_paths={} projectile_samples={}",
+            state.positions.len(),
+            state.positions.first(),
+            state.positions.last(),
+            state.trajectories.len(),
+            state
+                .trajectories
+                .iter()
+                .map(|path| path.points.len())
+                .sum::<usize>()
+        );
+        eprintln!(
+            "POSITION_TRACE bounded_stream_truncated={} attribution_samples={}",
+            state.position_stream_truncated,
+            state.attribution_positions.len()
+        );
     }
     if !state.errors.is_empty() {
         return Err(format!(
@@ -146,8 +160,12 @@ fn parse_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
             skipped_rows: 0,
         },
         economy: Vec::new(),
-        positions: state.positions.clone(),
-        position_stream_available: !state.positions.is_empty(),
+        positions: if state.position_stream_truncated {
+            state.attribution_positions.clone()
+        } else {
+            state.positions.clone()
+        },
+        position_stream_available: !state.position_stream_truncated && !state.positions.is_empty(),
     })
 }
 
@@ -239,10 +257,15 @@ fn validate_coverage(
                 )
             })
             .collect();
-        return Err(format!("native grenade coverage incomplete on {map}: releases={}, trajectories={}, samples={points}, detonations={}, positions={}, unowned/short trajectories={orphan_trajectories}, unowned detonations={orphan_detonations}, invalid coordinates={}; paths without nearby same-owner releases (diagnostic only): [{}]; no match was saved",
-            state.throws.len(), trajectories.len(), state.detonations.len(), state.positions.len(),
+        return Err(format!(
+            "native grenade coverage incomplete on {map}: releases={}, trajectories={}, samples={points}, detonations={}, positions={}, unowned/short trajectories={orphan_trajectories}, unowned detonations={orphan_detonations}, invalid coordinates={}; paths without nearby same-owner releases (diagnostic only): [{}]; no match was saved",
+            state.throws.len(),
+            trajectories.len(),
+            state.detonations.len(),
+            state.positions.len(),
             invalid_points || invalid_positions || invalid_releases || invalid_detonations,
-            unexplained_paths.join("; ")));
+            unexplained_paths.join("; ")
+        ));
     }
     Ok(())
 }
@@ -510,7 +533,10 @@ fn validate_combat_event_schema(ctx: &Context) -> Result<(), String> {
             .collect();
         for (field, expected_type) in fields {
             if available.get(field) != Some(expected_type) {
-                return Err(format!("unsupported CS2 combat schema: {event}.{field} must be {expected_type}; found {:?}", available.get(field)));
+                return Err(format!(
+                    "unsupported CS2 combat schema: {event}.{field} must be {expected_type}; found {:?}",
+                    available.get(field)
+                ));
             }
         }
     }
@@ -619,7 +645,9 @@ fn validate_round_outcome_events(
     };
     let mapped_defused = ticks_for("bomb_defused");
     if &mapped_defused != defused {
-        return Err(format!("bomb_defused game-event ticks {defused:?} do not match round outcomes {mapped_defused:?}"));
+        return Err(format!(
+            "bomb_defused game-event ticks {defused:?} do not match round outcomes {mapped_defused:?}"
+        ));
     }
     let mapped_exploded = ticks_for("bomb_exploded");
     let unmatched_exploded: Vec<_> = exploded.difference(&mapped_exploded).copied().collect();
@@ -633,7 +661,9 @@ fn validate_round_outcome_events(
     if !mapped_exploded.is_subset(exploded)
         || unmatched_exploded.iter().any(|t| !post_round_explosion(*t))
     {
-        return Err(format!("bomb_exploded game-event ticks {exploded:?} do not match in-round outcomes {mapped_exploded:?}; unmatched post-round explosions may be ignored"));
+        return Err(format!(
+            "bomb_exploded game-event ticks {exploded:?} do not match in-round outcomes {mapped_exploded:?}; unmatched post-round explosions may be ignored"
+        ));
     }
     let missing_ct_death: Vec<_> = ticks_for("ct_killed")
         .difference(ct_deaths)
@@ -651,6 +681,29 @@ fn include_position(alive_flag: bool, died_this_tick: bool) -> bool {
     // On a lethal grenade tick, player_death can precede the tick-end sample
     // while m_bPawnIsAlive still reports true. The event is the newer state.
     alive_flag && !died_this_tick
+}
+
+fn record_position(
+    stream: &mut Vec<RawPosition>,
+    attribution: &mut Vec<RawPosition>,
+    truncated: &mut bool,
+    position: RawPosition,
+    detonation_tick: bool,
+    cap: usize,
+) {
+    if detonation_tick && position.is_alive == Some(true) {
+        attribution.push(position.clone());
+    }
+    if !*truncated {
+        if stream.len() < cap {
+            stream.push(position);
+        } else {
+            // Preserve previously supported utility attribution on a long
+            // match without retaining a misleading partial replay stream.
+            *stream = Vec::new();
+            *truncated = true;
+        }
+    }
 }
 
 fn update_same_tick_deaths(dead_users: &mut BTreeSet<i32>, event: &str, user: i32) {
@@ -684,6 +737,9 @@ struct GrenadeObserver {
     active_projectiles: BTreeMap<u32, usize>,
     projectile_owners: BTreeMap<u32, (String, String)>,
     positions: Vec<RawPosition>,
+    attribution_positions: Vec<RawPosition>,
+    detonation_ticks: BTreeSet<u32>,
+    position_stream_truncated: bool,
     bomb_defused_ticks: BTreeSet<u32>,
     bomb_exploded_ticks: BTreeSet<u32>,
     ct_death_ticks: BTreeSet<u32>,
@@ -841,6 +897,7 @@ impl GrenadeObserver {
                 ))
             })();
             if let Some((round, entity_id, x, y, z)) = fact {
+                self.detonation_ticks.insert(ctx.tick());
                 self.detonations.push(RawDetonation {
                     kind: kind.into(),
                     tick: Some(i64::from(ctx.tick())),
@@ -1140,8 +1197,12 @@ impl GrenadeObserver {
             let phase = get_i32("m_gamePhase");
             if phase != self.last_game_phase {
                 if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
-                    eprintln!("ROUND_TRACE phase tick={} old={:?} new={phase:?} total={total:?} warmup={:?}",
-                        ctx.tick(), self.last_game_phase, warmup(ctx));
+                    eprintln!(
+                        "ROUND_TRACE phase tick={} old={:?} new={phase:?} total={total:?} warmup={:?}",
+                        ctx.tick(),
+                        self.last_game_phase,
+                        warmup(ctx)
+                    );
                 }
                 if phase == Some(3) && match_started == Some(true) && warmup(ctx) == Some(false) {
                     self.team_side_switch_ticks.push(i64::from(ctx.tick()));
@@ -1150,8 +1211,11 @@ impl GrenadeObserver {
             }
             if match_started != self.last_match_started {
                 if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
-                    eprintln!("ROUND_TRACE match_started tick={} old={:?} new={match_started:?} total={total:?}",
-                        ctx.tick(), self.last_match_started);
+                    eprintln!(
+                        "ROUND_TRACE match_started tick={} old={:?} new={match_started:?} total={total:?}",
+                        ctx.tick(),
+                        self.last_match_started
+                    );
                 }
                 self.last_match_started = match_started;
             }
@@ -1172,8 +1236,12 @@ impl GrenadeObserver {
                 }
                 if self.last_timeout != Some(values) {
                     if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
-                        eprintln!("ROUND_TRACE timeout tick={} ct={} t={} total={total:?} frozen={frozen:?} win={win:?}",
-                            ctx.tick(), values.0, values.1);
+                        eprintln!(
+                            "ROUND_TRACE timeout tick={} ct={} t={} total={total:?} frozen={frozen:?} win={win:?}",
+                            ctx.tick(),
+                            values.0,
+                            values.1
+                        );
                     }
                     self.last_timeout = Some(values);
                 }
@@ -1347,7 +1415,11 @@ impl GrenadeObserver {
         // start. Absolute demo ticks are retained; no invented interpolation
         // enters the stored facts. Utility proximity later reads only the
         // observed detonation ticks from this same stream.
-        if self.observed_match_start && warmup(ctx) != Some(true) {
+        let detonation_tick = self.detonation_ticks.contains(&ctx.tick());
+        if self.observed_match_start
+            && warmup(ctx) != Some(true)
+            && (!self.position_stream_truncated || detonation_tick)
+        {
             for controller in ctx
                 .entities()
                 .iter()
@@ -1387,13 +1459,7 @@ impl GrenadeObserver {
                     Ok(FieldValue::Vector3D(value)) => Some(f64::from(value[1])),
                     _ => None,
                 };
-                if self.positions.len() >= MAX_VIEWER_POSITIONS {
-                    return Err(ParserError::IoError(format!(
-                        "position stream exceeds bounded {MAX_VIEWER_POSITIONS} samples"
-                    ))
-                    .into());
-                }
-                self.positions.push(RawPosition {
+                let position = RawPosition {
                     tick: Some(i64::from(ctx.tick())),
                     steamid: Some(steam),
                     name: Some(name),
@@ -1404,7 +1470,15 @@ impl GrenadeObserver {
                     is_alive: Some(is_alive),
                     health,
                     yaw,
-                });
+                };
+                record_position(
+                    &mut self.positions,
+                    &mut self.attribution_positions,
+                    &mut self.position_stream_truncated,
+                    position,
+                    detonation_tick,
+                    MAX_VIEWER_POSITIONS,
+                );
             }
         }
         Ok(())
@@ -1468,23 +1542,29 @@ mod round_tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("broken.dem");
         std::fs::write(&path, b"PBDEMS2\0").unwrap();
-        assert!(validate_format(&path, &ImportControl::new())
-            .unwrap_err()
-            .contains("truncated"));
+        assert!(
+            validate_format(&path, &ImportControl::new())
+                .unwrap_err()
+                .contains("truncated")
+        );
         let mut header = [0_u8; 32];
         header[..8].copy_from_slice(b"PBDEMS2\0");
         header[8..12].copy_from_slice(&u32::MAX.to_le_bytes());
         std::fs::write(&path, header).unwrap();
-        assert!(validate_format(&path, &ImportControl::new())
-            .unwrap_err()
-            .contains("file-info offset"));
+        assert!(
+            validate_format(&path, &ImportControl::new())
+                .unwrap_err()
+                .contains("file-info offset")
+        );
         header[8..12].copy_from_slice(&16_u32.to_le_bytes());
         std::fs::write(&path, header).unwrap();
         let cancelled = ImportControl::new();
         cancelled.request_cancel();
-        assert!(validate_format(&path, &cancelled)
-            .unwrap_err()
-            .contains("cancelled"));
+        assert!(
+            validate_format(&path, &cancelled)
+                .unwrap_err()
+                .contains("cancelled")
+        );
     }
 
     #[test]
@@ -1547,27 +1627,33 @@ mod round_tests {
             winner: Some("CT".into()),
             reason: Some("bomb_defused".into()),
         }];
-        assert!(validate_round_outcome_events(
-            &rounds,
-            &BTreeSet::from([20_760]),
-            &BTreeSet::new(),
-            &BTreeSet::new()
-        )
-        .is_ok());
-        assert!(validate_round_outcome_events(
-            &rounds,
-            &BTreeSet::new(),
-            &BTreeSet::new(),
-            &BTreeSet::new()
-        )
-        .is_err());
-        assert!(validate_round_outcome_events(
-            &rounds,
-            &BTreeSet::from([20_761]),
-            &BTreeSet::new(),
-            &BTreeSet::new()
-        )
-        .is_err());
+        assert!(
+            validate_round_outcome_events(
+                &rounds,
+                &BTreeSet::from([20_760]),
+                &BTreeSet::new(),
+                &BTreeSet::new()
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_round_outcome_events(
+                &rounds,
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                &BTreeSet::new()
+            )
+            .is_err()
+        );
+        assert!(
+            validate_round_outcome_events(
+                &rounds,
+                &BTreeSet::from([20_761]),
+                &BTreeSet::new(),
+                &BTreeSet::new()
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1704,27 +1790,33 @@ mod round_tests {
                 reason: Some("ct_killed".into()),
             },
         ];
-        assert!(validate_round_outcome_events(
-            &rounds,
-            &BTreeSet::new(),
-            &BTreeSet::from([45_707]),
-            &BTreeSet::from([52_063])
-        )
-        .is_ok());
-        assert!(validate_round_outcome_events(
-            &rounds,
-            &BTreeSet::new(),
-            &BTreeSet::new(),
-            &BTreeSet::from([52_063])
-        )
-        .is_err());
-        assert!(validate_round_outcome_events(
-            &rounds,
-            &BTreeSet::new(),
-            &BTreeSet::from([45_707]),
-            &BTreeSet::new()
-        )
-        .is_err());
+        assert!(
+            validate_round_outcome_events(
+                &rounds,
+                &BTreeSet::new(),
+                &BTreeSet::from([45_707]),
+                &BTreeSet::from([52_063])
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_round_outcome_events(
+                &rounds,
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                &BTreeSet::from([52_063])
+            )
+            .is_err()
+        );
+        assert!(
+            validate_round_outcome_events(
+                &rounds,
+                &BTreeSet::new(),
+                &BTreeSet::from([45_707]),
+                &BTreeSet::new()
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1736,13 +1828,15 @@ mod round_tests {
             winner: Some("T".into()),
             reason: Some("ct_killed".into()),
         }];
-        assert!(validate_round_outcome_events(
-            &rounds,
-            &BTreeSet::new(),
-            &BTreeSet::from([101]),
-            &BTreeSet::from([100])
-        )
-        .is_ok());
+        assert!(
+            validate_round_outcome_events(
+                &rounds,
+                &BTreeSet::new(),
+                &BTreeSet::from([101]),
+                &BTreeSet::from([100])
+            )
+            .is_ok()
+        );
         let active = [
             rounds[0].clone(),
             RawRoundEvent {
@@ -1753,13 +1847,15 @@ mod round_tests {
                 reason: None,
             },
         ];
-        assert!(validate_round_outcome_events(
-            &active,
-            &BTreeSet::new(),
-            &BTreeSet::from([111]),
-            &BTreeSet::from([100])
-        )
-        .is_err());
+        assert!(
+            validate_round_outcome_events(
+                &active,
+                &BTreeSet::new(),
+                &BTreeSet::from([111]),
+                &BTreeSet::from([100])
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1771,5 +1867,40 @@ mod round_tests {
         update_same_tick_deaths(&mut dead, "player_spawn", 6);
         assert!(include_position(true, dead.contains(&6)));
         assert!(!include_position(false, false));
+    }
+
+    #[test]
+    fn replay_cap_preserves_detonation_attribution_without_partial_stream() {
+        let mut stream = Vec::new();
+        let mut attribution = Vec::new();
+        let mut truncated = false;
+        for tick in 1..=4 {
+            let position = RawPosition {
+                tick: Some(tick),
+                steamid: Some("s1".into()),
+                name: Some("alice".into()),
+                team: Some("CT".into()),
+                x: Some(tick as f64),
+                y: Some(0.0),
+                z: Some(0.0),
+                is_alive: Some(true),
+                health: Some(100),
+                yaw: None,
+            };
+            record_position(
+                &mut stream,
+                &mut attribution,
+                &mut truncated,
+                position,
+                tick == 2 || tick == 4,
+                2,
+            );
+        }
+        assert!(truncated);
+        assert!(stream.is_empty());
+        assert_eq!(
+            attribution.iter().map(|p| p.tick).collect::<Vec<_>>(),
+            [Some(2), Some(4)]
+        );
     }
 }

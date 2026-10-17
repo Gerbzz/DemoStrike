@@ -125,8 +125,11 @@ export function Viewer2DLoader() {
   const rate = meta?.tickRate ?? 64;
   const deaths = round?.deaths ?? [];
   const throws = match.utilityEvents.filter((event) => event.roundNumber === roundNumber);
+  const playerName = (steamid: string | null) =>
+    steamid === null ? 'World' : match.players.find((player) => player.steamid === steamid)?.name ?? steamid;
   const recentEvents = [
-    ...deaths.map((event) => ({ tick: event.tick, label: `${event.attackerSteamid ?? 'World'}  ${event.victimSteamid} � ${event.weapon ?? 'unknown weapon'}` })),
+    ...deaths.map((event) => ({ tick: event.tick,
+      label: `${playerName(event.attackerSteamid)}  ${playerName(event.victimSteamid)} � ${event.weapon ?? 'unknown weapon'}` })),
     ...throws.map((event) => ({ tick: event.throwTick, label: `${event.throwerName} threw ${event.utilityType}` })),
   ].filter((event) => event.tick <= tick).sort((a, b) => b.tick - a.tick).slice(0, 5);
 
@@ -210,14 +213,16 @@ export function Viewer2DLoader() {
             {[...players].sort((a, b) => (a.side ?? '').localeCompare(b.side ?? '') || a.name.localeCompare(b.name)).map((player) =>
               <li key={player.steamid}><button className="flex w-full items-center justify-between gap-8 py-4 text-left"
                 onClick={() => setFocusedPlayer(player.steamid)} aria-pressed={focusedPlayer === player.steamid}>
-                <span><span style={{ color: sideColor(player.side) }}>?</span> {player.name}</span>
+                <span className="flex items-center gap-4"><span aria-hidden="true" className="inline-block size-8 rounded-full"
+                  style={{ backgroundColor: sideColor(player.side) }} /> {player.name}</span>
                 <span className="text-gray-700">{player.isAlive === false ? 'Out' : player.health === null ? player.side ?? '-' : `${player.health} HP`}</span>
               </button></li>)}
           </ul>
         </section>
         <section><h2 className="text-body-strong">Active projectiles <span className="text-gray-700">({grenades.length})</span></h2>
           <ul className="mt-4 space-y-4">{grenades.map((grenade: ViewerGrenadeFrame) =>
-            <li key={grenade.trajectoryIndex}><span style={{ color: grenadeColor(grenade.grenadeType) }}>?</span> {grenadeLabel(grenade.grenadeType)}
+            <li key={grenade.trajectoryIndex}><span aria-hidden="true" className="mr-4 inline-block size-8 rotate-45"
+              style={{ backgroundColor: grenadeColor(grenade.grenadeType) }} /> {grenadeLabel(grenade.grenadeType)}
               <span className="ml-8 text-gray-700">#{grenade.entityId}</span></li>)}</ul>
           {grenades.length === 0 && <p className="mt-4 text-gray-700">No projectile at this observed tick.</p>}</section>
         <section><h2 className="text-body-strong">Recorded events</h2>
