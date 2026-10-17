@@ -166,6 +166,32 @@ pub fn insert_match_with_source_hash(
                 row.enemy_kills, row.deaths, row.enemy_assists, row.enemy_health_damage])?;
         }
 
+        let mut hurts = tx.prepare(
+            "INSERT INTO raw_combat_hurts (match_id, source_index, event_order, tick,
+                round_number, weapon, attacker_steamid, attacker_side, victim_steamid,
+                victim_side, raw_dmg_health)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)"
+        )?;
+        for (index, row) in m.raw_combat_hurts.iter().enumerate() {
+            check_cancel()?;
+            hurts.execute(params![match_id, index as i64, row.event_order, row.tick,
+                row.round, row.weapon, row.attacker_steamid, row.attacker_team,
+                row.victim_steamid, row.victim_team, row.damage])?;
+        }
+        let mut deaths = tx.prepare(
+            "INSERT INTO raw_combat_deaths (match_id, source_index, event_order, tick,
+                round_number, weapon, attacker_steamid, attacker_side, victim_steamid,
+                victim_side, assister_steamid, assister_side)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)"
+        )?;
+        for (index, row) in m.raw_combat_deaths.iter().enumerate() {
+            check_cancel()?;
+            deaths.execute(params![match_id, index as i64, row.event_order, row.tick,
+                row.round, row.weapon, row.attacker_steamid, row.attacker_team,
+                row.victim_steamid, row.victim_team, row.assister_steamid,
+                row.assister_team])?;
+        }
+
         let winners: HashMap<i64, Option<String>> = m
             .rounds
             .iter()
@@ -1043,6 +1069,8 @@ mod tests {
                 enemy_kills: Some(2), deaths: 1, enemy_assists: Some(1),
                 enemy_health_damage: Some(87),
             }],
+            raw_combat_hurts: vec![],
+            raw_combat_deaths: vec![],
             score_ct: 13,
             score_t: 7,
         }
@@ -1051,7 +1079,18 @@ mod tests {
     #[test]
     fn insert_query_roundtrip() {
         let mut conn = open_in_memory().unwrap();
-        let id = insert_match(&mut conn, "C:/demos/test.dem", &sample_match()).unwrap();
+        let mut analyzed = sample_match();
+        analyzed.raw_combat_hurts = serde_json::from_value(serde_json::json!([{
+            "eventOrder":1,"tick":3100,"round":1,"weapon":"ak47",
+            "attackerSteamid":"s1","attackerTeam":"CT","victimSteamid":"s2",
+            "victimTeam":"T","damage":15
+        }])).unwrap();
+        analyzed.raw_combat_deaths = serde_json::from_value(serde_json::json!([{
+            "eventOrder":2,"tick":3100,"round":1,"weapon":"ak47",
+            "attackerSteamid":"s1","attackerTeam":"CT","victimSteamid":"s2",
+            "victimTeam":"T","assisterSteamid":null,"assisterTeam":null
+        }])).unwrap();
+        let id = insert_match(&mut conn, "C:/demos/test.dem", &analyzed).unwrap();
         assert!(id > 0);
 
         let matches = list_matches(&conn).unwrap();
@@ -1064,6 +1103,17 @@ mod tests {
             [id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         ).unwrap();
         assert_eq!(combat, ("CT".into(), 2, 1, 87));
+        let hurt: (i64, i64, String, String, i64) = conn.query_row(
+            "SELECT event_order, tick, weapon, victim_steamid, raw_dmg_health
+             FROM raw_combat_hurts WHERE match_id = ?1", [id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        ).unwrap();
+        assert_eq!(hurt, (1, 3100, "ak47".into(), "s2".into(), 15));
+        let death: (i64, i64, String) = conn.query_row(
+            "SELECT event_order, tick, victim_steamid FROM raw_combat_deaths WHERE match_id = ?1",
+            [id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).unwrap();
+        assert_eq!(death, (2, 3100, "s2".into()));
 
         let events = query_events(&conn, &EventFilter::default()).unwrap();
         assert_eq!(events.len(), 1);
@@ -1075,6 +1125,31 @@ mod tests {
         assert_eq!(detail.ct_equip_value, Some(4000));
         assert_eq!(detail.demo_path, "C:/demos/test.dem");
         assert_eq!(detail.observer_slot, Some(2));
+    }
+
+    #[test]
+    fn cancellation_rolls_back_raw_combat_and_match_together() {
+        let mut conn = open_in_memory().unwrap();
+        let mut analyzed = sample_match();
+        analyzed.raw_combat_hurts = serde_json::from_value(serde_json::json!([{
+            "eventOrder":1,"tick":3100,"round":1,"weapon":"ak47",
+            "attackerSteamid":"s1","attackerTeam":"CT","victimSteamid":"s2",
+            "victimTeam":"T","damage":15
+        }])).unwrap();
+        analyzed.raw_combat_deaths = serde_json::from_value(serde_json::json!([{
+            "eventOrder":2,"tick":3100,"round":1,"weapon":"ak47",
+            "attackerSteamid":"s1","attackerTeam":"CT","victimSteamid":"s2",
+            "victimTeam":"T","assisterSteamid":null,"assisterTeam":null
+        }])).unwrap();
+        let checks = std::cell::Cell::new(0);
+        let result = insert_match_with_source_hash(&mut conn, "C:/cancelled.dem", &analyzed,
+            "native-combat-full-v2", None,
+            || { checks.set(checks.get() + 1); checks.get() >= 6 }, || Ok(()));
+        assert!(result.unwrap_err().to_string().contains("cancelled"));
+        for table in ["matches", "player_round_combat", "raw_combat_hurts", "raw_combat_deaths"] {
+            let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0)).unwrap();
+            assert_eq!(count, 0, "{table} must roll back with the match");
+        }
     }
 
     #[test]

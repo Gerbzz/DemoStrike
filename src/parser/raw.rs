@@ -154,6 +154,9 @@ pub struct RawDeath {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RawCombatHurt {
+    /// Native game-event order across hurts and deaths; absent in older facts.
+    #[serde(default)]
+    pub event_order: Option<i64>,
     pub tick: i64,
     pub round: i64,
     pub weapon: Option<String>,
@@ -167,6 +170,8 @@ pub struct RawCombatHurt {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RawCombatDeath {
+    #[serde(default)]
+    pub event_order: Option<i64>,
     pub tick: i64,
     pub round: i64,
     pub weapon: Option<String>,

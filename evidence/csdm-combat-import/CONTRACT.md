@@ -25,6 +25,11 @@ and parser capability `native-combat-full-v2`; historical
 `native-combat-flash-v1` and other imports remain explicitly unavailable.
 Hosted synthetic facts instead use `test-synthetic-combat-v1`; they remain
 readable for UI contract tests but never claim native decoder provenance.
+Schema v8 also retains event-level raw gun and utility combat hurts/deaths,
+including tick, event order when native, weapon, participants, observed sides,
+and raw `dmg_health`. These additive tables let later original CSDM timeline,
+duel, and weapon views derive their own contracts without discarding the
+source events. Earlier libraries acquire empty tables, not invented facts.
 The original utility attribution view remains independent of these player
 combat totals. The import command checks source identity, snapshots the demo,
 parses it with the native parser, and commits the managed library without

@@ -149,9 +149,12 @@ fn game_round(ctx: &Context) -> Option<i64> {
 /// CS2 game-event user IDs pack a generation in the upper byte and a player
 /// slot in the low byte. Zero is a world actor, not a player controller.
 fn source2_user_slot(user: i32) -> Option<u32> {
-    let encoded = u32::try_from(user).ok()?;
-    if encoded == 0 || encoded >= u32::from(u16::MAX) { return None; }
-    Some(encoded & 0xff)
+    // GameEvent 'short' values can be signed after the generation byte sets
+    // bit 15. Keep those valid IDs; -1 is the all-bits sentinel.
+    if user == 0 || user == -1 || user < i32::from(i16::MIN) || user > i32::from(u16::MAX) {
+        return None;
+    }
+    Some((user as u32) & 0xff)
 }
 
 fn controller_by_user(ctx: &Context, user: i32) -> Option<&Entity> {
@@ -187,7 +190,7 @@ fn userinfo_slot(ctx: &Context, user: i32, steam: &str) -> Option<i64> {
     let row = ctx.string_tables().get_by_name("userinfo").ok()?
         .get_row(usize::try_from(slot).ok()?).ok()?;
     let info = CMsgPlayerInfo::decode(row.value()?).ok()?;
-    (info.userid.is_some_and(|value| value >= 0 && (value as u32 & 0xff) == slot)
+    (info.userid.is_some_and(|value| value != -1 && (value as u32 & 0xff) == slot)
         && info.steamid?.to_string() == steam)
         .then_some(i64::from(slot))
 }
@@ -312,6 +315,7 @@ struct GrenadeObserver {
     throws: Vec<RawThrow>, detonations: Vec<RawDetonation>,
     blinds: Vec<RawBlind>, hurts: Vec<RawHurt>, deaths: Vec<RawDeath>,
     combat_hurts: Vec<RawCombatHurt>, combat_deaths: Vec<RawCombatDeath>,
+    combat_event_order: i64,
     round_sides: Vec<RawRoundSide>,
     trajectories: Vec<RawTrajectory>, active_projectiles: BTreeMap<u32, usize>,
     projectile_owners: BTreeMap<u32, (String, String)>,
@@ -408,10 +412,10 @@ impl GrenadeObserver {
             if matches!(name, "player_hurt" | "player_death") {
                 let victim = identity("userid");
                 let attacker = identity("attacker");
-                let expected_attacker = event_int(event, "attacker").is_some_and(|user| user > 0);
+                let expected_attacker = event_int(event, "attacker").is_some_and(|user| source2_user_slot(user).is_some());
                 let assister = if name == "player_death" { identity("assister") } else { None };
                 let expected_assister = name == "player_death"
-                    && event_int(event, "assister").is_some_and(|user| user > 0);
+                    && event_int(event, "assister").is_some_and(|user| source2_user_slot(user).is_some());
                 if let (Some(round), Some(victim)) = (round, victim) {
                     remember_identity(&mut self.players, &mut self.round_sides, &victim, round);
                     if let Some(ref attacker) = attacker {
@@ -424,18 +428,24 @@ impl GrenadeObserver {
                         self.errors.push(format!("incomplete combat {name} identity at tick {}", ctx.tick()));
                     } else if name == "player_hurt" {
                         match event_int(event, "dmg_health") {
-                            Some(damage) if damage >= 0 => self.combat_hurts.push(RawCombatHurt {
+                            Some(damage) if damage >= 0 => {
+                                self.combat_event_order += 1;
+                                self.combat_hurts.push(RawCombatHurt {
+                                event_order: Some(self.combat_event_order),
                                 tick: i64::from(ctx.tick()), round,
                                 weapon: event_string(event, "weapon").map(str::to_owned),
                                 attacker_steamid: attacker.as_ref().map(|value| value.0.clone()),
                                 attacker_team: attacker.as_ref().map(|value| value.2.clone()),
                                 victim_steamid: victim.0, victim_team: Some(victim.2),
                                 damage: i64::from(damage),
-                            }),
+                                });
+                            }
                             _ => self.errors.push(format!("incomplete combat player_hurt damage at tick {}", ctx.tick())),
                         }
                     } else {
+                        self.combat_event_order += 1;
                         self.combat_deaths.push(RawCombatDeath {
+                            event_order: Some(self.combat_event_order),
                             tick: i64::from(ctx.tick()), round,
                             weapon: event_string(event, "weapon").map(str::to_owned),
                             attacker_steamid: attacker.as_ref().map(|value| value.0.clone()),
@@ -670,10 +680,12 @@ mod round_tests {
         assert_eq!(source2_user_slot(0x101), Some(1));
         assert_eq!(source2_user_slot(0x100), Some(0));
         assert_eq!(source2_user_slot(0x201), Some(1));
+        assert_eq!(source2_user_slot(-255), Some(1));
         assert_eq!(source2_user_slot(0), None);
         assert_eq!(source2_user_slot(-1), None);
         assert_eq!(source2_user_slot(0xffff), None);
         assert_eq!(source2_user_slot(0x10000), None);
+        assert_eq!(source2_user_slot(i32::MIN), None);
         assert_eq!(source2_user_slot(0x101).unwrap() + 1, 2);
     }
 

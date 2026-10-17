@@ -208,6 +208,42 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX player_round_combat_player ON player_round_combat(match_id, steamid);
     "#,
+    // v8 - keep event-level combat for future original CSDM workflows.
+    // Additive tables leave prior matches, utility annotations, and render
+    // references untouched; old imports do not acquire invented event rows.
+    r#"
+    CREATE TABLE raw_combat_hurts (
+        match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+        source_index INTEGER NOT NULL,
+        event_order INTEGER,
+        tick INTEGER NOT NULL,
+        round_number INTEGER NOT NULL,
+        weapon TEXT,
+        attacker_steamid TEXT,
+        attacker_side TEXT,
+        victim_steamid TEXT NOT NULL,
+        victim_side TEXT,
+        raw_dmg_health INTEGER NOT NULL,
+        PRIMARY KEY (match_id, source_index)
+    );
+    CREATE INDEX raw_combat_hurts_timeline ON raw_combat_hurts(match_id, tick, event_order);
+    CREATE TABLE raw_combat_deaths (
+        match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+        source_index INTEGER NOT NULL,
+        event_order INTEGER,
+        tick INTEGER NOT NULL,
+        round_number INTEGER NOT NULL,
+        weapon TEXT,
+        attacker_steamid TEXT,
+        attacker_side TEXT,
+        victim_steamid TEXT NOT NULL,
+        victim_side TEXT,
+        assister_steamid TEXT,
+        assister_side TEXT,
+        PRIMARY KEY (match_id, source_index)
+    );
+    CREATE INDEX raw_combat_deaths_timeline ON raw_combat_deaths(match_id, tick, event_order);
+    "#,
 ];
 
 pub fn open(path: &Path) -> AppResult<Connection> {
@@ -306,12 +342,34 @@ mod capability_migration_tests {
         conn.execute("INSERT INTO matches (id,file_path,file_name,map_name,tick_rate,imported_at,parser_capability)
             VALUES (7,'C:/old.dem','old.dem','de_train',64,'2026-10-08','native-combat-flash-v1')", []).unwrap();
         conn.execute("INSERT INTO players (match_id,steamid,name) VALUES (7,'s1','preserved')", []).unwrap();
+        conn.execute_batch("INSERT INTO utility_events
+            (id,match_id,round_number,utility_type,thrower_steamid,thrower_name,thrower_team,
+             throw_tick,throw_x,throw_y,throw_z,favorite)
+            VALUES (9,7,1,'smoke','s1','preserved','CT',100,1,2,3,1);
+            INSERT INTO tags (id,name) VALUES (3,'approved');
+            INSERT INTO event_tags (event_id,tag_id) VALUES (9,3);
+            INSERT INTO collections (id,name,created_at) VALUES (4,'Guide','2026-10-08');
+            INSERT INTO collection_events (collection_id,event_id,position) VALUES (4,9,0);
+            INSERT INTO render_jobs (id,status,settings,output_dir,created_at)
+              VALUES (5,'queued','{}','C:/output','2026-10-08');
+            INSERT INTO render_job_events (job_id,event_id,position) VALUES (5,9,0);").unwrap();
         migrate(&conn).unwrap();
         let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
         let player: String = conn.query_row("SELECT name FROM players WHERE match_id=7", [], |row| row.get(0)).unwrap();
         let combat: i64 = conn.query_row("SELECT COUNT(*) FROM player_round_combat WHERE match_id=7", [], |row| row.get(0)).unwrap();
-        assert_eq!(version, 7);
+        let raw_combat: i64 = conn.query_row("SELECT (SELECT COUNT(*) FROM raw_combat_hurts WHERE match_id=7)
+            + (SELECT COUNT(*) FROM raw_combat_deaths WHERE match_id=7)", [], |row| row.get(0)).unwrap();
+        let annotations: (i64, i64, i64, i64) = conn.query_row(
+            "SELECT e.favorite,
+                (SELECT COUNT(*) FROM event_tags WHERE event_id=e.id),
+                (SELECT COUNT(*) FROM collection_events WHERE event_id=e.id),
+                (SELECT COUNT(*) FROM render_job_events WHERE event_id=e.id)
+             FROM utility_events e WHERE e.id=9", [],
+            |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).unwrap();
+        assert_eq!(version, 8);
         assert_eq!(player, "preserved");
         assert_eq!(combat, 0);
+        assert_eq!(raw_combat, 0);
+        assert_eq!(annotations, (1, 1, 1, 1));
     }
 }

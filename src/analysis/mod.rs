@@ -100,6 +100,10 @@ pub struct AnalyzedMatch {
     pub events: Vec<AnalyzedEvent>,
     pub effect_facts: Vec<EffectAttribution>,
     pub player_round_combat: Vec<AnalyzedPlayerRoundCombat>,
+    /// Lossless native combat facts retained for later timeline, duel, and
+    /// weapon analysis without a destructive reimport.
+    pub raw_combat_hurts: Vec<RawCombatHurt>,
+    pub raw_combat_deaths: Vec<RawCombatDeath>,
     pub score_ct: i64,
     pub score_t: i64,
 }
@@ -122,6 +126,8 @@ pub fn build_match(raw: &RawDemo) -> AnalyzedMatch {
         events,
         effect_facts,
         player_round_combat,
+        raw_combat_hurts: raw.combat_hurts.clone(),
+        raw_combat_deaths: raw.combat_deaths.clone(),
         score_ct,
         score_t,
     }
