@@ -43,7 +43,7 @@ export function NativeOriginalEventList({ detail, recorded, meta }: {
     <summary className="cursor-pointer px-8 py-4 font-semibold">Recorded events ({rows.length})</summary>
     <div className="max-h-[300px] overflow-y-auto border-t border-gray-300">
       {!meta.bombEventsAvailable && <p className="px-8 py-4 text-gray-700">Bomb events unavailable for this import.</p>}
-      {round.hurts === null && <p className="px-8 py-4 text-gray-700">Damage events unavailable for this import.</p>}
+      {recorded.hurts === null && <p className="px-8 py-4 text-gray-700">Damage events unavailable for this import.</p>}
       {rows.length === 0 && <p className="px-8 py-4 text-gray-700">No recorded events in this round.</p>}
       {rows.map((event) => <button key={event.key} type="button"
         data-event-kind={event.kind} data-event-tick={event.tick}
