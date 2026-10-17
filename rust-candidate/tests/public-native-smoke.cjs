@@ -107,6 +107,7 @@ async function main() {
     await captureAppOnly(page, roundsShot);
     await page.locator('section[aria-label="Round entries"] details').first().locator('summary').click();
     await page.getByRole('heading', { name: 'Recorded death events' }).first().waitFor({ timeout: 30000 });
+    await page.getByText('All CT eliminated').first().waitFor({ timeout: 30000 });
     assert.ok(await page.locator('section[aria-label="Round entries"] ol li').count() > 0,
       'Native raw death events did not reach the partial CSDM round view');
     const roundDetailShot = path.join(outputDir, 'real-demo-round-detail.png');
