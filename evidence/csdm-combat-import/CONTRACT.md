@@ -11,10 +11,10 @@ bounded fields below through the existing native DemoStrike import pipeline.
 
 | UI fact | Native source | Rule |
 | --- | --- | --- |
-| Round winner and ticks | GameRules round transitions | Preserve observed CT/T winner and tick boundaries. |
+| Round winner and ticks | GameRules transitions, `begin_new_match`/`round_start` events, and team timeout completion | Preserve the observed CT/T outcome; refine provisional starts only before freeze ends. A timeout that reaches zero can move a still-frozen start, and the last such completion wins. |
 | Observed CT/T players | Controller identity at freeze end and combat events | Side is per round; never promoted to stable Team A/B identity. Conflicts become unavailable. |
 | Enemy eliminations | All non-warmup `player_death` events | Count only distinct attacker/victim identities with different observed sides. Unknown side makes that player's total unavailable. |
-| Deaths | Victim in all non-warmup `player_death` events | World and self deaths still count for the victim. |
+| Deaths | Victim in match-scoped `player_death` events | Retain all raw deaths in v8. Display totals exclude post-match events and world-weapon self deaths, following the pinned CSDM analyzer. |
 | Enemy assists | Resolved assister in non-warmup `player_death` | Count only a distinct assister on the opposite observed side from the victim. |
 | Raw enemy damage | All non-warmup `player_hurt` events | Sum raw `dmg_health` only for distinct players with different observed sides. This can include overkill and is not CSDM's capped effective health damage. Unknown side makes that player's total unavailable. |
 
@@ -31,7 +31,12 @@ and raw `dmg_health`. These additive tables let later original CSDM timeline,
 duel, and weapon views derive their own contracts without discarding the
 source events. Earlier libraries acquire empty tables, not invented facts.
 The original utility attribution view remains independent of these player
-combat totals. The import command checks source identity, snapshots the demo,
+combat totals. On the pinned public Mirage and Ancient recordings, the original
+analyzer and native importer agree on every shared round start/end/outcome,
+in-match kill and damage-event identity, and all ten player K/A/D totals.
+The original analyzer fills a final surrendered round's absent freeze end with
+its end tick; the native row keeps that freeze end null. Raw damage amounts
+remain distinct from the original analyzer's capped effective HP damage. The import command checks source identity, snapshots the demo,
 parses it with the native parser, and commits the managed library without
 replacing earlier imports or annotations.
 
@@ -48,7 +53,9 @@ The normal app build has no synthetic parser feature and uses the native CS2
 decoder. Passing synthetic smoke proves the import wiring and UI contract,
 not that this new parser version successfully decodes Neil's private demo.
 
-The hosted fixture and screenshots are public synthetic data. A current-build
-private native GUI import remains unverified under the task's no-local-build
-and no-executable-download constraint.
+Hosted synthetic screenshots prove UI wiring. Separate hosted Windows Tauri
+WebView2 smoke imports the pinned public Mirage demo through a feature-free
+release build and captures the real app window. A current-build private native
+GUI import remains unverified under the task's no-local-build and
+no-executable-download constraint.
 
