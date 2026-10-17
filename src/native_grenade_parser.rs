@@ -87,8 +87,11 @@ fn validate_coverage(state: &GrenadeObserver, map: &str, trajectories: &[RawTraj
     if state.round_events.is_empty() {
         return Err("unsupported CS2 GameRules schema: no round transitions decoded".into());
     }
-    if state.last_start_count.is_none() {
-        return Err("unsupported CS2 GameRules schema: round-start counter unavailable".into());
+    // Some valid recordings omit m_nRoundStartCount. The observed freeze/win
+    // transitions still establish round boundaries without that counter.
+    if !state.round_events.iter().any(|event| event.kind == "round_start")
+        || !state.round_events.iter().any(|event| event.kind == "round_end") {
+        return Err("unsupported CS2 GameRules schema: no complete round transitions decoded".into());
     }
     // A combat-only demo can legitimately contain no grenade releases. The
     // equality and ownership checks below still reject unexplained paths.
@@ -205,6 +208,18 @@ fn userinfo_slot(ctx: &Context, user: i32, steam: &str) -> Option<i64> {
     (info.userid.is_some_and(|value| value != -1 && (value as u32 & 0xff) == slot)
         && info.steamid?.to_string() == steam)
         .then_some(i64::from(slot))
+}
+
+fn release_resolution(ctx: &Context, user: Option<i32>) -> String {
+    let Some(user) = user else { return "user=missing".into() };
+    let controller = controller_by_user(ctx, user);
+    let identity = controller.and_then(controller_identity);
+    format!("user={}, userinfo={}, pawn={}, origin={}, round={:?}",
+        user_resolution(ctx, Some(user)),
+        identity.as_ref().is_some_and(|(steam, _, _)| userinfo_slot(ctx, user, steam).is_some()),
+        controller.and_then(|value| pawn_of(ctx, value)).is_some(),
+        controller.and_then(|value| pawn_of(ctx, value)).and_then(origin).is_some(),
+        game_round(ctx))
 }
 
 fn pawn_of<'a>(ctx: &'a Context, controller: &Entity) -> Option<&'a Entity> {
@@ -391,7 +406,8 @@ impl GrenadeObserver {
                 self.throws.push(RawThrow { tick: Some(i64::from(ctx.tick())), round: Some(round), utility: utility.into(),
                     steamid: Some(steam), name: Some(player_name), team: Some(side), observer_slot: Some(slot),
                     x: Some(x), y: Some(y), z: Some(z) });
-            } else { self.errors.push(format!("incomplete {utility} release at tick {}", ctx.tick())); }
+            } else { self.errors.push(format!("incomplete {utility} release at tick {} [{}]",
+                ctx.tick(), release_resolution(ctx, event_int(event, "userid")))); }
         }
         let kind = match name {
             "smokegrenade_detonate" => Some("smoke"), "flashbang_detonate" => Some("flash"),
@@ -490,7 +506,9 @@ impl GrenadeObserver {
                             entity_id: event_int(event, "entityid").map(i64::from) })
                     })();
                     if let Some(fact) = fact { self.blinds.push(fact); }
-                    else { self.errors.push(format!("incomplete player_blind at tick {}", ctx.tick())); }
+                    else { self.errors.push(format!("incomplete player_blind at tick {} [attacker {}, victim {}, round {round:?}]",
+                        ctx.tick(), user_resolution(ctx, event_int(event, "attacker")),
+                        user_resolution(ctx, event_int(event, "userid")))); }
                 }
                 "player_hurt" => {
                     let weapon = event_string(event, "weapon");
@@ -506,7 +524,9 @@ impl GrenadeObserver {
                                 victim_team: Some(victim_team), damage })
                         })();
                         if let Some(fact) = fact { self.hurts.push(fact); }
-                        else { self.errors.push(format!("incomplete utility player_hurt at tick {}", ctx.tick())); }
+                        else { self.errors.push(format!("incomplete utility player_hurt at tick {} [attacker {}, victim {}, round {round:?}]",
+                            ctx.tick(), user_resolution(ctx, event_int(event, "attacker")),
+                            user_resolution(ctx, event_int(event, "userid")))); }
                     }
                 }
                 "player_death" => {
@@ -654,9 +674,10 @@ mod round_tests {
     #[test]
     fn combat_only_demo_can_have_zero_grenade_releases() {
         let mut state = GrenadeObserver::default();
-        state.last_start_count = Some(1);
         state.round_events.push(RawRoundEvent { kind: "round_start".into(), tick: Some(100),
             round: Some(1), winner: None, reason: None });
+        state.round_events.push(RawRoundEvent { kind: "round_end".into(), tick: Some(500),
+            round: Some(1), winner: Some("CT".into()), reason: Some("t_killed".into()) });
         assert!(validate_coverage(&state, "de_test", &[], 0).is_ok());
     }
 
