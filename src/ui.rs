@@ -1240,7 +1240,7 @@ impl eframe::App for DemoStrikeApp {
         self.poll_capture_request();
         self.poll_pilot();
         self.poll_package_import();
-        let mut style = (*ctx.style()).clone();
+        let mut style = (*ctx.style_of(egui::Theme::Dark)).clone();
         style.visuals = egui::Visuals::dark();
         style.visuals.panel_fill = egui::Color32::from_rgb(24, 28, 34);
         style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(48, 55, 64);
@@ -1251,7 +1251,7 @@ impl eframe::App for DemoStrikeApp {
         style.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(15.0));
         style.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
         style.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
-        ctx.set_style(style);
+        ctx.set_style_of(egui::Theme::Dark, style);
         egui::Panel::top("header").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("DemoStrike");
