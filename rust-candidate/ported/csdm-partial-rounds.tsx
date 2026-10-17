@@ -9,6 +9,16 @@ import { useSourceMatch } from './match-loader';
 // rendering only fields the native demo import actually recorded.
 const knownSide = (side: string | null) => side === 'CT' || side === 'T' ? side : null;
 const recorded = (value: number | string | null) => value === null ? 'Unavailable' : value;
+const roundReasonLabels: Record<string, string> = {
+  t_killed: 'All T eliminated',
+  ct_killed: 'All CT eliminated',
+  bomb_defused: 'Bomb defused',
+  bomb_exploded: 'Bomb exploded',
+  time_ran_out: 'Time expired',
+  ct_surrender: 'CT surrendered',
+  t_surrender: 'T surrendered',
+};
+const roundReason = (reason: string | null) => reason === null ? 'Unavailable' : roundReasonLabels[reason] ?? reason;
 
 function RoundsHistory({ rounds }: { rounds: RecordedRound[] }) {
   return <section aria-label="Round history" className="mt-16">
@@ -63,7 +73,7 @@ function RoundEntry({ round, detail, expanded }: { round: RecordedRound; detail:
     <summary className="flex cursor-pointer flex-wrap items-center gap-x-16 gap-y-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
       <span className="min-w-[78px] text-body-strong">Round {round.roundNumber}</span>
       <span className="min-w-[75px]">{winner ? `${winner} win` : 'Winner unavailable'}</span>
-      <span className="text-gray-700">{round.endReason ?? 'End reason unavailable'}</span>
+      <span className="text-gray-700">{roundReason(round.endReason)}</span>
       <span className="ml-auto text-gray-700 tabular-nums">{round.startTick ?? '?'}-{round.endTick ?? '?'} ticks</span>
     </summary>
     <div className="mt-12 ml-16 grid gap-16 border-l-2 border-gray-300 pl-12 lg:grid-cols-[minmax(250px,1fr)_minmax(300px,2fr)]">
@@ -71,7 +81,7 @@ function RoundEntry({ round, detail, expanded }: { round: RecordedRound; detail:
         <div><dt className="text-gray-700">Start tick</dt><dd>{recorded(round.startTick)}</dd></div>
         <div><dt className="text-gray-700">Freeze end tick</dt><dd>{recorded(round.freezeEndTick)}</dd></div>
         <div><dt className="text-gray-700">End tick</dt><dd>{recorded(round.endTick)}</dd></div>
-        <div><dt className="text-gray-700">End reason</dt><dd>{recorded(round.endReason)}</dd></div>
+        <div><dt className="text-gray-700">End reason</dt><dd>{roundReason(round.endReason)}</dd></div>
         <div><dt className="text-gray-700">CT equipment value</dt><dd>{recorded(round.ctEquipValue)}</dd></div>
         <div><dt className="text-gray-700">T equipment value</dt><dd>{recorded(round.tEquipValue)}</dd></div>
         <div><dt className="text-gray-700">Observed CT / T</dt><dd>{round.combat ? `${round.combat.ctPlayers} / ${round.combat.tPlayers}` : 'Unavailable'}</dd></div>
