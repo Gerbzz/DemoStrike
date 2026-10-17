@@ -261,6 +261,7 @@ async function main() {
     await page.locator('svg image').waitFor({ timeout: 15000 });
     const finderShot = path.join(outputDir, 'real-demo-grenade-finder.png');
     await captureAppOnly(page, finderShot);
+    await page.getByRole('spinbutton', { name: 'Lineup pause (ms)' }).fill('2000');
     await page.getByRole('button', { name: 'Create offline edit plan' }).click();
     await page.getByText('Offline plan saved locally.').waitFor({ timeout: 60000 });
     const handoffPaths = await page.evaluate(() => {
@@ -289,7 +290,7 @@ async function main() {
     assert.equal(editPlan.captureRequest.eventId, finderTarget.item.id);
     assert.equal(editPlan.captureRequest.throwTick, finderTarget.item.tick);
     assert.equal(editPlan.status, 'planning_only');
-    assert.equal(editPlan.lineupHoldMs, 1200);
+    assert.equal(editPlan.lineupHoldMs, 2000);
     const pov = editPlan.spans.filter((span) => span.cameraRole === 'player_pov');
     const third = editPlan.spans.filter((span) => span.cameraRole === 'third_person_reference');
     const projectile = editPlan.spans.filter((span) => span.cameraRole === 'projectile');
@@ -310,11 +311,12 @@ async function main() {
       const matchId = Number(location.hash.match(/local-(\d+)/)?.[1]);
       try {
         await window.__TAURI_INTERNALS__.invoke('csdm_export_edit_handoff',
-          { path, matchId: matchId + 1, eventId: item.id });
+          { path, matchId: matchId + 1, eventId: item.id, lineupHoldMs: 2000 });
         return 'unexpected success';
       } catch (error) { return String(error); }
     }, finderTarget.item);
     assert.match(mismatch, /does not belong to this recorded match/);
+    await page.getByText('Offline plan saved locally.').scrollIntoViewIfNeeded();
     const handoffShot = path.join(outputDir, 'real-demo-finder-edit-handoff.png');
     await captureAppOnly(page, handoffShot);
     console.log('PUBLIC_EDIT_HANDOFF', JSON.stringify({

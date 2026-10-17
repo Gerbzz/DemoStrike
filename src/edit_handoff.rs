@@ -10,7 +10,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub const EDIT_HANDOFF_VERSION: u32 = 1;
-pub const LINEUP_HOLD_MS: i64 = 1_200;
+pub const DEFAULT_LINEUP_HOLD_MS: i64 = 1_200;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,7 +62,13 @@ fn source_ms(origin: i64, tick: i64, rate: f64) -> Result<i64, String> {
     Ok(value as i64)
 }
 
-pub fn build_edit_plan(request: CaptureRequest) -> Result<OfflineEditPlan, String> {
+pub fn build_edit_plan(
+    request: CaptureRequest,
+    lineup_hold_ms: i64,
+) -> Result<OfflineEditPlan, String> {
+    if !(250..=5_000).contains(&lineup_hold_ms) {
+        return Err("lineup pause must be between 250 and 5000 milliseconds".into());
+    }
     if request.version != crate::capture_request::CAPTURE_REQUEST_VERSION
         || !request.tick_rate.is_finite()
         || !(1.0..=1024.0).contains(&request.tick_rate)
@@ -114,7 +120,7 @@ pub fn build_edit_plan(request: CaptureRequest) -> Result<OfflineEditPlan, Strin
     }
     let hold_start = source_ms(origin, hold_tick, request.tick_rate)?;
     let hold_end = hold_start
-        .checked_add(LINEUP_HOLD_MS)
+        .checked_add(lineup_hold_ms)
         .ok_or("lineup hold overflow")?;
     let mut spans = Vec::new();
     for role in roles {
@@ -139,8 +145,8 @@ pub fn build_edit_plan(request: CaptureRequest) -> Result<OfflineEditPlan, Strin
                 camera_role: role.into(),
                 source_start_tick: take.start_tick,
                 source_end_tick: take.end_tick,
-                timeline_start_ms: start + LINEUP_HOLD_MS,
-                timeline_end_ms: end + LINEUP_HOLD_MS,
+                timeline_start_ms: start + lineup_hold_ms,
+                timeline_end_ms: end + lineup_hold_ms,
             });
         } else {
             spans.push(EditSpan {
@@ -165,12 +171,12 @@ pub fn build_edit_plan(request: CaptureRequest) -> Result<OfflineEditPlan, Strin
                 source_start_tick: hold_tick,
                 source_end_tick: take.end_tick,
                 timeline_start_ms: hold_end,
-                timeline_end_ms: end + LINEUP_HOLD_MS,
+                timeline_end_ms: end + lineup_hold_ms,
             });
         }
     }
     let throw_timeline_ms = source_ms(origin, request.throw_tick, request.tick_rate)?
-        .checked_add(LINEUP_HOLD_MS)
+        .checked_add(lineup_hold_ms)
         .ok_or("throw timeline overflow")?;
     Ok(OfflineEditPlan {
         version: EDIT_HANDOFF_VERSION,
@@ -178,7 +184,7 @@ pub fn build_edit_plan(request: CaptureRequest) -> Result<OfflineEditPlan, Strin
         capture_request: request,
         timeline_origin_tick: origin,
         lineup_hold_tick: hold_tick,
-        lineup_hold_ms: LINEUP_HOLD_MS,
+        lineup_hold_ms,
         throw_timeline_ms,
         spans,
         editor_project: "ClipStrike .cstrike with empty editorial lanes and editable cue markers"
@@ -190,8 +196,12 @@ pub fn build_edit_plan(request: CaptureRequest) -> Result<OfflineEditPlan, Strin
     })
 }
 
-pub fn build_from_library(database: &Path, event_id: i64) -> Result<OfflineEditPlan, String> {
-    build_edit_plan(build_capture_request(database, event_id)?)
+pub fn build_from_library(
+    database: &Path,
+    event_id: i64,
+    lineup_hold_ms: i64,
+) -> Result<OfflineEditPlan, String> {
+    build_edit_plan(build_capture_request(database, event_id)?, lineup_hold_ms)
 }
 
 /// A real ClipStrike project: its native schema, empty named tracks, and
@@ -254,9 +264,9 @@ pub fn clipstrike_project(plan: &OfflineEditPlan) -> Project {
 pub fn filmcraft_project_bytes(plan: &OfflineEditPlan) -> Result<Vec<u8>, String> {
     use filmcraft_project::{
         ItemKind, Label, Marker as FilmcraftMarker, MarkerId, MarkerKind,
-        Project as FilmcraftProject, SequenceSettings,
+        Project as FilmcraftProject, ProjectView, SequenceSettings,
     };
-    use filmcraft_time::Tick;
+    use filmcraft_time::{FrameRate, Tick};
 
     let request = &plan.capture_request;
     let mut project = FilmcraftProject::new(&format!(
@@ -269,13 +279,12 @@ pub fn filmcraft_project_bytes(plan: &OfflineEditPlan) -> Result<Vec<u8>, String
          CSthrowback source request: capture-request.json.",
         request.demo_sha256
     );
-    let id = project.new_sequence(
-        "Verified throw - editorial cues",
-        SequenceSettings::default(),
-        3,
-        0,
-        None,
-    );
+    let settings = SequenceSettings {
+        frame_rate: FrameRate::FPS_60,
+        preset: "HD 1080p 60".into(),
+        ..SequenceSettings::default()
+    };
+    let id = project.new_sequence("Verified throw - editorial cues", settings, 3, 0, None);
     let marker_ids: Vec<_> = (0..4).map(|_| MarkerId(project.alloc_id())).collect();
     let item = project
         .items
@@ -326,7 +335,12 @@ pub fn filmcraft_project_bytes(plan: &OfflineEditPlan) -> Result<Vec<u8>, String
             color: Label::Mango,
         });
     }
-    let bytes = filmcraft_format::encode(&project, true);
+    let view = ProjectView {
+        open_sequences: vec![id],
+        active_sequence: Some(id),
+        ..ProjectView::default()
+    };
+    let bytes = filmcraft_format::encode_with_view(&project, Some(&view), true);
     filmcraft_format::decode(&bytes)
         .map_err(|error| format!("FilmCraft project validation failed: {error}"))?;
     Ok(bytes)
@@ -444,7 +458,7 @@ mod tests {
 
     #[test]
     fn two_views_share_one_lineup_pause_and_release_time() {
-        let plan = build_edit_plan(request()).unwrap();
+        let plan = build_edit_plan(request(), DEFAULT_LINEUP_HOLD_MS).unwrap();
         assert_eq!(plan.lineup_hold_tick, 952);
         assert_eq!(plan.throw_timeline_ms, 4700);
         let pov: Vec<_> = plan
@@ -469,8 +483,31 @@ mod tests {
     }
 
     #[test]
+    fn changing_lineup_pause_moves_all_three_release_cues_together() {
+        let standard = build_edit_plan(request(), DEFAULT_LINEUP_HOLD_MS).unwrap();
+        let longer = build_edit_plan(request(), 2_000).unwrap();
+        assert_eq!(longer.throw_timeline_ms - standard.throw_timeline_ms, 800);
+        for role in ["player_pov", "third_person_reference", "projectile"] {
+            let end = |plan: &OfflineEditPlan| {
+                plan.spans
+                    .iter()
+                    .filter(|span| span.camera_role == role)
+                    .last()
+                    .unwrap()
+                    .timeline_end_ms
+            };
+            assert_eq!(end(&longer) - end(&standard), 800);
+        }
+        assert!(
+            build_edit_plan(request(), 0)
+                .unwrap_err()
+                .contains("lineup pause")
+        );
+    }
+
+    #[test]
     fn native_clipstrike_project_reopens_without_pretend_media() {
-        let plan = build_edit_plan(request()).unwrap();
+        let plan = build_edit_plan(request(), DEFAULT_LINEUP_HOLD_MS).unwrap();
         let directory = tempfile::tempdir().unwrap();
         let destination = directory.path().join("handoff");
         let saved = save_handoff_noclobber(&plan, &destination).unwrap();

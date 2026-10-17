@@ -13,8 +13,9 @@ The host creates a new local folder under its app data directory. It contains:
   planned camera takes. The observer slot remains a candidate until a real
   recording is reviewed.
 - `capture-edit-plan.json`: source ticks and editorial spans for the main POV,
-  third-person reference, and projectile. Main and third-person both hold the
-  same source lineup tick for 1.2 seconds at the same timeline position. Their
+  third-person reference, and projectile. The Finder's editable pause is 1.2
+  seconds by default (250–5000 ms allowed). Main and third-person both hold the
+  same source lineup tick for that duration at the same timeline position. Their
   release and end cues remain synchronized. The projectile begins at the
   release cue. The common timeline origin is the earliest planned take tick.
 - `offline-edit.cstrike`: a native ClipStrike project with three named empty
@@ -33,3 +34,8 @@ The hosted public-demo smoke reads all four files from the real native host,
 checks source binding and shared pause arithmetic, checks that both editor
 projects have empty media lanes, and captures the actual WebView2 state. It
 does not run CS2, HLAE, a camera pilot, or an editor GUI.
+
+The project files are editable document handoffs, not playable edits. ClipStrike
+currently derives its visible timeline end from placed clips, so its empty
+project may show a zero-length ruler despite the saved markers. FilmCraft editor
+opening and placement of reviewed captures still require separate GUI checks.

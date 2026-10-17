@@ -45,6 +45,7 @@ export function GrenadesFinderLoader() {
   });
   const [radarError, setRadarError] = useState('');
   const [handoffBusy, setHandoffBusy] = useState(false);
+  const [lineupHoldMs, setLineupHoldMs] = useState(1200);
   const [handoffError, setHandoffError] = useState('');
   const [handoff, setHandoff] = useState<{ eventId: number; directory: string;
     planPath: string; projectPath: string; requestPath: string; filmcraftProjectPath: string | null;
@@ -114,12 +115,15 @@ export function GrenadesFinderLoader() {
   };
   const createHandoff = async () => {
     if (!selected || !libraryPath || matchId === null || handoffBusy) return;
+    if (!Number.isInteger(lineupHoldMs) || lineupHoldMs < 250 || lineupHoldMs > 5000) {
+      setHandoffError('Choose a lineup pause between 250 and 5000 ms.'); return;
+    }
     setHandoffBusy(true); setHandoff(null); setHandoffError('');
     try {
       const saved = await invoke<{ eventId: number; directory: string; planPath: string;
         projectPath: string; requestPath: string; filmcraftProjectPath: string | null;
         throwTimelineMs: number; lineupHoldMs: number }>('csdm_export_edit_handoff',
-      { path: libraryPath, matchId, eventId: selected.id });
+      { path: libraryPath, matchId, eventId: selected.id, lineupHoldMs });
       setHandoff(saved);
     } catch (failure) { setHandoffError(describe(failure)); }
     finally { setHandoffBusy(false); }
@@ -131,7 +135,7 @@ export function GrenadesFinderLoader() {
   return <Content>
     <div className="mb-12 flex flex-wrap items-end justify-between gap-12">
       <div><h1 className="text-title">Grenade finder</h1>
-        <p className="mt-4 max-w-[680px] text-gray-700">Select a recorded throw to inspect its path and open the 2D Viewer at that tick.</p></div>
+        <p className="mt-4 max-w-[680px] text-gray-700">Select a recorded throw to inspect its path, open the 2D Viewer, or save an offline capture and edit plan. Planning does not start the game or recorder.</p></div>
       <p className="text-gray-700" data-finder-count={visible.length}>{visible.length} of {throws.length} throws</p>
     </div>
     {throws.length === 0 ? <div className="rounded-8 border border-gray-300 p-24" role="status">
@@ -178,6 +182,11 @@ export function GrenadesFinderLoader() {
             {canSeek ? <Link className="rounded-4 bg-blue-600 px-12 py-8 text-white hover:bg-blue-700"
               to={`/matches/${checksum}/viewer-2d/${selected.roundNumber}?tick=${selected.throwTick}`}>
               Open at throw in 2D Viewer</Link> : <span className="text-gray-700">Throw tick is outside the recorded replay.</span>}
+            <label className="flex items-center gap-4 text-gray-700">Lineup pause (ms)
+              <input aria-label="Lineup pause (ms)" type="number" min="250" max="5000" step="250"
+                value={lineupHoldMs} onChange={(event) => {
+                  setLineupHoldMs(Number(event.target.value)); setHandoff(null); setHandoffError('');
+                }} className="w-[78px] rounded-4 border border-gray-400 bg-gray-75 p-4 tabular-nums" /></label>
             <button type="button" onClick={() => void createHandoff()} disabled={handoffBusy}
               className="rounded-4 border border-gray-500 px-12 py-8 hover:bg-gray-100 disabled:opacity-50">
               {handoffBusy ? 'Verifying source...' : 'Create offline edit plan'}

@@ -10,6 +10,7 @@ pub async fn csdm_export_edit_handoff(
     path: String,
     match_id: i64,
     event_id: i64,
+    lineup_hold_ms: i64,
 ) -> Result<SavedEditHandoff, String> {
     let parent = app
         .path()
@@ -17,7 +18,7 @@ pub async fn csdm_export_edit_handoff(
         .map_err(|error| error.to_string())?
         .join("offline-edit-handoffs");
     tauri::async_runtime::spawn_blocking(move || {
-        let plan = build_from_library(Path::new(&path), event_id)?;
+        let plan = build_from_library(Path::new(&path), event_id, lineup_hold_ms)?;
         if plan.capture_request.match_id != match_id {
             return Err("selected throw does not belong to this recorded match".into());
         }
@@ -28,10 +29,7 @@ pub async fn csdm_export_edit_handoff(
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|error| error.to_string())?
             .as_millis();
-        let destination = parent.join(format!(
-            "{}-event-{}-{source}-{now}",
-            plan.capture_request.map, event_id
-        ));
+        let destination = parent.join(format!("event-{event_id}-{source}-{now}"));
         save_handoff_noclobber(&plan, &destination)
     })
     .await
