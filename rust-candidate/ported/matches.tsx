@@ -152,7 +152,7 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
       </CenteredContent>}
       {status === 'ready' && matches.length > 0 && <Table table={table} />}
       <div className="flex justify-end border-t border-gray-300 px-16 py-8 text-gray-700">
-        {status === 'ready' ? `${matches.length} recorded ${matches.length === 1 ? 'match' : 'matches'} � Read only` : 'Read only'}
+        {status === 'ready' ? `${matches.length} recorded ${matches.length === 1 ? 'match' : 'matches'} · Read only` : 'Read only'}
       </div>
     </>
   );
