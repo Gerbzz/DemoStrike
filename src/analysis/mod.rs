@@ -1,5 +1,5 @@
-//! Pure analysis: raw demo facts → domain utility events.
-//! No IO, no DB — fully unit-testable. New analytics (executes, scoring,
+//! Pure analysis: raw demo facts  domain utility events.
+//! No IO, no DB - fully unit-testable. New analytics (executes, scoring,
 //! heatmaps, lineups) belong in sibling modules of this crate path.
 
 use crate::domain::{ImportSummary, NearbyPlayer, TrajPoint, UtilityPathCoverage, UtilityType, Vec3};
@@ -217,6 +217,15 @@ fn build_player_round_combat(raw: &RawDemo) -> Vec<AnalyzedPlayerRoundCombat> {
 }
 
 pub fn validate_import(raw: &RawDemo, analyzed: &AnalyzedMatch) -> AppResult<ImportSummary> {
+    for round in &analyzed.rounds {
+        if let (Some(start), Some(end)) = (round.start_tick, round.end_tick) {
+            if start >= end {
+                return Err(AppError::Parse(format!(
+                    "round {} ends at tick {end} before its start at tick {start}", round.round_number
+                )));
+            }
+        }
+    }
     let throw_count = raw.throws.len();
     let path_count = analyzed
         .events
@@ -393,7 +402,7 @@ pub fn detect_bounces(points: &[TrajPoint]) -> Vec<TrajPoint> {
         let n1 = (v1[0].powi(2) + v1[1].powi(2) + v1[2].powi(2)).sqrt();
         let n2 = (v2[0].powi(2) + v2[1].powi(2) + v2[2].powi(2)).sqrt();
         if n1 < 1.0 || n2 < 1.0 {
-            continue; // stationary — not a bounce
+            continue; // stationary - not a bounce
         }
         let cos = (v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]) / (n1 * n2);
         if cos < BOUNCE_COS_THRESHOLD {
@@ -943,7 +952,7 @@ mod tests {
         assert_eq!(ev.trajectory.len(), 3);
         assert_eq!(ev.nearby_players.len(), 1);
         assert_eq!(ev.nearby_players[0].name, "bob");
-        // throw_time: (3000 - 2000) / 64 ≈ 15.63s after freeze end
+        // throw_time: (3000 - 2000) / 64 � 15.63s after freeze end
         assert!((ev.throw_time - 15.63).abs() < 0.02);
     }
 
@@ -1087,6 +1096,15 @@ mod tests {
     }
 
     #[test]
+    fn import_rejects_inverted_round_ticks() {
+        let raw = minimal_raw();
+        let mut analyzed = build_match(&raw);
+        analyzed.rounds[0].end_tick = Some(500);
+        let error = validate_import(&raw, &analyzed).unwrap_err();
+        assert!(error.to_string().contains("before its start"));
+    }
+
+    #[test]
     fn acceptance_raw_demo_reports_coverage_when_requested() {
         let Some(path) = std::env::var_os("DEMOSTRIKE_ACCEPTANCE_RAW")
             .or_else(|| std::env::var_os("CSTHROWBACK_ACCEPTANCE_RAW")) else {
@@ -1158,3 +1176,4 @@ mod tests {
         assert_eq!(events.iter().map(|e| e.detonate_tick).collect::<Vec<_>>(), [Some(111), Some(311)]);
     }
 }
+
