@@ -37,12 +37,13 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets -- --test-threads=1
       - name: Compile native application
         run: npm run tauri build
-      - name: Record resolved dependency metadata
-        run: python tests/dependency_manifest.py
       - name: Generate sanitized synthetic SQLite fixture
         run: python tests/make_smoke_fixture.py
       - name: Launch real Tauri WebView2 and exercise IPC
         run: npm run test:native-smoke
+      - name: Record resolved dependency metadata
+        if: always()
+        run: python tests/dependency_manifest.py
       - name: Upload app-only synthetic UI evidence
         if: always()
         uses: actions/upload-artifact@v4

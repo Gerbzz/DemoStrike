@@ -29,7 +29,6 @@ def main() -> None:
         ["cargo", "metadata", "--format-version", "1", "--manifest-path", str(ROOT / "src-tauri" / "Cargo.toml")],
         check=True,
         capture_output=True,
-        text=True,
     )
     rust = [
         {
