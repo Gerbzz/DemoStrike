@@ -125,14 +125,14 @@ async function main() {
     const importPath = page.getByRole('textbox', { name: 'Import a CS2 demo' });
     await importPath.fill(demoPath);
     await page.getByRole('button', { name: 'Import demo' }).last().click();
-    await page.getByRole('alert').getByText('already imported', { exact: false }).waitFor({ timeout: 30000 });
+    await page.getByRole('alert').filter({ hasText: 'already imported' }).waitFor({ timeout: 30000 });
     const duplicateShot = path.join(outputDir, 'duplicate-demo-error.png');
     await captureAppOnly(page, duplicateShot);
     const corruptPath = path.join(outputDir, 'invalid-demo.dem');
     fs.writeFileSync(corruptPath, 'not a valid CS2 demo');
     await importPath.fill(corruptPath);
     await page.getByRole('button', { name: 'Import demo' }).last().click();
-    await page.getByRole('alert').getByText('not a CS2 PBDEMS2 demo', { exact: false }).waitFor({ timeout: 30000 });
+    await page.getByRole('alert').filter({ hasText: 'not a CS2 PBDEMS2 demo' }).waitFor({ timeout: 30000 });
     const invalidShot = path.join(outputDir, 'invalid-demo-error.png');
     await captureAppOnly(page, invalidShot);
     assert.equal(await page.getByRole('row').filter({ hasText: 'public-cs2-fixture.dem' }).count(), 1);
