@@ -14,7 +14,9 @@ export default {
     alias: [
       // The ported component lives outside the upstream package root, while
       // React Compiler adds this import after resolving its source file.
+      { find: /^react$/, replacement: path.resolve(upstreamModules, 'react/index.js') },
       { find: 'react/compiler-runtime', replacement: path.resolve(upstreamModules, 'react/compiler-runtime.js') },
+      { find: 'react/jsx-runtime', replacement: path.resolve(upstreamModules, 'react/jsx-runtime.js') },
       { find: 'csdm/ui/matches/table/matches-table', replacement: path.resolve(portedRoot, 'matches-table.tsx') },
       { find: 'csdm/ui/web-socket-client', replacement: path.resolve(portedRoot, 'web-socket-client.ts') },
       // The preserved provider imports this client relatively; redirect that
