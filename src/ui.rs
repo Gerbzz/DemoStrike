@@ -1251,6 +1251,7 @@ impl eframe::App for DemoStrikeApp {
         style.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(15.0));
         style.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
         style.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
+        ctx.set_style_of(egui::Theme::Light, style.clone());
         ctx.set_style_of(egui::Theme::Dark, style);
         egui::Panel::top("header").show(ui, |ui| {
             ui.horizontal(|ui| {
