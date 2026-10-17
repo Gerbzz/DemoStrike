@@ -18,6 +18,7 @@ pub struct ImportJob {
     id: i64,
     demo_path: String,
     state: String,
+    recovered: bool,
     receipt: Option<ImportReceipt>,
     error: Option<String>,
     created_at: String,
@@ -72,13 +73,13 @@ impl ImportQueue {
 
     fn read_job(connection: &Connection, id: i64) -> Result<ImportJob, String> {
         connection.query_row(
-            "SELECT id, demo_path, state, receipt, error, created_at FROM import_jobs WHERE id = ?1",
+            "SELECT id, demo_path, state, recovered, receipt, error, created_at FROM import_jobs WHERE id = ?1",
             [id], |row| {
-                let receipt: Option<String> = row.get(3)?;
+                let receipt: Option<String> = row.get(4)?;
                 Ok(ImportJob {
-                    id: row.get(0)?, demo_path: row.get(1)?, state: row.get(2)?,
+                    id: row.get(0)?, demo_path: row.get(1)?, state: row.get(2)?, recovered: row.get(3)?,
                     receipt: receipt.and_then(|text| serde_json::from_str(&text).ok()),
-                    error: row.get(4)?, created_at: row.get(5)?,
+                    error: row.get(5)?, created_at: row.get(6)?,
                 })
             },
         ).map_err(|error| error.to_string())
@@ -279,6 +280,8 @@ mod tests {
             })
             .unwrap();
         assert!(recovered_flag);
+        assert!(ImportQueue::read_job(&connection, 1).unwrap().recovered);
+        assert!(!ImportQueue::read_job(&connection, 2).unwrap().recovered);
         assert_eq!(
             ImportQueue::read_job(&connection, 2)
                 .unwrap()
