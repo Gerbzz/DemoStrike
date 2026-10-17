@@ -143,6 +143,19 @@ async function main() {
     await page.getByRole('heading', { name: 'Round by round' }).waitFor({ timeout: 30000 });
     const playerDetailRows = await page.locator('section[aria-label="Player rounds"] tbody tr').count();
     assert.equal(playerDetailRows, 9, 'Only nine live rounds have recorded player facts; the final surrender must stay unavailable');
+    const summaryLayout = await page.evaluate(() => {
+      const table = document.querySelector('table');
+      const header = table?.querySelector('thead');
+      const row = table?.querySelector('tbody tr');
+      const headerBox = header?.getBoundingClientRect();
+      const rowBox = row?.getBoundingClientRect();
+      return { rowText: row?.textContent, headerBottom: headerBox?.bottom,
+        rowTop: rowBox?.top, rowHeight: rowBox?.height };
+    });
+    console.log('PLAYER_DETAIL_SUMMARY_LAYOUT', JSON.stringify(summaryLayout));
+    assert.ok(summaryLayout.rowText?.includes(firstPlayerName), 'Selected player summary row is missing');
+    assert.ok(summaryLayout.rowHeight >= 20 && summaryLayout.rowTop >= summaryLayout.headerBottom - 1,
+      'Selected player summary row is clipped below its header');
     const playerDetailShot = path.join(outputDir, 'real-demo-player-detail.png');
     await captureAppOnly(page, playerDetailShot);
     await page.getByRole('link', { name: 'All players' }).click();
