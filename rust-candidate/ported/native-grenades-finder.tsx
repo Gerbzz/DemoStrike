@@ -38,6 +38,7 @@ export function GrenadesFinderLoader() {
   const [round, setRound] = useState('all');
   const [side, setSide] = useState('all');
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [manualZoom, setManualZoom] = useState<number | null>(null);
   const [radarUrl, setRadarUrl] = useState<string | null>(() => {
     const file = selectedRadarFile(detail.summary.mapName);
     return file ? URL.createObjectURL(file) : null;
@@ -77,6 +78,21 @@ export function GrenadesFinderLoader() {
   } : null;
   const x = (world: number) => getScaledCoordinateX(map!, 1024, world);
   const y = (world: number) => getScaledCoordinateY(map!, 1024, world);
+  const pathPixels = map ? selectedPath.map((point) => [x(point[1]), y(point[2])]) : [];
+  const extent = pathPixels.length >= 2 ? {
+    minX: Math.min(...pathPixels.map((point) => point[0])),
+    maxX: Math.max(...pathPixels.map((point) => point[0])),
+    minY: Math.min(...pathPixels.map((point) => point[1])),
+    maxY: Math.max(...pathPixels.map((point) => point[1])),
+  } : null;
+  const fitZoom = extent ? Math.max(1, Math.min(3.5, 640 / Math.max(180,
+    extent.maxX - extent.minX, extent.maxY - extent.minY))) : 1;
+  const zoom = manualZoom ?? fitZoom;
+  const viewSize = 1024 / zoom;
+  const centerX = zoom === 1 || !extent ? 512 : (extent.minX + extent.maxX) / 2;
+  const centerY = zoom === 1 || !extent ? 512 : (extent.minY + extent.maxY) / 2;
+  const viewX = Math.max(0, Math.min(1024 - viewSize, centerX - viewSize / 2));
+  const viewY = Math.max(0, Math.min(1024 - viewSize, centerY - viewSize / 2));
   const chooseRadar = (file: File | undefined) => {
     if (!file) return;
     setRadarError('');
@@ -124,7 +140,7 @@ export function GrenadesFinderLoader() {
         <div className="min-h-[280px] flex-1 overflow-auto rounded-8 border border-gray-300" role="listbox" aria-label="Recorded grenade throws">
           {visible.length === 0 ? <p className="p-16 text-gray-700">No throws match these filters. Clear a filter or try another player.</p>
             : visible.map((event) => <button key={event.id} type="button" role="option"
-              aria-selected={selected?.id === event.id} onClick={() => setSelectedId(event.id)}
+              aria-selected={selected?.id === event.id} onClick={() => { setSelectedId(event.id); setManualZoom(null); }}
               data-throw-id={event.id}
               className={`flex w-full items-center gap-8 border-b border-gray-300 p-8 text-left hover:bg-gray-100 ${selected?.id === event.id ? 'bg-blue-100' : ''}`}>
               <span className="h-8 w-8 shrink-0 rounded-full" style={{ background: colors[event.utilityType] ?? '#9aa4b2' }} />
@@ -146,7 +162,7 @@ export function GrenadesFinderLoader() {
         {!map ? <div className="flex min-h-[340px] items-center justify-center bg-gray-100 p-16 text-center text-gray-700">
           This map has no verified CSDM coordinate calibration. Throw details remain available in the list.
         </div> : <div className="relative min-h-[340px] flex-1 overflow-hidden bg-[#1c2228]">
-          <svg viewBox="0 0 1024 1024" className="absolute size-full" role="img"
+          <svg viewBox={`${viewX} ${viewY} ${viewSize} ${viewSize}`} className="absolute size-full" role="img"
             aria-label={selectedPath.length >= 2 ? `Recorded ${selected?.utilityType} trajectory` : 'Radar with no recorded path'}>
             {radarUrl ? <image href={radarUrl} width="1024" height="1024" /> : <>
               <rect width="1024" height="1024" fill="#1c2228" />
@@ -155,14 +171,27 @@ export function GrenadesFinderLoader() {
             {visible.filter((event) => event.id !== selected?.id).map((event) =>
               <circle key={event.id} cx={x(event.throwPosition[0])} cy={y(event.throwPosition[1])}
                 r="7" fill={colors[event.utilityType] ?? '#9aa4b2'} opacity=".45" />)}
-            {selectedPath.length >= 2 && <polyline fill="none" stroke={colors[selected!.utilityType] ?? '#fff'}
-              strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"
-              points={selectedPath.map((point) => `${x(point[1])},${y(point[2])}`).join(' ')} />}
+            {selectedPath.length >= 2 && <><polyline fill="none" stroke="#17202a" strokeWidth="15"
+              strokeLinecap="round" strokeLinejoin="round"
+              points={pathPixels.map((point) => point.join(',')).join(' ')} />
+              <polyline fill="none" stroke={colors[selected!.utilityType] ?? '#fff'} strokeWidth="8"
+                strokeLinecap="round" strokeLinejoin="round"
+                points={pathPixels.map((point) => point.join(',')).join(' ')} /></>}
             {selected && <><circle cx={x(selected.throwPosition[0])} cy={y(selected.throwPosition[1])}
               r="13" fill="#fff" stroke="#17202a" strokeWidth="4" />
               {selectedPath.length >= 2 && <circle cx={x(selectedPath.at(-1)![1])} cy={y(selectedPath.at(-1)![2])}
                 r="13" fill={colors[selected.utilityType] ?? '#fff'} stroke="#17202a" strokeWidth="4" />}</>}
           </svg>
+          {selectedPath.length >= 2 && <div className="absolute right-8 top-8 flex gap-4 rounded-4 bg-[#15202add] p-4 text-white" aria-label="Map zoom controls">
+            <button type="button" aria-label="Zoom out" className="rounded-4 px-8 py-4 hover:bg-gray-600"
+              onClick={() => setManualZoom(Math.max(1, zoom / 1.4))}>−</button>
+            <button type="button" aria-label="Fit selected path" className="rounded-4 px-8 py-4 hover:bg-gray-600"
+              onClick={() => setManualZoom(null)}>Fit path</button>
+            <button type="button" aria-label="Full map" className="rounded-4 px-8 py-4 hover:bg-gray-600"
+              onClick={() => setManualZoom(1)}>Full map</button>
+            <button type="button" aria-label="Zoom in" className="rounded-4 px-8 py-4 hover:bg-gray-600"
+              onClick={() => setManualZoom(Math.min(4, zoom * 1.4))}>+</button>
+          </div>}
           {!radarUrl && <p className="absolute bottom-8 left-8 rounded bg-[#15202acc] px-8 py-4 text-white">Coordinate grid · local radar not selected</p>}
         </div>}
         {selected && <div className="flex flex-wrap items-center justify-between gap-8 text-gray-700">

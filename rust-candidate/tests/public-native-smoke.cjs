@@ -250,7 +250,11 @@ async function main() {
     await page.getByRole('combobox', { name: 'Grenade type' }).selectOption(finderTarget.item.type);
     await page.locator(`[data-throw-id="${finderTarget.item.id}"]`).click();
     assert.equal(await page.locator('[data-selected-throw]').getAttribute('data-selected-throw'), String(finderTarget.item.id));
-    assert.equal(await page.locator('svg polyline').count(), 1, 'Selected measured path was not drawn');
+    assert.equal(await page.locator('svg polyline').count(), 2, 'Selected measured path was not drawn');
+    await page.getByRole('button', { name: 'Full map' }).click();
+    await page.waitForFunction(() => document.querySelector('svg[viewBox]')?.getAttribute('viewBox')?.endsWith('1024 1024'));
+    await page.getByRole('button', { name: 'Fit selected path' }).click();
+    await page.waitForFunction(() => Number(document.querySelector('svg[viewBox]')?.getAttribute('viewBox')?.split(' ')[2]) < 1024);
     await page.getByLabel('Choose local radar PNG').setInputFiles(radarPath);
     await page.locator('svg image').waitFor({ timeout: 15000 });
     const finderShot = path.join(outputDir, 'real-demo-grenade-finder.png');
