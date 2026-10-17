@@ -59,6 +59,10 @@ fn parse_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
         if control.is_cancelled() { return Err("demo import cancelled".into()); }
         validate_combat_event_schema(parser.context())?;
         let state = observer.borrow();
+        if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
+            eprintln!("ROUND_TRACE direct_start_ticks={:?}", state.round_start_game_ticks);
+            eprintln!("ROUND_TRACE inferred={:?}", state.round_events);
+        }
         if !state.errors.is_empty() { return Err(format!("native CS2 facts incomplete: {}", state.errors.join("; "))); }
         let mut round_events = state.round_events.clone();
         align_round_starts_to_game_events(&mut round_events, &state.round_start_game_ticks);
@@ -393,6 +397,10 @@ impl GrenadeObserver {
     #[on_game_event]
     fn on_event(&mut self, ctx: &Context, event: &GameEvent) -> ObserverResult {
         let name = event.name();
+        if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() && name.starts_with("round_") {
+            eprintln!("ROUND_TRACE game={name} tick={} round={:?} warmup={:?}",
+                ctx.tick(), game_round(ctx), warmup(ctx));
+        }
         if name == "round_start" && warmup(ctx) == Some(false) {
             self.round_start_game_ticks.push(i64::from(ctx.tick()));
         }
