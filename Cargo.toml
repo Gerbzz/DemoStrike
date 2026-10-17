@@ -43,6 +43,11 @@ path = "src/main.rs"
 required-features = ["native-ui"]
 
 [[bin]]
+name = "demostrike-editor-runtime-proof"
+path = "src/bin/demostrike-editor-runtime-proof.rs"
+required-features = ["native-ui"]
+
+[[bin]]
 name = "demostrike-editor-proof"
 path = "src/bin/demostrike-editor-proof.rs"
 required-features = ["legacy-editor-proof"]

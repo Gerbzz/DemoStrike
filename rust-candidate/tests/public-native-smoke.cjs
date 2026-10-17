@@ -306,6 +306,13 @@ async function main() {
     assert.deepEqual(editProject.assets, []);
     assert.deepEqual(editProject.clips, []);
     assert.deepEqual(editProject.capture_sources, []);
+    // The editor-runtime job opens these exact files produced by the native
+    // public-demo UI. Keep this fixture transient and source-bound.
+    const editorInputDir = path.join(outputDir, 'offline-handoff');
+    fs.mkdirSync(editorInputDir, { recursive: true });
+    for (const sourceFile of Object.values(handoffPaths)) {
+      fs.copyFileSync(sourceFile, path.join(editorInputDir, path.basename(sourceFile)));
+    }
     const mismatch = await page.evaluate(async (item) => {
       const path = localStorage.getItem('csdm-port-selected-library');
       const matchId = Number(location.hash.match(/local-(\d+)/)?.[1]);

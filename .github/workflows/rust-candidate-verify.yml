@@ -205,3 +205,48 @@ jobs:
             rust-candidate/src-tauri/Cargo.lock
           if-no-files-found: warn
           retention-days: 1
+  editor-runtime:
+    needs: original-native
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact public Finder handoff produced by native WebView2
+        uses: actions/download-artifact@v4
+        with:
+          name: demostrike-public-native-ui
+          path: ${{ runner.temp }}/demostrike-editor-input
+      - name: Test legacy marker conversion and combined project capture arguments
+        shell: pwsh
+        run: |
+          cargo test --locked --features native-ui --lib offline_cue_project_opens_and_preserves_markers_after_save -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'Legacy cue conversion test failed' }
+          cargo test --locked --features native-ui --bin demostrike -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'Native project capture argument tests failed' }
+      - name: Build actual embedded FilmCraft editor and runtime acceptance driver
+        run: cargo build --locked --features native-ui --bin demostrike --bin demostrike-editor-runtime-proof
+      - name: Open exact handoff, place synthetic stills, save and reopen both edits
+        shell: pwsh
+        run: |
+          $handoff = Join-Path $env:RUNNER_TEMP 'demostrike-editor-input/offline-handoff'
+          $output = Join-Path $env:RUNNER_TEMP 'demostrike-editor-runtime'
+          & .\target\debug\demostrike-editor-runtime-proof.exe $handoff $output
+          if ($LASTEXITCODE -ne 0) { throw 'Editor runtime roundtrip failed' }
+      - name: Capture actual editor windows for original and edited projects
+        shell: pwsh
+        run: |
+          $handoff = Join-Path $env:RUNNER_TEMP 'demostrike-editor-input/offline-handoff'
+          $output = Join-Path $env:RUNNER_TEMP 'demostrike-editor-runtime'
+          .\tests\editor_runtime_native.ps1 -HandoffDir $handoff -EvidenceDir $output
+      - name: Upload genuine editor runtime screenshots and proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-editor-runtime
+          path: ${{ runner.temp }}/demostrike-editor-runtime/*
+          if-no-files-found: warn
+          retention-days: 1
