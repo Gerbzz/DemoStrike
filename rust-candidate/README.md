@@ -19,7 +19,10 @@ Install dependencies only in an environment with sufficient disk space, then run
 - `docs/MIGRATION_LEDGER.csv`: exhaustive upstream file ledger, with unported status unless proven otherwise.
 - `docs/REUSE_AUDIT.md`: exact upstream influence, copied notice, license gates and source scan.
 - `docs/INTEGRATION_PARITY.md`: integration boundaries and negative tests.
+- `docs/SCHEMA_CONTRACT.md`: required read-only SQLite tables and columns, plus fixture limits.
+- `docs/NATIVE_SMOKE.md`: real hosted WebView2 launch, IPC assertions, and synthetic capture provenance.
+- `docs/DEPENDENCIES.md`: direct dependency license register and unresolved distribution gates.
 
-The repository-root [GitHub Actions workflow](../.github/workflows/rust-candidate-verify.yml) ran successfully on [draft PR #3](https://github.com/Gerbzz/DemoStrike/pull/3) at commit `5d9d80a` on hosted Windows: frontend typecheck/build, score contract, Rust tests, and native executable compilation passed. The executable was not launched or packaged, and no candidate GUI screenshot exists. The workflow has read-only repository permissions and no artifact or release step. Dependency lockfiles and a hosted license audit are still required before distribution.
+The repository-root [GitHub Actions workflow](../.github/workflows/rust-candidate-verify.yml) ran successfully on [draft PR #3](https://github.com/Gerbzz/DemoStrike/pull/3) at commit `5d9d80a` on hosted Windows: frontend typecheck/build, score contract, Rust tests, and native executable compilation passed. That run did not launch or package the executable. A newer hosted gate is designed to launch its real WebView2 window, exercise Rust IPC with a sanitized synthetic library, and publish app-content captures if it succeeds; its result must be checked before claiming runtime or visual acceptance. The workflow has read-only repository permissions and no executable artifact or release step. Pinned lockfiles and transitive license review are still required before distribution.
 
 The current Rust service contract is deliberately narrower than the upstream PostgreSQL, analyzer, Game Coordinator, and plugin contracts. Their gaps are tracked in the ledger and parity document.

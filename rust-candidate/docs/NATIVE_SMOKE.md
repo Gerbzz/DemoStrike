@@ -1,0 +1,7 @@
+# Hosted native UI smoke check
+
+The repository-root Windows workflow builds the actual Tauri release executable, then starts it on the hosted runner with a private WebView2 user-data folder and a loopback Chrome DevTools Protocol port. [Playwright's WebView2 guide](https://playwright.dev/docs/webview2) documents this connection method. `playwright-core` attaches to the app's existing WebView2 control; it does not launch a separate browser or serve mock frontend content.
+
+`tests/make_smoke_fixture.py` generates a small, sanitized SQLite file with two invented matches, three rounds, two players and three utility events. `tests/native-smoke.cjs` enters that path through the visible app control and clicks **Open library**, which invokes the Tauri Rust commands. It checks match selection, overview, rounds, players, utility filtering and the second match, then confirms the fixture bytes did not change. It saves app-content PNGs for the overview, rounds and filtered utility tab, plus a JSON proof containing the fixture and screenshot hashes. All outputs are labeled **synthetic** and retained as short-lived GitHub Actions artifacts; no executable or private fixture is uploaded.
+
+A passing build alone is not a native runtime or visual acceptance. The smoke job must launch, connect to WebView2, verify IPC-backed data and produce inspectable actual-window captures. These scripted observations still do not validate human usability, varied real imports, CS2/HLAE, editing, export or a packaged installer.

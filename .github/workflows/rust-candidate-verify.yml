@@ -37,3 +37,36 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets -- --test-threads=1
       - name: Compile native application
         run: npm run tauri build
+      - name: Record resolved dependency metadata
+        run: python tests/dependency_manifest.py
+      - name: Generate sanitized synthetic SQLite fixture
+        run: python tests/make_smoke_fixture.py
+      - name: Launch real Tauri WebView2 and exercise IPC
+        run: npm run test:native-smoke
+      - name: Upload app-only synthetic UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-tauri-synthetic-ui
+          path: ${{ runner.temp }}/demostrike-smoke/synthetic-*.png
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Upload synthetic smoke proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-tauri-synthetic-proof
+          path: ${{ runner.temp }}/demostrike-smoke/synthetic-smoke-proof.json
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Upload resolved dependency record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-candidate-dependencies
+          path: |
+            ${{ runner.temp }}/demostrike-smoke/dependencies-resolved.json
+            rust-candidate/package-lock.json
+            rust-candidate/src-tauri/Cargo.lock
+          if-no-files-found: warn
+          retention-days: 1

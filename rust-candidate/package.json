@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc --noEmit && vite build",
     "test:contracts": "node tests/team-score-contract.cjs",
+    "test:native-smoke": "node tests/native-smoke.cjs",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "playwright-core": "^1.56.0",
     "typescript": "^5.9.0",
     "vite": "^7.0.0"
   }
