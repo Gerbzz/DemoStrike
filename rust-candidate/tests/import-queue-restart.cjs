@@ -141,7 +141,12 @@ async function main() {
     assert.equal(snapshot.matches.filter((row) => row.demoFilePath === sourcePath).length, 1,
       'Interrupted source has multiple saved matches');
     await second.page.evaluate(() => { location.hash = '#/matches'; });
-    await second.page.getByText('resumed after restart', { exact: false }).waitFor({ timeout: 30000 });
+    // The queue IPC may complete before its 1.2-second UI poll and library refresh.
+    // Capture only after the visible status and saved match row agree with IPC.
+    await second.page.getByRole('status').filter({ hasText: /Imported.*resumed after restart/ })
+      .waitFor({ timeout: 30000 });
+    await second.page.getByRole('row').filter({ hasText: 'public-cs2-fixture.dem' })
+      .waitFor({ timeout: 30000 });
     const screenshot = path.join(outputDir, 'queue-recovered-native.png');
     await second.page.screenshot({ path: screenshot, animations: 'disabled' });
     const preview = await second.page.screenshot({ type: 'jpeg', quality: 42, animations: 'disabled' });
