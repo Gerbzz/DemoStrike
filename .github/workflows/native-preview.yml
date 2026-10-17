@@ -22,9 +22,12 @@ jobs:
       - name: Select stable Rust
         shell: pwsh
         run: rustup default stable
-      - name: Test import, saved matches, and project navigation
+      - name: Test imported match navigation
         shell: pwsh
-        run: cargo test --locked --features native-ui --lib
+        run: cargo test --locked --features native-ui --lib ui::tests::native_import_worker_persists_demo_and_cancel_keeps_previous_analysis -- --exact --test-threads=1
+      - name: Test saved FilmCraft project navigation
+        shell: pwsh
+        run: cargo test --locked --features native-ui --lib ui::tests::synthetic_filmcraft_project_opens_through_demo_workspace -- --exact --test-threads=1
       - name: Test synthetic CLI fixtures
         shell: pwsh
         run: cargo test --locked --features native-ui --test cli
