@@ -82,8 +82,9 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
               <DemoImport onQueued={setQueued} />
               {queued && <p role={queued.state === 'failed' ? 'alert' : 'status'} className="break-all text-gray-700">
                 {queued.state === 'failed' ? `Import failed: ${queued.error}` : queued.state === 'running'
-                  ? 'Analyzing demo in the import queue. Large matches may take several minutes.'
-                  : 'Demo queued for import.'}
+                  ? queued.recovered ? 'Resuming demo analysis after restart. Large matches may take several minutes.'
+                    : 'Analyzing demo in the import queue. Large matches may take several minutes.'
+                  : queued.recovered ? 'Demo queued again after restart.' : 'Demo queued for import.'}
               </p>}
               <div className="flex w-full flex-col gap-y-8 border-t border-gray-300 pt-16">
               <label htmlFor="local-library-path" className="text-body-strong">Open an existing DemoStrike SQLite library</label>
