@@ -28,12 +28,12 @@ jobs:
       - name: Test saved FilmCraft project navigation
         shell: pwsh
         run: cargo test --locked --features native-ui --lib ui::tests::synthetic_filmcraft_project_opens_through_demo_workspace -- --exact --test-threads=1
+      - name: Diagnose isolated audio generation test
+        shell: pwsh
+        run: cargo test --locked --features native-ui --lib ui::filmcraft_audio::tests::stale_ready_generation_cannot_activate_or_become_the_clock -- --exact --test-threads=1 --nocapture
       - name: Diagnose full library suite in serial
         shell: pwsh
         run: cargo test --locked --features native-ui --lib -- --test-threads=1 --nocapture
-      - name: Diagnose full library suite with parallel workers
-        shell: pwsh
-        run: cargo test --locked --features native-ui --lib -- --test-threads=8 --nocapture
       - name: Test synthetic CLI fixtures
         shell: pwsh
         run: cargo test --locked --features native-ui --test cli
@@ -75,3 +75,24 @@ jobs:
             artifact/SHA256.txt
           if-no-files-found: error
           retention-days: 1
+
+  baseline-audio:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 18edbf1fb2bb078b15fc5afb7eb291988dcc5313
+      - name: Select stable Rust
+        shell: pwsh
+        run: rustup default stable
+      - name: Baseline isolated audio generation test
+        shell: pwsh
+        run: cargo test --locked --features native-ui --lib ui::filmcraft_audio::tests::stale_ready_generation_cannot_activate_or_become_the_clock -- --exact --test-threads=1 --nocapture
+      - name: Baseline full library suite in serial
+        shell: pwsh
+        run: cargo test --locked --features native-ui --lib -- --test-threads=1 --nocapture
