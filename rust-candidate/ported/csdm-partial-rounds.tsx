@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useParams } from 'react-router';
 import { Content } from 'csdm/ui/components/content';
-import type { MatchDetail, RecordedRound, RoundDeath } from './match-data';
+import type { MatchDetail, RecordedRound, RoundDeath, RoundHurt } from './match-data';
 import { useSourceMatch } from './match-loader';
 
 // The pinned CSDM RoundsHistory and RoundEntry are organized around Team A/B,
@@ -67,6 +67,20 @@ function DeathEntry({ death, detail }: { death: RoundDeath; detail: MatchDetail 
   </li>;
 }
 
+function HurtEntry({ hurt, detail }: { hurt: RoundHurt; detail: MatchDetail }) {
+  return <li className="grid grid-cols-[minmax(64px,auto)_1fr] gap-x-12 border-t border-gray-300 py-8 first:border-t-0">
+    <span className="tabular-nums text-gray-700">Tick {hurt.tick}</span>
+    <span className="break-words">
+      {playerLabel(detail, hurt.attackerSteamid)}
+      {knownSide(hurt.attackerSide) && <span className="ml-4 text-gray-700">({hurt.attackerSide})</span>}
+      <span className="mx-8 text-gray-700">&gt;</span>{playerLabel(detail, hurt.victimSteamid)}
+      {knownSide(hurt.victimSide) && <span className="ml-4 text-gray-700">({hurt.victimSide})</span>}
+      <span className="ml-8 tabular-nums">{hurt.rawDamage} raw damage</span>
+      <span className="ml-8 text-gray-700">{hurt.weapon ?? 'Weapon unavailable'}</span>
+    </span>
+  </li>;
+}
+
 function RoundEntry({ round, detail, expanded }: { round: RecordedRound; detail: MatchDetail; expanded: boolean }) {
   const winner = knownSide(round.winner);
   return <details className="border-b border-gray-300 py-12 last:border-b-0" open={expanded || undefined}>
@@ -94,6 +108,13 @@ function RoundEntry({ round, detail, expanded }: { round: RecordedRound; detail:
             <ol className="mt-8">{round.deaths.map((death) => <DeathEntry key={death.sourceIndex} death={death} detail={detail} />)}</ol>}
       </div>
     </div>
+    {expanded && <section className="mt-16 ml-16 border-l-2 border-gray-300 pl-12" aria-label="Round raw damage">
+      <h3 className="text-body-strong">Recorded damage events</h3>
+      <p className="mt-4 text-gray-700">Amounts are raw demo damage values, not effective health damage. Hitgroups and shots fired were not recorded.</p>
+      {round.hurts === null ? <p className="mt-8 text-gray-700">Ordered damage events were not recorded for this import.</p> :
+        round.hurts.length === 0 ? <p className="mt-8 text-gray-700">No damage events recorded in this round.</p> :
+          <ol className="mt-8">{round.hurts.map((hurt) => <HurtEntry key={hurt.sourceIndex} hurt={hurt} detail={detail} />)}</ol>}
+    </section>}
   </details>;
 }
 
@@ -102,12 +123,17 @@ export function Rounds() {
   const { number } = useParams();
   const selected = number === undefined ? null : detail.rounds.find((round) => String(round.roundNumber) === number);
   if (number !== undefined && !selected) return <Content><p role="alert">Round {number} is not recorded in this library.</p></Content>;
+  const selectedIndex = selected ? detail.rounds.findIndex((round) => round.roundNumber === selected.roundNumber) : -1;
   return <Content>
     <div className="flex flex-wrap items-center justify-between gap-12">
       <h1 className="text-title">{selected ? `Round ${selected.roundNumber}` : 'Recorded rounds'}</h1>
-      {selected && <Link to=".." relative="path" className="text-blue-600 underline">All rounds</Link>}
+      {selected && <nav aria-label="Round navigation" className="flex flex-wrap items-center gap-12">
+        {selectedIndex > 0 && <Link to={'../' + detail.rounds[selectedIndex - 1].roundNumber} relative="path" className="text-blue-600 underline">Previous round</Link>}
+        <Link to=".." relative="path" className="text-blue-600 underline">All rounds</Link>
+        {selectedIndex < detail.rounds.length - 1 && <Link to={'../' + detail.rounds[selectedIndex + 1].roundNumber} relative="path" className="text-blue-600 underline">Next round</Link>}
+      </nav>}
     </div>
-    <p className="mt-4 max-w-[760px] text-gray-700">The history follows the original CSDM round view. Recorded side winners, ticks, equipment values and ordered death events appear where available; tags, full economy, playback and stable teams are unavailable.</p>
+    <p className="mt-4 max-w-[760px] text-gray-700">The history follows the original CSDM round view. Recorded side winners, ticks, equipment values and ordered combat events appear where available; tags, full economy, playback and stable teams are unavailable.</p>
     {detail.rounds.length === 0 ? <p className="mt-16" role="status">No rounds were recorded for this match.</p> : <>
       {!selected && <RoundsHistory rounds={detail.rounds} />}
       <section className="mt-16" aria-label="Round entries">
