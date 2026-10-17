@@ -93,6 +93,16 @@ async function main() {
     assert.equal(await page.locator('tbody tr').count(), 2);
     const playersScreenshot = path.join(outputDir, 'ported-match-players.png');
     await page.screenshot({ path: playersScreenshot, animations: 'disabled' });
+    await page.getByRole('link', { name: 'Utility' }).click();
+    await page.getByRole('heading', { name: 'Recorded utility' }).waitFor({ timeout: 20000 });
+    assert.equal(await page.locator('tbody tr').count(), 3);
+    assert.ok((await page.locator('tbody').innerText()).includes('Unavailable'));
+    const utilityScreenshot = path.join(outputDir, 'ported-match-utility.png');
+    await page.screenshot({ path: utilityScreenshot, animations: 'disabled' });
+    await page.evaluate(() => { location.hash = '#/matches/local-101/heatmap'; });
+    await page.getByRole('heading', { name: 'This match analysis is still being ported' }).waitFor({ timeout: 20000 });
+    const unsupportedScreenshot = path.join(outputDir, 'ported-match-unsupported.png');
+    await page.screenshot({ path: unsupportedScreenshot, animations: 'disabled' });
     assert.equal(sha256(fixturePath), fixtureSha256, 'Read-only viewer changed the synthetic fixture');
     const demoFolder = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-synthetic-demos');
     fs.mkdirSync(demoFolder, { recursive: true });
@@ -129,6 +139,8 @@ async function main() {
       overviewScreenshotSha256: sha256(overviewScreenshot),
       roundsScreenshotSha256: sha256(roundsScreenshot),
       playersScreenshotSha256: sha256(playersScreenshot),
+      utilityScreenshotSha256: sha256(utilityScreenshot),
+      unsupportedScreenshotSha256: sha256(unsupportedScreenshot),
       demoFolderScreenshotSha256: sha256(demoScreenshot),
       syntheticDemoHashes: [alphaHash, betaHash],
       fixtureSha256,
