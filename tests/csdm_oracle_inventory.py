@@ -150,9 +150,21 @@ for upstream, native in zip(oracle.get("rounds", []), rounds):
             item["differences"].update(differences)
 
 damage_fields = ("roundNumber", "tick", "attackerSteamId", "victimSteamId")
+# CSDM's pinned Go Damage struct starts AttackerSteamID64 at numeric zero for
+# world damage; the native ledger uses SQL NULL. Normalize only this documented
+# absent-identity sentinel, keeping all ordinary zeros distinct from NULL.
+def normalize_csdm_damage(damage):
+    if damage.get("attackerSteamId") == 0:
+        return dict(damage, attackerSteamId=None)
+    return damage
+
+
+oracle_damages = [normalize_csdm_damage(damage) for damage in oracle.get("damages", [])]
+assert normalize_csdm_damage({"attackerSteamId": 0})["attackerSteamId"] is None
+assert normalize_csdm_damage({"attackerSteamId": 42})["attackerSteamId"] == 42
 upstream_damage = {}
 native_damage = {}
-for target, events in ((upstream_damage, oracle.get("damages", [])),
+for target, events in ((upstream_damage, oracle_damages),
                        (native_damage, native_hurts)):
     for event in events:
         target.setdefault(key(event, damage_fields), []).append(event.get("healthDamage"))
@@ -185,13 +197,15 @@ in_match_hurts = [dict(event, roundNumber=match_round(event))
 in_match_effective = [dict(event, healthDamage=event["effectiveHealthDamage"])
                       for event in in_match_hurts]
 
-# The pinned Go Kill struct uses a uint64 assister field initialized to zero
-# when no assister exists; DemoStrike stores that absence as SQL NULL. This is
+# The pinned Go Kill struct uses uint64 killer/assister fields initialized to
+# zero when no player exists; DemoStrike stores that absence as SQL NULL. This is
 # a source-specific, reviewed mapping, never a blanket zero/null coercion.
 def normalize_csdm_kill(kill):
-    if kill.get("assisterSteamId") == 0:
-        return dict(kill, assisterSteamId=None)
-    return kill
+    normalized = dict(kill)
+    for optional_id in ("killerSteamId", "assisterSteamId"):
+        if normalized.get(optional_id) == 0:
+            normalized[optional_id] = None
+    return normalized
 
 
 assert normalize_csdm_kill({"assisterSteamId": 0})["assisterSteamId"] is None
@@ -222,7 +236,7 @@ comparison = {
         for upstream, native in zip(oracle.get("rounds", []), rounds)
     ],
     "damageEventIdentityWithinMatchWithoutAmount": event_differences(
-        oracle.get("damages", []), in_match_hurts,
+        oracle_damages, in_match_hurts,
         damage_fields,
     ),
     "damageAmountSemantics": {"upstream": "effective health removed",
@@ -234,7 +248,7 @@ comparison = {
                                                            for item in damage_amount_differences),
                               "samples": damage_amount_differences[:12]},
     "effectiveDamageEventAmounts": event_differences(
-        oracle.get("damages", []), in_match_effective,
+        oracle_damages, in_match_effective,
         damage_fields + ("healthDamage",),
     ),
     "killVsInMatchDeathIdentity": event_differences(
