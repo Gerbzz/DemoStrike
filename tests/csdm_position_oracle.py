@@ -23,8 +23,13 @@ native = {(row["tick"], row["steamid"]): tuple(row[axis] for axis in "xyz")
 assert len(native) >= 100
 
 oracle_dir = root / "csdm-position-oracle"
-player_files = list(oracle_dir.glob("*.dem_positions.csv"))
-assert len(player_files) == 1, [str(file) for file in player_files]
+position_files = list(oracle_dir.rglob("*_positions.csv"))
+def header(file):
+    with file.open(newline="", encoding="utf-8") as handle:
+        return set(next(csv.reader(handle)))
+
+player_files = [file for file in position_files if {"steamid", "is alive", "health"} <= header(file)]
+assert len(player_files) == 1, [str(file) for file in position_files]
 matched = {}
 with player_files[0].open(newline="", encoding="utf-8") as file:
     for row in csv.DictReader(file):
@@ -38,8 +43,8 @@ grenade_rows = database.execute("""SELECT tick,x,y,z FROM viewer_grenade_positio
                                    WHERE round_number IN (1,2,3) ORDER BY tick""").fetchall()
 assert grenade_rows, "Native projectile stream is absent"
 grenade_ticks = {row["tick"] for row in grenade_rows[::max(1, len(grenade_rows) // 300)]}
-grenade_file = list(oracle_dir.glob("*.dem_grenade_positions.csv"))
-assert len(grenade_file) == 1, [str(file) for file in grenade_file]
+grenade_file = [file for file in position_files if {"grenade id", "projectile id"} <= header(file)]
+assert len(grenade_file) == 1, [str(file) for file in position_files]
 oracle_grenades = {}
 with grenade_file[0].open(newline="", encoding="utf-8") as file:
     for row in csv.DictReader(file):
