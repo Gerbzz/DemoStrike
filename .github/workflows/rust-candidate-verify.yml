@@ -11,6 +11,25 @@ permissions:
   contents: read
 
 jobs:
+  upstream-renderer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: rust-candidate/upstream/cs-demo-manager
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned upstream package manager
+        run: npm install --global pnpm@12.6.0 --ignore-scripts --no-audit --no-fund
+      - name: Install original renderer dependencies without native postinstall
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Compile original CS Demo Manager renderer source
+        run: |
+          mkdir -p static
+          pnpm exec vite build --config vite.config.ts
   verify:
     runs-on: windows-latest
     timeout-minutes: 90

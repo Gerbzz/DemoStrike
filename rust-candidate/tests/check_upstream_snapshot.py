@@ -12,10 +12,10 @@ LEDGER = ROOT / "docs" / "MIGRATION_LEDGER.csv"
 ROOT_FILES = {
     "LICENSE", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml",
     "tsconfig.json", "vite.config.ts", "postcss.config.mjs", "lingui.config.ts",
+    "scripts/electron-vendors.mjs",
 }
 EXCLUDED = {
     "src/node/os/get-running-process-exit-code/build/Release/get_running_process_exit_code.node",
-    "src/ui/styles/InterVariable.woff2",
 }
 
 
@@ -32,15 +32,18 @@ def main() -> None:
         if (row["upstream_path"].startswith("src/") or row["upstream_path"] in ROOT_FILES)
         and row["upstream_path"] not in EXCLUDED
     }
-    assert len(expected) == 2825, f"unexpected manifest count: {len(expected)}"
+    assert len(expected) == 2827, f"unexpected manifest count: {len(expected)}"
     actual = {path.relative_to(SNAPSHOT).as_posix() for path in SNAPSHOT.rglob("*") if path.is_file()}
+    actual.remove("LICENSE.inter.txt")
     assert actual == set(expected), f"snapshot paths differ: missing={set(expected)-actual}, extra={actual-set(expected)}"
     for relative, sha in expected.items():
         assert git_blob_sha((SNAPSHOT / relative).read_bytes()) == sha, f"blob changed: {relative}"
     for relative in EXCLUDED:
         assert not (SNAPSHOT / relative).exists(), f"excluded payload present: {relative}"
     assert (SNAPSHOT / "LICENSE").read_text(encoding="utf-8").startswith("The MIT License (MIT)")
-    print(f"PASS: {len(expected)} pinned upstream source files match ledger Git blobs; native/font payloads absent")
+    inter_license = (SNAPSHOT / "LICENSE.inter.txt").read_bytes()
+    assert git_blob_sha(inter_license) == "9b2ca37b3ffc77391d8b2ebef4a974ef32bf46ea"
+    print(f"PASS: {len(expected)} pinned upstream files match ledger Git blobs; native payload absent; Inter OFL notice verified")
 
 
 if __name__ == "__main__":

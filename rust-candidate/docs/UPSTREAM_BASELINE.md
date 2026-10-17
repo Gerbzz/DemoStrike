@@ -3,9 +3,9 @@
 ## Provenance and scope
 
 The source-only tree at `upstream/cs-demo-manager/` is copied byte for byte from
-[`akiver/cs-demo-manager@7270bc95c8cab87b7f9ddd490fea13c6eda3ace7`](https://github.com/akiver/cs-demo-manager/tree/7270bc95c8cab87b7f9ddd490fea13c6eda3ace7), version 3.20.1. Its upstream `LICENSE` is included; the root license is MIT, Copyright (c) 2014-present AkiVer. `tests/check_upstream_snapshot.py` checks all 2,825 staged paths and Git blob IDs against `MIGRATION_LEDGER.csv`. The ledger marks these files `source_staged_unported` unless a separately tested adaptation already exists.
+[`akiver/cs-demo-manager@7270bc95c8cab87b7f9ddd490fea13c6eda3ace7`](https://github.com/akiver/cs-demo-manager/tree/7270bc95c8cab87b7f9ddd490fea13c6eda3ace7), version 3.20.1. Its upstream `LICENSE` is included; the root license is MIT, Copyright (c) 2014-present AkiVer. `tests/check_upstream_snapshot.py` checks all 2,827 staged upstream paths and Git blob IDs against `MIGRATION_LEDGER.csv`. The ledger marks these files `source_staged_unported` unless a separately tested adaptation already exists.
 
-The tracked native `.node` add-on and InterVariable font are excluded. `static/`, build assets, plugins, and downloaded runtimes are not included. Their provenance and integration must be reviewed before packaging. No original file in this tree has been changed to make an unsupported feature appear to work.
+The tracked native `.node` add-on is excluded. The original InterVariable font is staged unmodified with the official Inter project's SIL Open Font License 1.1 notice (`LICENSE.inter.txt`), checked by Git blob ID. `static/`, build assets, plugins, and downloaded runtimes are not included. Their provenance and integration must be reviewed before packaging. No original file in this tree has been changed to make an unsupported feature appear to work.
 
 ## The actual application to retain
 
@@ -31,3 +31,5 @@ The tracked native `.node` add-on and InterVariable font are excluded. `static/`
 ## Runnable proof and limit
 
 The existing `rust-candidate/src-tauri/src/library.rs` and `src/bridge.ts` are a **separate runnable read-only Tauri proof**: hosted CI launched native WebView2 and verified `list_matches` and `get_match_detail` against synthetic SQLite. Its small custom renderer is not CS Demo Manager's original renderer, sidebar, or route tree. It is retained only as an adapter and test fixture while the original source is migrated. The full original UI is **not yet runnable in Tauri** because the preload, initialization, WebSocket, database, and route payloads above are not connected. A successful source-integrity check must not be described as visual or functional acceptance of the upstream app.
+
+Hosted CI also attempts to compile the unmodified upstream React renderer with its pinned pnpm lockfile and native postinstall scripts disabled. This checks whether the original frontend dependency tree can be built separately from Electron and its server. A successful renderer compile still does not satisfy the startup contracts or make any sidebar route functional; a failed compile is a concrete dependency boundary to resolve, not a screenshot or runtime result.
