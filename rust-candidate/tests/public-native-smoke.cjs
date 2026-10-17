@@ -271,6 +271,12 @@ async function main() {
         && Number(root?.getAttribute('data-player-count')) > 0
         && Number(root?.getAttribute('data-grenade-count')) > 0;
     }, viewerFacts.candidate.tick, { timeout: 30000 });
+    const viewerText = await page.locator('[data-current-tick]').innerText();
+    assert.ok(!viewerText.includes('\uFFFD'), 'Viewer contains a broken replacement glyph');
+    assert.ok(await page.locator('section[aria-label="Recorded map"] svg g circle').count() >= 5,
+      'Observed player markers did not render on the selected radar tick');
+    assert.ok(await page.locator('section[aria-label="Recorded map"] svg g text').count() <= 1,
+      'Player name labels overlap the map rather than following selection');
     const viewerSeekShot = path.join(outputDir, 'real-demo-viewer-seek.png');
     await captureAppOnly(page, viewerSeekShot);
     await page.getByRole('button', { name: 'Play replay' }).click();

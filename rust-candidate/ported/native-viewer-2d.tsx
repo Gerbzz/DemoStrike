@@ -129,7 +129,7 @@ export function Viewer2DLoader() {
     steamid === null ? 'World' : match.players.find((player) => player.steamid === steamid)?.name ?? steamid;
   const recentEvents = [
     ...deaths.map((event) => ({ tick: event.tick,
-      label: `${playerName(event.attackerSteamid)}  ${playerName(event.victimSteamid)} � ${event.weapon ?? 'unknown weapon'}` })),
+      label: `${playerName(event.attackerSteamid)} -> ${playerName(event.victimSteamid)}  -  ${event.weapon ?? 'unknown weapon'}` })),
     ...throws.map((event) => ({ tick: event.throwTick, label: `${event.throwerName} threw ${event.utilityType}` })),
   ].filter((event) => event.tick <= tick).sort((a, b) => b.tick - a.tick).slice(0, 5);
 
@@ -152,7 +152,7 @@ export function Viewer2DLoader() {
   };
 
   if (error && !meta) return <div role="alert" className="p-16">{error}</div>;
-  if (!meta) return <div role="status" className="p-16">Loading recorded round positions.</div>;
+  if (!meta) return <div role="status" className="p-16">Loading recorded round positions...</div>;
   if (!meta.positionsAvailable || !map || start >= end) return <div className="flex flex-col gap-8 p-16" role="status">
     <h1 className="text-title">2D viewer unavailable for round {roundNumber}</h1>
     <p className="max-w-[640px] text-gray-700">{!map
@@ -164,8 +164,8 @@ export function Viewer2DLoader() {
   return <div className="flex min-h-0 flex-1 flex-col" data-current-tick={tick}
     data-observed-tick={observedTick ?? ''} data-player-count={players.length} data-grenade-count={grenades.length}>
     <header className="flex flex-wrap items-center justify-between gap-8 border-b border-gray-300 px-16 py-8">
-      <div><h1 className="text-subtitle">2D viewer � Round {roundNumber}</h1>
-        <p className="text-gray-700">Recorded positions at absolute demo ticks � {meta.playerSampleCount.toLocaleString()} player frames</p></div>
+      <div><h1 className="text-subtitle">2D viewer  -  Round {roundNumber}</h1>
+        <p className="text-gray-700">Recorded positions at absolute demo ticks  -  {meta.playerSampleCount.toLocaleString()} player frames</p></div>
       <label className="cursor-pointer rounded border border-gray-300 px-8 py-4 text-blue-600">
         Choose local radar PNG<input className="sr-only" type="file" accept="image/png"
           aria-label="Choose local radar PNG" onChange={(event) => void chooseRadar(event.target.files?.[0])} />
@@ -192,22 +192,24 @@ export function Viewer2DLoader() {
             const point = worldPoint(player.x, player.y); if (!point) return null;
             return <g key={player.steamid} transform={`translate(${point.x} ${point.y})`}
               onClick={() => setFocusedPlayer(player.steamid)} className="cursor-pointer">
+              <title>{player.name} - {player.side ?? 'unassigned'} - {player.health ?? 'unknown'} HP</title>
               <circle r={focusedPlayer === player.steamid ? 15 : 11} fill={sideColor(player.side)}
                 stroke={focusedPlayer === player.steamid ? '#fff' : '#101820'} strokeWidth="3" />
               {player.yaw !== null && <line x1="0" y1="0" x2={Math.cos(player.yaw * Math.PI / 180) * 23}
                 y2={-Math.sin(player.yaw * Math.PI / 180) * 23} stroke="white" strokeWidth="3" />}
-              <text x="15" y="5" fill="white" fontSize="17" stroke="#111" strokeWidth="3" paintOrder="stroke">{player.name}</text>
+              {focusedPlayer === player.steamid && <text x="20" y="5" fill="white" fontSize="17"
+                stroke="#111" strokeWidth="3" paintOrder="stroke">{player.name}</text>}
             </g>;
           })}
         </svg>
         {!radarUrl && <p className="absolute bottom-8 left-8 right-8 rounded bg-gray-50 p-8 text-center text-gray-700">
           Add a local CSDM or game radar PNG for map artwork. The grid shows observed world positions only.
         </p>}
-        {observedTick === null && <p role="status" className="absolute left-8 top-8 rounded bg-gray-50 p-8">Loading this tick.</p>}
+        {observedTick === null && <p role="status" className="absolute left-8 top-8 rounded bg-gray-50 p-8">Loading this tick...</p>}
       </section>
       <aside className="flex min-w-[250px] flex-1 flex-col gap-12 overflow-auto" aria-label="Synchronized round state">
         <section><h2 className="text-subtitle">At tick {tick.toLocaleString()}</h2>
-          <p className="text-gray-700">{displayTickTime(tick, start, rate)} into round � {observedTick === null ? 'loading frames' : `player sample ${observedTick}`}</p></section>
+          <p className="text-gray-700">{displayTickTime(tick, start, rate)} into round  -  {observedTick === null ? 'loading frames' : `player sample ${observedTick}`}</p></section>
         <section><h2 className="text-body-strong">Players</h2>
           <ul className="mt-4 divide-y divide-gray-300 border-y border-gray-300">
             {[...players].sort((a, b) => (a.side ?? '').localeCompare(b.side ?? '') || a.name.localeCompare(b.name)).map((player) =>
@@ -227,7 +229,7 @@ export function Viewer2DLoader() {
           {grenades.length === 0 && <p className="mt-4 text-gray-700">No projectile at this observed tick.</p>}</section>
         <section><h2 className="text-body-strong">Recorded events</h2>
           <ol className="mt-4 space-y-4">{recentEvents.map((event, index) =>
-            <li key={`${event.tick}-${index}`} className="text-gray-700"><span className="tabular-nums">{event.tick}</span> � {event.label}</li>)}</ol>
+            <li key={`${event.tick}-${index}`} className="text-gray-700"><span className="tabular-nums">{event.tick}</span>  -  {event.label}</li>)}</ol>
           {recentEvents.length === 0 && <p className="mt-4 text-gray-700">No recorded combat or utility event yet.</p>}</section>
       </aside>
     </div>
