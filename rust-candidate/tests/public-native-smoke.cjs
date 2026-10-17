@@ -98,7 +98,7 @@ async function main() {
     assert.equal(await page.getByText('Synthetic CI fixture:', { exact: false }).count(), 0);
     const overviewShot = path.join(outputDir, 'real-demo-overview.png');
     await captureAppOnly(page, overviewShot);
-    await page.getByRole('link', { name: 'Rounds' }).click();
+    await page.getByRole('link', { name: 'Rounds', exact: true }).click();
     await page.getByRole('heading', { name: 'Recorded rounds' }).waitFor({ timeout: 30000 });
     await page.waitForFunction(() => document.querySelectorAll('section[aria-label="Round entries"] details').length >= 10, null, { timeout: 30000 });
     const roundRows = await page.locator('section[aria-label="Round entries"] details').count();
