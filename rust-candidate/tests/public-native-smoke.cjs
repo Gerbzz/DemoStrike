@@ -1,5 +1,6 @@
 // Hosted Windows only: exercise a pinned public CS2 demo in the actual Tauri
-// WebView2 window, with the synthetic parser environment variable absent.
+// WebView2 window. In the feature-free build, deliberately set the synthetic
+// parser environment variable and prove the native decoder still runs.
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -46,7 +47,15 @@ async function main() {
   }
   assert.ok(portFree, 'Prior native app still owns the WebView2 debugging endpoint');
   const env = { ...process.env };
-  delete env.DEMOSTRIKE_SYNTHETIC_RAW_FACTS;
+  const featureFree = process.env.EXPECT_FEATURE_FREE === '1';
+  if (featureFree) {
+    // Deliberately request synthetic facts. A release build without the
+    // feature must ignore this environment variable and decode the real demo.
+    env.DEMOSTRIKE_SYNTHETIC_RAW_FACTS = path.join(__dirname, 'fixtures', 'combat-raw.json');
+    assert.ok(fs.existsSync(env.DEMOSTRIKE_SYNTHETIC_RAW_FACTS));
+  } else {
+    delete env.DEMOSTRIKE_SYNTHETIC_RAW_FACTS;
+  }
   const app = spawn(appPath, [], { cwd: path.dirname(appPath), windowsHide: false, stdio: 'pipe', env });
   let exit = null;
   app.once('exit', (code, signal) => { exit = `${code ?? 'none'} / ${signal ?? 'none'}`; });
@@ -96,6 +105,14 @@ async function main() {
     await page.getByRole('heading', { name: 'de_mirage' }).waitFor({ timeout: 30000 });
     await page.getByRole('heading', { name: 'Recorded players' }).waitFor({ timeout: 30000 });
     assert.equal(await page.getByText('Synthetic CI fixture:', { exact: false }).count(), 0);
+    const capability = await page.evaluate(async () => {
+      const library = localStorage.getItem('csdm-port-selected-library');
+      const matchId = Number(location.hash.match(/local-(\d+)/)?.[1]);
+      if (!library || !Number.isSafeInteger(matchId)) throw new Error('Local match route not available');
+      const detail = await window.__TAURI_INTERNALS__.invoke('get_match_detail', { path: library, matchId });
+      return detail.summary.parserCapability;
+    });
+    assert.equal(capability, 'native-combat-full-v2', 'Real decoder provenance was not retained');
     const overviewShot = path.join(outputDir, 'real-demo-overview.png');
     await captureAppOnly(page, overviewShot);
     await page.getByRole('link', { name: 'Rounds', exact: true }).click();
@@ -153,6 +170,9 @@ async function main() {
       fixtureSha256: sourceHash,
       commit: process.env.GITHUB_SHA || null,
       executableSha256: sha256(appPath),
+      featureFreeReleaseBuild: featureFree,
+      syntheticEnvironmentDeliberatelySet: featureFree,
+      parserCapability: capability,
       observed: { roundRows, playerRows, utilityRows },
       screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, playersShot, utilityShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
