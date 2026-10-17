@@ -1027,9 +1027,16 @@ impl DemoStrikeApp {
         let mut add_tag = None;
         let mut remove_tag = None;
         let mut prepare_capture = None;
+        let mut import_from_empty_library = false;
         ui.group(|ui| {
             ui.heading("Saved matches");
-            if self.library_matches.is_empty() { ui.label("No imported matches in this database."); return; }
+            if self.library_matches.is_empty() {
+                ui.label("No matches saved yet. Import a CS2 demo to build your searchable event library.");
+                if ui.add_enabled(self.import_messages.is_none(), egui::Button::new("Import CS2 demo…")).clicked() {
+                    import_from_empty_library = true;
+                }
+                return;
+            }
             egui::ComboBox::from_id_salt("saved_match").selected_text(
                 self.library_matches.iter().find(|m| Some(m.id) == self.library_match_id)
                     .map(|m| format!("{} · {} · {} events", m.file_name, m.map_name, m.event_count))
@@ -1067,6 +1074,9 @@ impl DemoStrikeApp {
                 }
             });
             egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                if self.library_events.is_empty() {
+                    ui.label("No events match this view. Try another match, search, or favorite filter.");
+                }
                 for event in &self.library_events {
                     let label = format!("{} Round {} · {} {} · tick {}{}",
                         if event.favorite { "★" } else { "☆" }, event.round_number,
@@ -1115,6 +1125,11 @@ impl DemoStrikeApp {
                 }
             }
         });
+        if import_from_empty_library {
+            if let Some(path) = rfd::FileDialog::new().add_filter("CS2 demo", &["dem"]).pick_file() {
+                let _ = self.start_demo_import(&path);
+            }
+        }
         if let Some(id) = choose_match { self.library_match_id = Some(id); self.library_page = 0; refresh_events = true; }
         if refresh_events { if let Err(error) = self.refresh_library_events() { self.error = Some(error); } }
         if let Some(id) = choose_event { if let Err(error) = self.select_saved_event(id) { self.error = Some(error); } }
