@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+from collections import Counter
 
 
 root = Path(os.environ["RUNNER_TEMP"])
@@ -47,6 +48,84 @@ with sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True) as connect
             "FROM rounds ORDER BY round_number"
         )
     ]
+    native_hurts = [
+        dict(zip(("roundNumber", "tick", "attackerSteamId", "victimSteamId", "healthDamage"), row))
+        for row in connection.execute(
+            "SELECT round_number, tick, attacker_steamid, victim_steamid, raw_dmg_health "
+            "FROM raw_combat_hurts ORDER BY source_index"
+        )
+    ]
+    native_deaths = [
+        dict(zip(("roundNumber", "tick", "killerSteamId", "victimSteamId", "assisterSteamId"), row))
+        for row in connection.execute(
+            "SELECT round_number, tick, attacker_steamid, victim_steamid, assister_steamid "
+            "FROM raw_combat_deaths ORDER BY source_index"
+        )
+    ]
+    native_players = {
+        steamid: dict(zip(("enemyKills", "enemyAssists", "deaths", "enemyHealthDamage"), row[1:]))
+        for row in connection.execute(
+            "SELECT steamid, SUM(enemy_kills), SUM(enemy_assists), SUM(deaths), "
+            "SUM(enemy_health_damage) FROM player_round_combat GROUP BY steamid"
+        ) for steamid in [row[0]]
+    }
+
+
+def key(event, fields):
+    return tuple(str(event.get(field) or "") for field in fields)
+
+
+def event_differences(oracle_events, native_events, fields):
+    upstream = Counter(key(event, fields) for event in oracle_events)
+    native = Counter(key(event, fields) for event in native_events)
+    return {
+        "upstreamCount": len(oracle_events),
+        "nativeCount": len(native_events),
+        "upstreamOnlyCount": sum((upstream - native).values()),
+        "nativeOnlyCount": sum((native - upstream).values()),
+        "upstreamOnlySamples": list((upstream - native).elements())[:12],
+        "nativeOnlySamples": list((native - upstream).elements())[:12],
+        "fields": fields,
+    }
+
+
+round_fields = (
+    ("number", "number"), ("winnerSide", "winner"),
+    ("startTick", "start"), ("endTick", "end"), ("endReason", "reason"),
+)
+round_comparison = []
+for upstream, native in zip(oracle.get("rounds", []), rounds):
+    differences = {
+        original: {"upstream": upstream.get(original), "native": native.get(local)}
+        for original, local in round_fields
+        if str(upstream.get(original)) != str(native.get(local))
+    }
+    if differences:
+        round_comparison.append({"round": native["number"], "differences": differences})
+
+player_comparison = []
+for steamid, upstream in sorted(oracle.get("players", {}).items()):
+    native = native_players.get(steamid, {})
+    player_comparison.append({
+        "steamId": steamid,
+        "name": upstream.get("name"),
+        "upstream": {name: upstream.get(name) for name in ("killCount", "assistCount", "deathCount", "healthDamage")},
+        "native": native,
+    })
+
+comparison = {
+    "status": "unreviewed independent comparison; differences do not update any expected fixture",
+    "roundFieldDifferences": round_comparison,
+    "damageEventIdentity": event_differences(
+        oracle.get("damages", []), native_hurts,
+        ("roundNumber", "tick", "attackerSteamId", "victimSteamId", "healthDamage"),
+    ),
+    "killVsRawDeathIdentity": event_differences(
+        oracle.get("kills", []), native_deaths,
+        ("roundNumber", "tick", "killerSteamId", "victimSteamId", "assisterSteamId"),
+    ),
+    "playerTotals": player_comparison,
+}
 
 inventory = {
     "status": "discovery-only: no expected values were regenerated or approved",
@@ -58,4 +137,11 @@ inventory = {
 }
 output = root / "csdm-oracle-inventory.json"
 output.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-print(json.dumps(inventory, indent=2, ensure_ascii=False))
+comparison_output = root / "csdm-oracle-comparison.json"
+comparison_output.write_text(json.dumps(comparison, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print(json.dumps({"inventory": {
+    "upstreamRoundCount": len(oracle.get("rounds", [])),
+    "upstreamKillCount": len(oracle.get("kills", [])),
+    "upstreamDamageCount": len(oracle.get("damages", [])),
+    "demoStrikeCounts": counts,
+}, "comparison": comparison}, indent=2, ensure_ascii=False))
