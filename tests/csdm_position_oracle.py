@@ -154,10 +154,17 @@ for count, neg_delta, native_key, oracle_key in candidate_pairs:
     paired_oracle.add(oracle_key)
     native_ticks = native_paths[native_key]["ticks"]
     oracle_ticks = oracle_paths[oracle_key]["ticks"]
-    releases = database.execute("""SELECT utility_type,throw_tick,detonate_tick,thrower_steamid
+    releases = database.execute("""SELECT utility_type,throw_tick,detonate_tick,thrower_steamid,trajectory
         FROM utility_events WHERE projectile_entity_id=? AND thrower_steamid=?
         ORDER BY throw_tick""", (native_paths[native_key]["entity"],
                             native_paths[native_key]["thrower"])).fetchall()
+    release_evidence = []
+    for row in releases:
+        points = json.loads(row["trajectory"])
+        release_evidence.append({"utility_type": row["utility_type"],
+            "throw_tick": row["throw_tick"], "detonate_tick": row["detonate_tick"],
+            "thrower_steamid": row["thrower_steamid"],
+            "analyzedTrajectoryEndTick": points[-1][0] if points else None})
     path_pairs.append({"sharedTicks": count, "maxAxisDelta": -neg_delta,
         "nativeTrajectory": native_key, "upstreamProjectile": oracle_key,
         "nativeEntity": native_paths[native_key]["entity"],
@@ -166,7 +173,7 @@ for count, neg_delta, native_key, oracle_key in candidate_pairs:
         "upstreamLabel": oracle_paths[oracle_key]["label"],
         "nativeStartTick": min(native_ticks), "nativeEndTick": max(native_ticks),
         "upstreamStartTick": min(oracle_ticks), "upstreamEndTick": max(oracle_ticks),
-        "releaseCandidates": [dict(row) for row in releases],
+        "releaseCandidates": release_evidence,
         "startTickDelta": min(native_ticks) - min(oracle_ticks),
         "endTickDelta": max(native_ticks) - max(oracle_ticks)})
 
