@@ -136,8 +136,8 @@ pub fn insert_match_with_source_hash(
 
         let mut stmt = tx.prepare(
             "INSERT INTO rounds (match_id, round_number, start_tick, freeze_end_tick, end_tick,
-                                 winner, end_reason, ct_equip_value, t_equip_value)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                                 winner, end_reason, ct_equip_value, t_equip_value, team_a_side, team_b_side)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )?;
         for r in &m.rounds {
             check_cancel()?;
@@ -150,33 +150,37 @@ pub fn insert_match_with_source_hash(
                 r.winner,
                 r.end_reason,
                 r.ct_equip_value,
-                r.t_equip_value
+                r.t_equip_value,
+                r.team_a_side,
+                r.team_b_side
             ])?;
         }
 
         let mut combat = tx.prepare(
             "INSERT INTO player_round_combat
                 (match_id, round_number, steamid, side, enemy_kills, deaths,
-                 enemy_assists, enemy_health_damage)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                 enemy_assists, enemy_health_damage, effective_enemy_health_damage, stable_team)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         )?;
         for row in &m.player_round_combat {
             check_cancel()?;
             combat.execute(params![match_id, row.round_number, row.steamid, row.side,
-                row.enemy_kills, row.deaths, row.enemy_assists, row.enemy_health_damage])?;
+                row.enemy_kills, row.deaths, row.enemy_assists, row.enemy_health_damage,
+                row.effective_enemy_health_damage, row.stable_team])?;
         }
 
         let mut hurts = tx.prepare(
             "INSERT INTO raw_combat_hurts (match_id, source_index, event_order, tick,
                 round_number, weapon, attacker_steamid, attacker_side, victim_steamid,
-                victim_side, raw_dmg_health)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)"
+                victim_side, raw_dmg_health, post_health, start_health, effective_health_damage)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)"
         )?;
         for (index, row) in m.raw_combat_hurts.iter().enumerate() {
             check_cancel()?;
             hurts.execute(params![match_id, index as i64, row.event_order, row.tick,
                 row.round, row.weapon, row.attacker_steamid, row.attacker_team,
-                row.victim_steamid, row.victim_team, row.damage])?;
+                row.victim_steamid, row.victim_team, row.damage,
+                row.post_health, row.start_health, row.effective_damage])?;
         }
         let mut deaths = tx.prepare(
             "INSERT INTO raw_combat_deaths (match_id, source_index, event_order, tick,
@@ -1018,6 +1022,7 @@ mod tests {
                 end_tick: Some(8000),
                 winner: Some("CT".into()),
                 end_reason: Some("ct_win_elimination".into()),
+                team_a_side: None, team_b_side: None,
                 ct_equip_value: Some(4000),
                 t_equip_value: Some(3000),
             }],
@@ -1068,6 +1073,7 @@ mod tests {
                 round_number: 1, steamid: "s1".into(), side: Some("CT".into()),
                 enemy_kills: Some(2), deaths: 1, enemy_assists: Some(1),
                 enemy_health_damage: Some(87),
+                effective_enemy_health_damage: None, stable_team: None,
             }],
             raw_combat_hurts: vec![],
             raw_combat_deaths: vec![],

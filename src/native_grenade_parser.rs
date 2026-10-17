@@ -78,6 +78,9 @@ fn parse_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
             header: RawHeader { map_name, server_name: state.server_name.clone(), demo_ticks: ticks, playback_time: seconds },
             players: state.players.values().cloned().collect(),
             round_events,
+            effective_health_damage_available: true,
+            observed_match_start: state.observed_match_start,
+            team_side_switch_ticks: state.team_side_switch_ticks.clone(),
             throws: state.throws.clone(),
             detonations: state.detonations.clone(),
             blinds: state.blinds.clone(), hurts: state.hurts.clone(), deaths: state.deaths.clone(),
@@ -237,6 +240,12 @@ fn pawn_of<'a>(ctx: &'a Context, controller: &Entity) -> Option<&'a Entity> {
 fn event_int(event: &GameEvent, name: &str) -> Option<i32> {
     match event.get_value(name).ok()? { EventValue::Int(v) => Some(*v), _ => None }
 }
+fn event_health(event: &GameEvent) -> Option<i32> {
+    match event.get_value("health").ok()? {
+        EventValue::Byte(value) => Some(i32::from(*value)),
+        _ => None,
+    }
+}
 fn event_float(event: &GameEvent, name: &str) -> Option<f64> {
     match event.get_value(name).ok()? { EventValue::Float(v) => Some(f64::from(*v)), _ => None }
 }
@@ -259,7 +268,7 @@ fn validate_combat_event_schema(ctx: &Context) -> Result<(), String> {
         .map(|(_, definition)| (definition.name(), definition)).collect();
     for (event, fields) in [
         ("player_blind", &[("userid", "short"), ("attacker", "short"), ("entityid", "short"), ("blind_duration", "float")][..]),
-        ("player_hurt", &[("userid", "short"), ("attacker", "short"), ("weapon", "string"), ("dmg_health", "short")][..]),
+        ("player_hurt", &[("userid", "short"), ("attacker", "short"), ("weapon", "string"), ("dmg_health", "short"), ("health", "byte")][..]),
         ("player_death", &[("userid", "short"), ("attacker", "short"), ("assister", "short"), ("assistedflash", "bool"), ("weapon", "string")][..]),
     ] {
         let definition = definitions.get(event).ok_or_else(|| format!("unsupported CS2 combat schema: missing {event} descriptor"))?;
@@ -396,9 +405,11 @@ struct GrenadeObserver {
     bomb_defused_ticks: BTreeSet<u32>, bomb_exploded_ticks: BTreeSet<u32>, ct_death_ticks: BTreeSet<u32>,
     dead_users_on_tick: BTreeMap<u32, BTreeSet<i32>>,
     dead_users_until_spawn: BTreeSet<i32>,
-    round_events: Vec<RawRoundEvent>, round_start_game_ticks: Vec<i64>, round_timeout_zero_ticks: Vec<i64>, last_rules: Option<(i32, bool, i32)>,
+    round_events: Vec<RawRoundEvent>, round_start_game_ticks: Vec<i64>, round_timeout_zero_ticks: Vec<i64>,
+    observed_match_start: bool, team_side_switch_ticks: Vec<i64>, last_rules: Option<(i32, bool, i32)>,
     last_timeout: Option<(f32, f32)>, last_match_started: Option<bool>,
     last_game_phase: Option<i32>,
+    last_victim_health: BTreeMap<String, (u32, i32)>,
     last_start_count: Option<u8>,
     errors: Vec<String>,
 }
@@ -424,6 +435,7 @@ impl GrenadeObserver {
         if (name == "round_start" && warmup(ctx) == Some(false))
             || (name == "begin_new_match" && game_round(ctx) == Some(1) && warmup(ctx) == Some(false)) {
             self.round_start_game_ticks.push(i64::from(ctx.tick()));
+            if name == "begin_new_match" { self.observed_match_start = true; }
         }
         if name == "bomb_defused" { self.bomb_defused_ticks.insert(ctx.tick()); }
         if name == "bomb_exploded" { self.bomb_exploded_ticks.insert(ctx.tick()); }
@@ -517,14 +529,20 @@ impl GrenadeObserver {
                         match event_int(event, "dmg_health") {
                             Some(damage) if damage >= 0 => {
                                 self.combat_event_order += 1;
-                                if std::env::var_os("DEMO_HEALTH_DIAGNOSTICS").is_some()
-                                    && (self.combat_hurts.len() < 12 || event_int(event, "health") == Some(0)) {
-                                    let pawn_health = event_int(event, "userid")
-                                        .and_then(|user| controller_by_user(ctx, user))
-                                        .and_then(|controller| pawn_of(ctx, controller))
-                                        .map(|pawn| format!("{:?}", pawn.get_property("m_iHealth")));
-                                    eprintln!("HEALTH_TRACE tick={} round={round} order={} raw={damage} post_value={:?} pawn={pawn_health:?}",
-                                        ctx.tick(), self.combat_event_order, event.get_value("health"));
+                                let post_health = event_health(event);
+                                let start_health = event_int(event, "userid")
+                                    .and_then(|user| controller_by_user(ctx, user))
+                                    .and_then(|controller| pawn_of(ctx, controller))
+                                    .and_then(|pawn| match pawn.get_property("m_iHealth").ok()? {
+                                        FieldValue::Signed32(value) => Some(*value),
+                                        _ => None,
+                                    });
+                                let prior_post_same_tick = self.last_victim_health.get(&victim.0)
+                                    .filter(|(tick, _)| *tick == ctx.tick()).map(|(_, health)| *health);
+                                let effective_damage = effective_health_damage(damage, post_health,
+                                    start_health, prior_post_same_tick);
+                                if let Some(post) = post_health {
+                                    self.last_victim_health.insert(victim.0.clone(), (ctx.tick(), post));
                                 }
                                 self.combat_hurts.push(RawCombatHurt {
                                 event_order: Some(self.combat_event_order),
@@ -533,7 +551,7 @@ impl GrenadeObserver {
                                 attacker_steamid: attacker.as_ref().map(|value| value.0.clone()),
                                 attacker_team: attacker.as_ref().map(|value| value.2.clone()),
                                 victim_steamid: victim.0, victim_team: Some(victim.2),
-                                damage: i64::from(damage),
+                                damage: i64::from(damage), post_health, start_health, effective_damage,
                                 });
                             }
                             _ => self.errors.push(format!("incomplete combat player_hurt damage at tick {}", ctx.tick())),
@@ -629,17 +647,20 @@ impl GrenadeObserver {
             let total = get_i32("m_totalRoundsPlayed");
             let frozen = match entity.get_property("m_pGameRules.m_bFreezePeriod") { Ok(FieldValue::Boolean(v)) => Some(*v), _ => None };
             let win = get_i32("m_iRoundWinStatus");
+            let match_started = match entity.get_property("m_pGameRules.m_bHasMatchStarted") {
+                Ok(FieldValue::Boolean(value)) => Some(*value), _ => None,
+            };
             let phase = get_i32("m_gamePhase");
             if phase != self.last_game_phase {
                 if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
                     eprintln!("ROUND_TRACE phase tick={} old={:?} new={phase:?} total={total:?} warmup={:?}",
                         ctx.tick(), self.last_game_phase, warmup(ctx));
                 }
+                if phase == Some(3) && match_started == Some(true) && warmup(ctx) == Some(false) {
+                    self.team_side_switch_ticks.push(i64::from(ctx.tick()));
+                }
                 self.last_game_phase = phase;
             }
-            let match_started = match entity.get_property("m_pGameRules.m_bHasMatchStarted") {
-                Ok(FieldValue::Boolean(value)) => Some(*value), _ => None,
-            };
             if match_started != self.last_match_started {
                 if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
                     eprintln!("ROUND_TRACE match_started tick={} old={:?} new={match_started:?} total={total:?}",

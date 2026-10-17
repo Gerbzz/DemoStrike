@@ -11,6 +11,12 @@ pub struct RawDemo {
     pub players: Vec<RawPlayer>,
     #[serde(default)]
     pub round_events: Vec<RawRoundEvent>,
+    /// Initial Team A=CT / Team B=T is trustworthy only with match start.
+    #[serde(default)]
+    pub observed_match_start: bool,
+    /// Observed GameRules phase 3 transitions after match start, in tick order.
+    #[serde(default)]
+    pub team_side_switch_ticks: Vec<i64>,
     #[serde(default)]
     pub throws: Vec<RawThrow>,
     #[serde(default)]
@@ -24,6 +30,9 @@ pub struct RawDemo {
     /// Complete non-warmup combat stream. Older raw facts omit these arrays.
     #[serde(default)]
     pub combat_hurts: Vec<RawCombatHurt>,
+    /// Native decoder observed and applied the pinned effective HP rule.
+    #[serde(default)]
+    pub effective_health_damage_available: bool,
     #[serde(default)]
     pub combat_deaths: Vec<RawCombatDeath>,
     #[serde(default)]
@@ -165,6 +174,14 @@ pub struct RawCombatHurt {
     pub victim_steamid: String,
     pub victim_team: Option<String>,
     pub damage: i64,
+    /// Event-reported post-hit HP and pawn start-of-tick HP, when observed.
+    #[serde(default)]
+    pub post_health: Option<i32>,
+    #[serde(default)]
+    pub start_health: Option<i32>,
+    /// Pinned demoinfocs HealthDamageTaken; absent for older or incomplete facts.
+    #[serde(default)]
+    pub effective_damage: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

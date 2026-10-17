@@ -39,6 +39,7 @@ export type RoundHurt = {
   victimSteamid: string;
   victimSide: string | null;
   rawDamage: number;
+  effectiveDamage: number | null;
 };
 
 export type RecordedRound = {
@@ -48,6 +49,8 @@ export type RecordedRound = {
   freezeEndTick: number | null;
   endTick: number | null;
   endReason: string | null;
+  teamASide: string | null;
+  teamBSide: string | null;
   ctEquipValue: number | null;
   tEquipValue: number | null;
   combat: { ctPlayers: number; tPlayers: number; unassignedPlayers: number; enemyKills: number | null } | null;
@@ -60,10 +63,12 @@ export type MatchDetail = {
   fullCombatCoverage: boolean;
   rounds: RecordedRound[];
   players: { steamid: string; name: string; combat: {
+    stableTeam: string | null;
     enemyKills: number | null; deaths: number; enemyAssists: number | null;
-    enemyHealthDamage: number | null;
-    rounds: { roundNumber: number; side: string | null; enemyKills: number | null;
-      deaths: number; enemyAssists: number | null; enemyHealthDamage: number | null }[];
+    enemyHealthDamage: number | null; effectiveEnemyHealthDamage: number | null;
+    rounds: { roundNumber: number; side: string | null; stableTeam: string | null;
+      enemyKills: number | null; deaths: number; enemyAssists: number | null;
+      enemyHealthDamage: number | null; effectiveEnemyHealthDamage: number | null }[];
   } | null }[];
   utilityEvents: {
     id: number; roundNumber: number; utilityType: string; throwerName: string;

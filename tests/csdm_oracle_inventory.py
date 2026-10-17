@@ -42,16 +42,16 @@ with sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True) as connect
         )
     }
     rounds = [
-        dict(zip(("number", "winner", "start", "freezeEnd", "end", "reason"), row))
+        dict(zip(("number", "winner", "start", "freezeEnd", "end", "reason", "teamASide", "teamBSide"), row))
         for row in connection.execute(
-            "SELECT round_number, winner, start_tick, freeze_end_tick, end_tick, end_reason "
+            "SELECT round_number, winner, start_tick, freeze_end_tick, end_tick, end_reason, team_a_side, team_b_side "
             "FROM rounds ORDER BY round_number"
         )
     ]
     native_hurts = [
-        dict(zip(("roundNumber", "tick", "attackerSteamId", "victimSteamId", "healthDamage"), row))
+        dict(zip(("roundNumber", "tick", "attackerSteamId", "victimSteamId", "healthDamage", "effectiveHealthDamage"), row))
         for row in connection.execute(
-            "SELECT round_number, tick, attacker_steamid, victim_steamid, raw_dmg_health "
+            "SELECT round_number, tick, attacker_steamid, victim_steamid, raw_dmg_health, effective_health_damage "
             "FROM raw_combat_hurts ORDER BY source_index"
         )
     ]
@@ -63,10 +63,12 @@ with sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True) as connect
         )
     ]
     native_players = {
-        steamid: dict(zip(("enemyKills", "enemyAssists", "deaths", "enemyHealthDamage"), row[1:]))
+        steamid: dict(zip(("enemyKills", "enemyAssists", "deaths", "enemyHealthDamage", "effectiveHealthDamage", "unknownEffectiveRows"), row[1:]))
         for row in connection.execute(
             "SELECT steamid, SUM(enemy_kills), SUM(enemy_assists), SUM(deaths), "
-            "SUM(enemy_health_damage) FROM player_round_combat GROUP BY steamid"
+            "SUM(enemy_health_damage), SUM(effective_enemy_health_damage), "
+            "SUM(CASE WHEN effective_enemy_health_damage IS NULL THEN 1 ELSE 0 END) "
+            "FROM player_round_combat GROUP BY steamid"
         ) for steamid in [row[0]]
     }
 
@@ -120,7 +122,9 @@ reason_names = {1: "bomb_exploded", 7: "bomb_defused", 8: "t_killed",
 for upstream, native in zip(oracle.get("rounds", []), rounds):
     differences = {}
     for source, target, mapping in (("winnerSide", "winner", side_names),
-                                    ("endReason", "reason", reason_names)):
+                                    ("endReason", "reason", reason_names),
+                                    ("teamASide", "teamASide", side_names),
+                                    ("teamBSide", "teamBSide", side_names)):
         translated = mapping.get(upstream.get(source), "unmapped")
         if translated != native.get(target):
             differences[source] = {"upstream": upstream.get(source),
@@ -165,6 +169,8 @@ in_match_deaths = [dict(event, roundNumber=match_round(event))
                    for event in native_deaths if match_round(event) is not None]
 in_match_hurts = [dict(event, roundNumber=match_round(event))
                   for event in native_hurts if match_round(event) is not None]
+in_match_effective = [dict(event, healthDamage=event["effectiveHealthDamage"])
+                      for event in in_match_hurts]
 
 player_comparison = []
 for steamid, upstream in sorted(oracle.get("players", {}).items()):
@@ -200,6 +206,10 @@ comparison = {
                               "nativeLowerEventCount": sum(sum(item["nativeRaw"]) < sum(item["upstreamEffective"])
                                                            for item in damage_amount_differences),
                               "samples": damage_amount_differences[:12]},
+    "effectiveDamageEventAmounts": event_differences(
+        oracle.get("damages", []), in_match_effective,
+        damage_fields + ("healthDamage",),
+    ),
     "killVsInMatchDeathIdentity": event_differences(
         oracle.get("kills", []), in_match_deaths,
         ("roundNumber", "tick", "killerSteamId", "victimSteamId", "assisterSteamId"),
@@ -253,7 +263,8 @@ if rounds and rounds[0]["start"] != expected["first"]:
 for number, start in expected.get("timeoutStarts", {}).items():
     if next((row["start"] for row in rounds if row["number"] == number), None) != start:
         failures.append(f"Timeout round {number} start no longer equals observed zero tick {start}")
-for field in ("killVsInMatchDeathIdentity", "damageEventIdentityWithinMatchWithoutAmount"):
+for field in ("killVsInMatchDeathIdentity", "damageEventIdentityWithinMatchWithoutAmount",
+              "effectiveDamageEventAmounts"):
     result = comparison[field]
     if result["upstreamCount"] != result["nativeCount"] or result["upstreamOnlyCount"] or result["nativeOnlyCount"]:
         failures.append(f"{field} differs: {result}")
@@ -261,9 +272,12 @@ if len(player_comparison) != 10 or set(native_players) != set(oracle.get("player
     failures.append("Pinned player identity set changed")
 for player in player_comparison:
     upstream, native = player["upstream"], player["native"]
-    for source, target in (("killCount", "enemyKills"), ("assistCount", "enemyAssists"), ("deathCount", "deaths")):
+    if native.get("unknownEffectiveRows"):
+        failures.append(f"{player['steamId']} has unavailable effective damage rows")
+    for source, target in (("killCount", "enemyKills"), ("assistCount", "enemyAssists"),
+                           ("deathCount", "deaths"), ("healthDamage", "effectiveHealthDamage")):
         if upstream[source] != native.get(target):
             failures.append(f"{player['steamId']} {source}: upstream={upstream[source]} native={native.get(target)}")
 if failures:
     raise AssertionError(f"{fixture} independent analyzer regression failed:\\n" + "\\n".join(failures))
-print(f"PASS: {fixture} pinned analyzer agrees on all shared rounds, event identities, and ten player K/A/D totals")
+print(f"PASS: {fixture} pinned analyzer agrees on shared rounds/team sides, event identities/effective HP, and ten player K/A/D/effective damage totals")

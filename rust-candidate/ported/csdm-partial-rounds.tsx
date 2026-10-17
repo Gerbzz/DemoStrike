@@ -23,7 +23,7 @@ const roundReason = (reason: string | null) => reason === null ? 'Unavailable' :
 function RoundsHistory({ rounds }: { rounds: RecordedRound[] }) {
   return <section aria-label="Round history" className="mt-16">
     <h2 className="text-subtitle">Round history</h2>
-    <p className="mt-4 text-gray-700">CT and T are sides for each round. Side switches cannot establish stable team identity.</p>
+    <p className="mt-4 text-gray-700">CT and T are round sides. Team A/B sides appear when match start and game phase switches were observed.</p>
     <div className="mt-12 max-w-full overflow-x-auto pb-8">
       <div className="grid w-max grid-flow-col grid-rows-[30px_repeat(2,35px)] gap-px border border-gray-300 bg-gray-300"
         style={{ gridTemplateColumns: `80px repeat(${rounds.length}, 48px)` }}>
@@ -75,7 +75,8 @@ function HurtEntry({ hurt, detail }: { hurt: RoundHurt; detail: MatchDetail }) {
       {knownSide(hurt.attackerSide) && <span className="ml-4 text-gray-700">({hurt.attackerSide})</span>}
       <span className="mx-8 text-gray-700">&gt;</span>{playerLabel(detail, hurt.victimSteamid)}
       {knownSide(hurt.victimSide) && <span className="ml-4 text-gray-700">({hurt.victimSide})</span>}
-      <span className="ml-8 tabular-nums">{hurt.rawDamage} raw damage</span>
+      <span className="ml-8 tabular-nums">{hurt.effectiveDamage === null ? 'Effective HP unavailable' : `${hurt.effectiveDamage} effective HP`}</span>
+      <span className="ml-8 text-gray-700 tabular-nums">{hurt.rawDamage} raw</span>
       <span className="ml-8 text-gray-700">{hurt.weapon ?? 'Weapon unavailable'}</span>
     </span>
   </li>;
@@ -96,6 +97,8 @@ function RoundEntry({ round, detail, expanded }: { round: RecordedRound; detail:
         <div><dt className="text-gray-700">Freeze end tick</dt><dd>{recorded(round.freezeEndTick)}</dd></div>
         <div><dt className="text-gray-700">End tick</dt><dd>{recorded(round.endTick)}</dd></div>
         <div><dt className="text-gray-700">End reason</dt><dd>{roundReason(round.endReason)}</dd></div>
+        <div><dt className="text-gray-700">Team A side</dt><dd>{round.teamASide ?? 'Unavailable'}</dd></div>
+        <div><dt className="text-gray-700">Team B side</dt><dd>{round.teamBSide ?? 'Unavailable'}</dd></div>
         <div><dt className="text-gray-700">CT equipment value</dt><dd>{recorded(round.ctEquipValue)}</dd></div>
         <div><dt className="text-gray-700">T equipment value</dt><dd>{recorded(round.tEquipValue)}</dd></div>
         <div><dt className="text-gray-700">Observed CT / T</dt><dd>{round.combat ? `${round.combat.ctPlayers} / ${round.combat.tPlayers}` : 'Unavailable'}</dd></div>
@@ -110,7 +113,7 @@ function RoundEntry({ round, detail, expanded }: { round: RecordedRound; detail:
     </div>
     {expanded && <section className="mt-16 ml-16 border-l-2 border-gray-300 pl-12" aria-label="Round raw damage">
       <h3 className="text-body-strong">Recorded damage events</h3>
-      <p className="mt-4 text-gray-700">Amounts are raw demo damage values, not effective health damage. Hitgroups and shots fired were not recorded.</p>
+      <p className="mt-4 text-gray-700">Effective HP follows the pinned CSDM damage rule when recorded. Raw values can include overkill. Hitgroups and shots fired remain unavailable.</p>
       {round.hurts === null ? <p className="mt-8 text-gray-700">Ordered damage events were not recorded for this import.</p> :
         round.hurts.length === 0 ? <p className="mt-8 text-gray-700">No damage events recorded in this round.</p> :
           <ol className="mt-8">{round.hurts.map((hurt) => <HurtEntry key={hurt.sourceIndex} hurt={hurt} detail={detail} />)}</ol>}

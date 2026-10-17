@@ -244,6 +244,20 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX raw_combat_deaths_timeline ON raw_combat_deaths(match_id, tick, event_order);
     "#,
+    // v9 - preserve effective HP alongside the raw source value. Existing
+    // imports remain unknown; migration never fabricates health or team facts.
+    r#"
+    ALTER TABLE raw_combat_hurts ADD COLUMN post_health INTEGER;
+    ALTER TABLE raw_combat_hurts ADD COLUMN start_health INTEGER;
+    ALTER TABLE raw_combat_hurts ADD COLUMN effective_health_damage INTEGER
+        CHECK (effective_health_damage >= 0 OR effective_health_damage IS NULL);
+    ALTER TABLE player_round_combat ADD COLUMN effective_enemy_health_damage INTEGER
+        CHECK (effective_enemy_health_damage >= 0 OR effective_enemy_health_damage IS NULL);
+    ALTER TABLE rounds ADD COLUMN team_a_side TEXT CHECK (team_a_side IN ('CT','T') OR team_a_side IS NULL);
+    ALTER TABLE rounds ADD COLUMN team_b_side TEXT CHECK (team_b_side IN ('CT','T') OR team_b_side IS NULL);
+    ALTER TABLE player_round_combat ADD COLUMN stable_team TEXT
+        CHECK (stable_team IN ('A','B') OR stable_team IS NULL);
+    "#,
 ];
 
 pub fn open(path: &Path) -> AppResult<Connection> {
@@ -334,6 +348,37 @@ mod capability_migration_tests {
     }
 
     #[test]
+    fn v8_combat_migrates_without_inventing_effective_hp_or_team() {
+        let conn = Connection::open_in_memory().unwrap();
+        configure(&conn).unwrap();
+        for sql in &MIGRATIONS[..8] { conn.execute_batch(sql).unwrap(); }
+        conn.pragma_update(None, "user_version", 8).unwrap();
+        conn.execute_batch("INSERT INTO matches
+            (id,file_path,file_name,map_name,tick_rate,imported_at,parser_capability)
+            VALUES (7,'C:/old.dem','old.dem','de_mirage',64,'2026-10-08','native-combat-full-v2');
+            INSERT INTO rounds (match_id,round_number,start_tick) VALUES (7,1,100);
+            INSERT INTO player_round_combat
+            (match_id,round_number,steamid,side,enemy_kills,deaths,enemy_assists,enemy_health_damage)
+            VALUES (7,1,'s1','CT',1,0,0,140);
+            INSERT INTO raw_combat_hurts
+            (match_id,source_index,tick,round_number,victim_steamid,raw_dmg_health)
+            VALUES (7,0,200,1,'s2',140);").unwrap();
+        migrate(&conn).unwrap();
+        let damage: (i64, Option<i64>, Option<i64>) = conn.query_row(
+            "SELECT raw_dmg_health, effective_health_damage, post_health FROM raw_combat_hurts WHERE match_id=7",
+            [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).unwrap();
+        let totals: (i64, Option<i64>, Option<String>) = conn.query_row(
+            "SELECT enemy_health_damage, effective_enemy_health_damage, stable_team
+             FROM player_round_combat WHERE match_id=7",
+            [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).unwrap();
+        let team_a: Option<String> = conn.query_row(
+            "SELECT team_a_side FROM rounds WHERE match_id=7", [], |row| row.get(0)).unwrap();
+        assert_eq!(damage, (140, None, None));
+        assert_eq!(totals, (140, None, None));
+        assert_eq!(team_a, None);
+    }
+
+    #[test]
     fn v6_import_migrates_without_inventing_combat_or_replacing_annotations() {
         let conn = Connection::open_in_memory().unwrap();
         configure(&conn).unwrap();
@@ -366,7 +411,7 @@ mod capability_migration_tests {
                 (SELECT COUNT(*) FROM render_job_events WHERE event_id=e.id)
              FROM utility_events e WHERE e.id=9", [],
             |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).unwrap();
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
         assert_eq!(player, "preserved");
         assert_eq!(combat, 0);
         assert_eq!(raw_combat, 0);

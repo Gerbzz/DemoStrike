@@ -29,6 +29,8 @@ pub struct AnalyzedRound {
     pub end_tick: Option<i64>,
     pub winner: Option<String>,
     pub end_reason: Option<String>,
+    pub team_a_side: Option<String>,
+    pub team_b_side: Option<String>,
     pub ct_equip_value: Option<i64>,
     pub t_equip_value: Option<i64>,
 }
@@ -82,12 +84,15 @@ pub struct AnalyzedPlayerRoundCombat {
     pub round_number: i64,
     pub steamid: String,
     pub side: Option<String>,
+    pub stable_team: Option<String>,
     pub enemy_kills: Option<i64>,
     pub deaths: i64,
     pub enemy_assists: Option<i64>,
     /// Sum of raw player_hurt.dmg_health events. This can exceed available HP
     /// on lethal hits and is not CSDM's effective HealthDamageTaken value.
     pub enemy_health_damage: Option<i64>,
+    /// Pinned analyzer effective HP, nullable for old or incomplete imports.
+    pub effective_enemy_health_damage: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -134,10 +139,11 @@ pub fn build_match(raw: &RawDemo) -> AnalyzedMatch {
 }
 
 fn combat_row<'a>(rows: &'a mut HashMap<(i64, String), AnalyzedPlayerRoundCombat>,
-    round: i64, steamid: &str) -> &'a mut AnalyzedPlayerRoundCombat {
+    round: i64, steamid: &str, effective_available: bool) -> &'a mut AnalyzedPlayerRoundCombat {
     rows.entry((round, steamid.to_owned())).or_insert_with(|| AnalyzedPlayerRoundCombat {
-        round_number: round, steamid: steamid.to_owned(), side: None,
+        round_number: round, steamid: steamid.to_owned(), side: None, stable_team: None,
         enemy_kills: Some(0), deaths: 0, enemy_assists: Some(0), enemy_health_damage: Some(0),
+        effective_enemy_health_damage: effective_available.then_some(0),
     })
 }
 
@@ -172,7 +178,7 @@ fn build_player_round_combat(raw: &RawDemo, rounds: &[AnalyzedRound]) -> Vec<Ana
             || !rounds.iter().any(|round| round.round_number == assignment.round) { continue; }
         let key = (assignment.round, assignment.steamid.clone());
         let side = normalize_team(Some(&assignment.side));
-        let row = combat_row(&mut rows, assignment.round, &assignment.steamid);
+        let row = combat_row(&mut rows, assignment.round, &assignment.steamid, raw.effective_health_damage_available);
         if let Some(side) = side {
             if row.side.is_some() && row.side.as_ref() != Some(&side) {
                 conflicting_sides.insert(key);
@@ -184,14 +190,25 @@ fn build_player_round_combat(raw: &RawDemo, rounds: &[AnalyzedRound]) -> Vec<Ana
     for hurt in &raw.combat_hurts {
         if hurt.round < 1 || hurt.damage < 0 { continue; }
         let Some(round) = completed_combat_round(hurt.round, hurt.tick, rounds) else { continue; };
-        combat_row(&mut rows, round, &hurt.victim_steamid);
+        combat_row(&mut rows, round, &hurt.victim_steamid, raw.effective_health_damage_available);
         if let Some(attacker) = hurt.attacker_steamid.as_deref() {
-            let row = combat_row(&mut rows, round, attacker);
+            let row = combat_row(&mut rows, round, attacker, raw.effective_health_damage_available);
             if attacker != hurt.victim_steamid {
                 match observed_enemy(hurt.attacker_team.as_deref(), hurt.victim_team.as_deref()) {
-                    Some(true) => add_known(&mut row.enemy_health_damage, hurt.damage),
+                    Some(true) => {
+                        add_known(&mut row.enemy_health_damage, hurt.damage);
+                        if raw.effective_health_damage_available {
+                            match hurt.effective_damage {
+                                Some(value) if value >= 0 => add_known(&mut row.effective_enemy_health_damage, value),
+                                _ => row.effective_enemy_health_damage = None,
+                            }
+                        }
+                    },
                     Some(false) => {},
-                    None => row.enemy_health_damage = None,
+                    None => {
+                        row.enemy_health_damage = None;
+                        row.effective_enemy_health_damage = None;
+                    },
                 }
             }
         }
@@ -205,10 +222,10 @@ fn build_player_round_combat(raw: &RawDemo, rounds: &[AnalyzedRound]) -> Vec<Ana
         let disconnected = death.weapon.as_deref() == Some("world")
             && death.attacker_steamid.as_deref() == Some(death.victim_steamid.as_str());
         if !disconnected {
-            combat_row(&mut rows, round, &death.victim_steamid).deaths += 1;
+            combat_row(&mut rows, round, &death.victim_steamid, raw.effective_health_damage_available).deaths += 1;
         }
         if let Some(attacker) = death.attacker_steamid.as_deref() {
-            let row = combat_row(&mut rows, round, attacker);
+            let row = combat_row(&mut rows, round, attacker, raw.effective_health_damage_available);
             if attacker != death.victim_steamid {
                 match observed_enemy(death.attacker_team.as_deref(), death.victim_team.as_deref()) {
                     Some(true) => add_known(&mut row.enemy_kills, 1),
@@ -218,7 +235,7 @@ fn build_player_round_combat(raw: &RawDemo, rounds: &[AnalyzedRound]) -> Vec<Ana
             }
         }
         if let Some(assister) = death.assister_steamid.as_deref() {
-            let row = combat_row(&mut rows, round, assister);
+            let row = combat_row(&mut rows, round, assister, raw.effective_health_damage_available);
             if assister != death.victim_steamid && death.attacker_steamid.as_deref() != Some(assister) {
                 match observed_enemy(death.assister_team.as_deref(), death.victim_team.as_deref()) {
                     Some(true) => add_known(&mut row.enemy_assists, 1),
@@ -234,7 +251,16 @@ fn build_player_round_combat(raw: &RawDemo, rounds: &[AnalyzedRound]) -> Vec<Ana
             row.enemy_kills = None;
             row.enemy_assists = None;
             row.enemy_health_damage = None;
+            row.effective_enemy_health_damage = None;
         }
+    }
+    for row in rows.values_mut() {
+        row.stable_team = rounds.iter().find(|round| round.round_number == row.round_number)
+            .and_then(|round| match (row.side.as_deref(), round.team_a_side.as_deref(), round.team_b_side.as_deref()) {
+                (Some(side), Some(a), _) if side == a => Some("A".to_owned()),
+                (Some(side), _, Some(b)) if side == b => Some("B".to_owned()),
+                _ => None,
+            });
     }
     let mut result: Vec<_> = rows.into_values().collect();
     result.sort_by(|a, b| (a.round_number, &a.steamid).cmp(&(b.round_number, &b.steamid)));
@@ -307,6 +333,18 @@ pub fn infer_tick_rate(header: &RawHeader) -> f64 {
     }
 }
 
+// The original CSDM analyzer starts Team A on CT and swaps only when the
+// GameRules game phase changes to TeamSideSwitch (3) after match start.
+// A truncated recording without begin_new_match has no proven initial side.
+fn team_a_side_at_round(raw: &RawDemo, start_tick: Option<i64>) -> Option<&'static str> {
+    let tick = start_tick.filter(|_| raw.observed_match_start)?;
+    if raw.team_side_switch_ticks.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return None;
+    }
+    let switches = raw.team_side_switch_ticks.iter().filter(|&&at| at <= tick).count();
+    Some(if switches % 2 == 0 { "CT" } else { "T" })
+}
+
 fn build_rounds(raw: &RawDemo) -> Vec<AnalyzedRound> {
     let mut by_round: HashMap<i64, AnalyzedRound> = HashMap::new();
     for ev in &raw.round_events {
@@ -321,6 +359,8 @@ fn build_rounds(raw: &RawDemo) -> Vec<AnalyzedRound> {
             end_tick: None,
             winner: None,
             end_reason: None,
+            team_a_side: None,
+            team_b_side: None,
             ct_equip_value: None,
             t_equip_value: None,
         });
@@ -364,6 +404,12 @@ fn build_rounds(raw: &RawDemo) -> Vec<AnalyzedRound> {
 
     let mut rounds: Vec<_> = by_round.into_values().collect();
     rounds.sort_by_key(|r| r.round_number);
+    for round in &mut rounds {
+        if let Some(side) = team_a_side_at_round(raw, round.start_tick) {
+            round.team_a_side = Some(side.into());
+            round.team_b_side = Some(if side == "CT" { "T" } else { "CT" }.into());
+        }
+    }
     rounds
 }
 
@@ -955,6 +1001,61 @@ mod tests {
         assert_eq!(attacker.enemy_health_damage, Some(22));
         assert_eq!(attacker.enemy_kills, Some(1));
         assert_eq!(analyzed.player_round_combat.iter().find(|row| row.steamid == "s2").unwrap().deaths, 1);
+    }
+
+    #[test]
+    fn effective_hp_and_stable_team_follow_observed_match_and_halftime() {
+        let mut raw = minimal_raw();
+        raw.observed_match_start = true;
+        raw.effective_health_damage_available = true;
+        raw.team_side_switch_ticks = vec![8400];
+        raw.round_events.extend(serde_json::from_value::<Vec<_>>(serde_json::json!([
+            {"kind":"round_start","tick":8500,"round":2,"winner":null,"reason":null},
+            {"kind":"round_freeze_end","tick":9300,"round":2,"winner":null,"reason":null},
+            {"kind":"round_end","tick":12000,"round":2,"winner":"T","reason":"ct_killed"}
+        ])).unwrap());
+        raw.round_sides = serde_json::from_value(serde_json::json!([
+            {"round":1,"steamid":"s1","side":"CT"},
+            {"round":1,"steamid":"s2","side":"T"},
+            {"round":2,"steamid":"s1","side":"T"},
+            {"round":2,"steamid":"s2","side":"CT"}
+        ])).unwrap();
+        raw.combat_hurts = serde_json::from_value(serde_json::json!([
+            {"tick":3100,"round":1,"weapon":"ak47","attackerSteamid":"s1","attackerTeam":"CT",
+             "victimSteamid":"s2","victimTeam":"T","damage":88,"postHealth":12,
+             "startHealth":100,"effectiveDamage":88},
+            {"tick":3100,"round":1,"weapon":"ak47","attackerSteamid":"s1","attackerTeam":"CT",
+             "victimSteamid":"s2","victimTeam":"T","damage":119,"postHealth":0,
+             "startHealth":100,"effectiveDamage":12},
+            {"tick":9400,"round":2,"weapon":"ak47","attackerSteamid":"s1","attackerTeam":"T",
+             "victimSteamid":"s2","victimTeam":"CT","damage":20,"postHealth":80,
+             "startHealth":100,"effectiveDamage":20}
+        ])).unwrap();
+        let analyzed = build_match(&raw);
+        assert_eq!(analyzed.rounds.iter().map(|row| row.team_a_side.as_deref()).collect::<Vec<_>>(),
+            vec![Some("CT"), Some("T")]);
+        let player = |round| analyzed.player_round_combat.iter()
+            .find(|row| row.round_number == round && row.steamid == "s1").unwrap();
+        assert_eq!(player(1).stable_team.as_deref(), Some("A"));
+        assert_eq!(player(2).stable_team.as_deref(), Some("A"));
+        assert_eq!(player(1).enemy_health_damage, Some(207));
+        assert_eq!(player(1).effective_enemy_health_damage, Some(100));
+        assert_eq!(player(2).effective_enemy_health_damage, Some(20));
+
+        raw.observed_match_start = false;
+        raw.effective_health_damage_available = false;
+        let old = build_match(&raw);
+        assert!(old.rounds.iter().all(|row| row.team_a_side.is_none()));
+        assert!(old.player_round_combat.iter().all(|row| row.stable_team.is_none()
+            && row.effective_enemy_health_damage.is_none()));
+        raw.observed_match_start = true;
+        raw.effective_health_damage_available = true;
+        raw.combat_hurts[0].effective_damage = None;
+        let incomplete = build_match(&raw);
+        let first = incomplete.player_round_combat.iter()
+            .find(|row| row.round_number == 1 && row.steamid == "s1").unwrap();
+        assert_eq!(first.effective_enemy_health_damage, None);
+        assert_eq!(first.enemy_health_damage, Some(207));
     }
 
     #[test]

@@ -33,7 +33,7 @@ export function PlayersDuelsMatrix() {
     <div className="flex flex-wrap items-end justify-between gap-12">
       <div>
         <h1 className="text-title">Recorded duels</h1>
-        <p className="mt-4 max-w-[760px] text-gray-700">Rows are attackers; columns are victims. Counts include only opposing sides observed at each death. A side switch does not establish a stable team.</p>
+        <p className="mt-4 max-w-[760px] text-gray-700">Rows are attackers; columns are victims. Counts include only opposing sides observed at each death. Stable Team A/B labels are shown only when the match start and phase switches were observed.</p>
       </div>
       <label className="flex items-center gap-8 text-body-strong">Round
         <select aria-label="Round filter" className="rounded border border-gray-400 bg-gray-50 px-8 py-4 text-body"
