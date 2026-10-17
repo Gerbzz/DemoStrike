@@ -140,7 +140,7 @@ async function main() {
       'Native raw death events did not reach the partial CSDM round view');
     const roundDetailShot = path.join(outputDir, 'real-demo-round-detail.png');
     await captureAppOnly(page, roundDetailShot);
-    await page.getByRole('link', { name: 'Open round 1' }).click();
+    await page.getByRole('link', { name: 'Open round 1', exact: true }).click();
     await page.getByRole('heading', { name: 'Round 1', exact: true }).waitFor({ timeout: 30000 });
     await page.getByRole('heading', { name: 'Recorded damage events' }).waitFor({ timeout: 30000 });
     assert.ok(await page.locator('section[aria-label="Round raw damage"] ol li').count() > 0,
