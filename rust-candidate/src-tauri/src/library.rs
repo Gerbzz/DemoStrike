@@ -274,9 +274,17 @@ fn has_ordered_combat_hurts(
         .query_map([], |row| row.get::<_, String>(1))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok([
-        "match_id", "source_index", "event_order", "tick", "round_number",
-        "weapon", "attacker_steamid", "attacker_side", "victim_steamid",
-        "victim_side", "raw_dmg_health",
+        "match_id",
+        "source_index",
+        "event_order",
+        "tick",
+        "round_number",
+        "weapon",
+        "attacker_steamid",
+        "attacker_side",
+        "victim_steamid",
+        "victim_side",
+        "raw_dmg_health",
     ]
     .iter()
     .all(|column| columns.iter().any(|name| name == column)))
@@ -290,11 +298,15 @@ fn effective_event_round(
     tick: i64,
     boundaries: &[(i64, Option<i64>, Option<i64>)],
 ) -> Option<i64> {
-    let (_, start, _) = boundaries.iter().find(|(number, _, _)| *number == raw_round)?;
+    let (_, start, _) = boundaries
+        .iter()
+        .find(|(number, _, _)| *number == raw_round)?;
     if start.is_some_and(|value| tick < value) {
         return boundaries
             .iter()
-            .filter(|(number, _, end)| *number < raw_round && end.is_some_and(|value| value <= tick))
+            .filter(|(number, _, end)| {
+                *number < raw_round && end.is_some_and(|value| value <= tick)
+            })
             .max_by_key(|(_, _, end)| *end)
             .map(|(number, _, _)| *number);
     }
@@ -494,7 +506,9 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
         "SELECT round_number, start_tick, end_tick FROM rounds WHERE match_id = ?1 ORDER BY round_number",
     )?;
     let boundaries = boundary_query
-        .query_map([match_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .query_map([match_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?
         .collect::<Result<Vec<(i64, Option<i64>, Option<i64>)>, _>>()?;
 
     let mut deaths_by_round = None;
@@ -708,3 +722,4 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
         full_combat_coverage,
     })
 }
+
