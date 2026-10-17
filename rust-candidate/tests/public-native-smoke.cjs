@@ -93,15 +93,20 @@ async function main() {
     const matchesShot = path.join(outputDir, 'real-demo-matches.png');
     await captureAppOnly(page, matchesShot);
     await row.dblclick();
-    await page.getByRole('heading', { name: 'Recorded combat' }).waitFor({ timeout: 30000 });
+    await page.getByRole('heading', { name: 'de_mirage' }).waitFor({ timeout: 30000 });
+    await page.getByRole('heading', { name: 'Recorded players' }).waitFor({ timeout: 30000 });
     assert.equal(await page.getByText('Synthetic CI fixture:', { exact: false }).count(), 0);
     const overviewShot = path.join(outputDir, 'real-demo-overview.png');
     await captureAppOnly(page, overviewShot);
     await page.getByRole('link', { name: 'Rounds' }).click();
     await page.getByRole('heading', { name: 'Recorded rounds' }).waitFor({ timeout: 30000 });
-    await page.waitForFunction(() => document.querySelectorAll('tbody tr').length >= 10, null, { timeout: 30000 });
-    const roundRows = await page.locator('tbody tr').count();
+    await page.waitForFunction(() => document.querySelectorAll('section[aria-label="Round entries"] details').length >= 10, null, { timeout: 30000 });
+    const roundRows = await page.locator('section[aria-label="Round entries"] details').count();
     assert.ok(roundRows >= 10, `Unexpected round count: ${roundRows}`);
+    await page.locator('section[aria-label="Round entries"] details').first().locator('summary').click();
+    await page.getByRole('heading', { name: 'Recorded death events' }).first().waitFor({ timeout: 30000 });
+    assert.ok(await page.locator('section[aria-label="Round entries"] ol li').count() > 0,
+      'Native raw death events did not reach the partial CSDM round view');
     const roundsShot = path.join(outputDir, 'real-demo-rounds.png');
     await captureAppOnly(page, roundsShot);
     await page.getByRole('link', { name: 'Players' }).click();
@@ -169,4 +174,3 @@ async function main() {
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; });
-
