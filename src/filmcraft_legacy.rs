@@ -750,12 +750,17 @@ fn convert(plan: Plan) -> Result<Session, Refusal> {
             )
             .map_err(|e| step_error(&format!("audio track {}", track.id), e))?;
     }
+    let marker_rate = rate_for(plan.fps).ok_or_else(|| Refusal::one("converted sequence frame rate changed"))?;
     for marker in &plan.markers {
+        // ClipStrike stores cue times in whole milliseconds; a 60 fps frame
+        // often falls between them. Carry the intended nearest frame into
+        // FilmCraft so the ruler and placed clips use one time base.
+        let cue_time = marker_rate.snap_nearest(ticks(marker.time_ms));
         session
             .execute(
                 "markers.add",
                 json!({
-                    "time": ticks(marker.time_ms).0,
+                    "time": cue_time.0,
                     "name": marker.label,
                     "comment": format!("Imported ClipStrike cue {}; original RGBA and source JSON are retained in Project Notes", marker.id),
                     "color": "Mango",
@@ -765,9 +770,18 @@ fn convert(plan: Plan) -> Result<Session, Refusal> {
     }
     let seq = session.active_sequence().ok_or_else(|| Refusal::one("converted cue sequence disappeared"))?;
     for marker in &plan.markers {
-        if !seq.markers.iter().any(|cue| cue.start == ticks(marker.time_ms) && cue.name == marker.label) {
+        let cue_time = marker_rate.snap_nearest(ticks(marker.time_ms));
+        if !seq.markers.iter().any(|cue| cue.start == cue_time && cue.name == marker.label) {
             return Err(Refusal::one(format!("cue marker {} changed time or label during conversion", marker.id)));
         }
+    }
+    if let Some(last_ms) = plan.markers.iter().map(|marker| marker.time_ms).max() {
+        let active = session.state.active_sequence.ok_or_else(|| Refusal::one("converted cue sequence is not active"))?;
+        let pps = (560.0 / (last_ms as f64 / 1_000.0 + 0.75)).clamp(28.0, 100.0);
+        session.state.timeline_views.insert(active, filmcraft_project::SequenceView {
+            pps, scroll: 0.0, v_scroll: 0.0, a_scroll: 0.0,
+            video_track_h: 52.0, audio_track_h: 36.0,
+        });
     }
     let notes = format!("ClipStrike legacy source JSON retained for provenance. Original .cstrike is unchanged.\\n{}", plan.original);
     session
@@ -819,6 +833,8 @@ mod tests {
         assert_eq!(cues[0].start, ticks(2_000));
         assert_eq!(cues[0].name, "Lineup pause begins - both cameras");
         assert_eq!(cues[1].start - cues[0].start, ticks(2_000));
+        let view = session.state.timeline_views[&session.state.active_sequence.unwrap()];
+        assert!(view.pps >= 28.0 && view.scroll == 0.0);
         let dir = tempfile::tempdir().unwrap();
         let saved = dir.path().join("converted.fcproj");
         session.execute("file.saveAs", json!({"path": saved.to_string_lossy()})).unwrap();

@@ -6,15 +6,19 @@ mod filmcraft_legacy;
 use demostrike::edit_handoff::{EditSpan, OfflineEditPlan};
 use filmcraft_engine::Session;
 use filmcraft_project::ClipId;
-use filmcraft_time::Tick;
+use filmcraft_time::{FrameRate, Tick};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn tick(ms: i64) -> Tick {
-    Tick::from_units(ms, 1_000)
+fn frame_tick(frame: i64) -> Tick {
+    FrameRate::FPS_60.tick_of(frame)
+}
+
+fn frame_at_ms(ms: i64) -> i64 {
+    ((i128::from(ms) * 60 + 500) / 1_000) as i64
 }
 
 fn fail(message: impl Into<String>) -> String {
@@ -52,6 +56,7 @@ fn synthetic_image(path: &Path, index: u8) -> Result<(), String> {
 fn open_document(path: &Path) -> Result<Session, String> {
     if path
         .extension()
+        .and_then(|ext| ext.to_str())
         .is_some_and(|ext| ext.eq_ignore_ascii_case("cstrike"))
     {
         filmcraft_legacy::load_and_convert(path).map_err(|e| e.to_string())
@@ -86,15 +91,18 @@ fn assert_cues(session: &Session, plan: &OfflineEditPlan) -> Result<(), String> 
         .round() as i64
         + plan.lineup_hold_ms;
     let expected = [
-        (hold.timeline_start_ms, "Lineup pause begins - both cameras"),
-        (hold.timeline_end_ms, "Lineup pause ends - both cameras"),
-        (plan.throw_timeline_ms, "Grenade release - synchronized"),
-        (detonate, "Detonation"),
+        (
+            hold.timeline_start_frame,
+            "Lineup pause begins - both cameras",
+        ),
+        (hold.timeline_end_frame, "Lineup pause ends - both cameras"),
+        (plan.throw_timeline_frame, "Grenade release - synchronized"),
+        (frame_at_ms(detonate), "Detonation"),
     ];
-    for (cue, (time_ms, name)) in seq.markers.iter().zip(expected) {
-        if cue.start != tick(time_ms) || cue.name != name {
+    for (cue, (frame, name)) in seq.markers.iter().zip(expected) {
+        if cue.start != frame_tick(frame) || cue.name != name {
             return Err(format!(
-                "editor changed cue {:?}; expected {name} at {time_ms} ms",
+                "editor changed cue {:?}; expected {name} at frame {frame}",
                 cue
             ));
         }
@@ -110,9 +118,9 @@ fn check_placement(session: &Session, expected: &[(u64, usize, EditSpan)]) -> Re
         let (track, item) = seq
             .find_item(ClipId(*clip_id))
             .ok_or_else(|| format!("saved clip {clip_id} disappeared"))?;
-        if track.id != seq.video_tracks[*track_index].id
-            || item.start != tick(span.timeline_start_ms)
-            || item.duration != tick(span.timeline_end_ms - span.timeline_start_ms)
+        if track != seq.video_tracks[*track_index].id
+            || item.start != frame_tick(span.timeline_start_frame)
+            || item.duration != frame_tick(span.timeline_end_frame - span.timeline_start_frame)
         {
             return Err(format!("clip {clip_id} changed planned timeline placement"));
         }
@@ -173,8 +181,8 @@ fn run_one(
                 "timeline.place",
                 json!({
                     "item": id, "track": format!("V{}", track_index + 1),
-                    "time": tick(span.timeline_start_ms).0,
-                    "duration": tick(span.timeline_end_ms - span.timeline_start_ms).0,
+                    "time": frame_tick(span.timeline_start_frame).0,
+                    "duration": frame_tick(span.timeline_end_frame - span.timeline_start_frame).0,
                     "video": true, "audio": false, "insert": false,
                 }),
             )
@@ -215,9 +223,11 @@ fn run_one(
         .iter()
         .find(|s| s.camera_role == "third_person_reference" && s.kind == "hold")
         .unwrap();
-    if (pov.timeline_start_ms, pov.timeline_end_ms)
-        != (third.timeline_start_ms, third.timeline_end_ms)
-        || pov.timeline_end_ms - pov.timeline_start_ms != plan.lineup_hold_ms
+    if (pov.timeline_start_frame, pov.timeline_end_frame)
+        != (third.timeline_start_frame, third.timeline_end_frame)
+        || pov.timeline_end_frame - pov.timeline_start_frame != plan.lineup_hold_frames
+        || (plan.lineup_hold_frames as f64 / 60.0 * 1_000.0 - plan.lineup_hold_ms as f64).abs()
+            > 8.4
     {
         return Err(fail(
             "the two views do not share the same deliberate lineup freeze",
@@ -232,6 +242,9 @@ fn run_one(
         "cueCount": 4,
         "holdStartMs": pov.timeline_start_ms,
         "holdEndMs": pov.timeline_end_ms,
+        "holdStartFrame": pov.timeline_start_frame,
+        "holdEndFrame": pov.timeline_end_frame,
+        "commonHoldFrames": plan.lineup_hold_frames,
         "commonHoldMs": plan.lineup_hold_ms,
         "reopened": true,
     }))
@@ -251,7 +264,10 @@ fn run() -> Result<(), String> {
         &fs::read(handoff.join("capture-edit-plan.json")).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
-    if plan.status != "planning_only"
+    if plan.version != 2
+        || plan.editor_frame_rate != 60
+        || plan.lineup_hold_frames != 120
+        || plan.status != "planning_only"
         || plan.lineup_hold_ms != 2_000
         || plan.spans.len() != 7
         || plan.capture_request.demo_sha256

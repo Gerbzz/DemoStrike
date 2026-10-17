@@ -9,8 +9,28 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-pub const EDIT_HANDOFF_VERSION: u32 = 1;
+pub const EDIT_HANDOFF_VERSION: u32 = 2;
 pub const DEFAULT_LINEUP_HOLD_MS: i64 = 1_200;
+pub const EDITOR_FRAME_RATE: u32 = 60;
+
+fn frame_at_ms(ms: i64) -> Result<i64, String> {
+    if ms < 0 {
+        return Err("negative editor timeline time".into());
+    }
+    i64::try_from((i128::from(ms) * i128::from(EDITOR_FRAME_RATE) + 500) / 1_000)
+        .map_err(|_| "editor frame number overflows".into())
+}
+
+fn ms_at_frame(frame: i64) -> Result<i64, String> {
+    if frame < 0 {
+        return Err("negative editor frame number".into());
+    }
+    i64::try_from(
+        (i128::from(frame) * 1_000 + i128::from(EDITOR_FRAME_RATE / 2))
+            / i128::from(EDITOR_FRAME_RATE),
+    )
+    .map_err(|_| "editor time overflows".into())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +41,8 @@ pub struct EditSpan {
     pub source_end_tick: i64,
     pub timeline_start_ms: i64,
     pub timeline_end_ms: i64,
+    pub timeline_start_frame: i64,
+    pub timeline_end_frame: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +54,10 @@ pub struct OfflineEditPlan {
     pub timeline_origin_tick: i64,
     pub lineup_hold_tick: i64,
     pub lineup_hold_ms: i64,
+    pub lineup_hold_frames: i64,
     pub throw_timeline_ms: i64,
+    pub throw_timeline_frame: i64,
+    pub editor_frame_rate: u32,
     pub spans: Vec<EditSpan>,
     pub editor_project: String,
     pub capture_request_file: String,
@@ -147,6 +172,8 @@ pub fn build_edit_plan(
                 source_end_tick: take.end_tick,
                 timeline_start_ms: start + lineup_hold_ms,
                 timeline_end_ms: end + lineup_hold_ms,
+                timeline_start_frame: 0,
+                timeline_end_frame: 0,
             });
         } else {
             spans.push(EditSpan {
@@ -156,6 +183,8 @@ pub fn build_edit_plan(
                 source_end_tick: hold_tick,
                 timeline_start_ms: start,
                 timeline_end_ms: hold_start,
+                timeline_start_frame: 0,
+                timeline_end_frame: 0,
             });
             spans.push(EditSpan {
                 kind: "hold".into(),
@@ -164,6 +193,8 @@ pub fn build_edit_plan(
                 source_end_tick: hold_tick,
                 timeline_start_ms: hold_start,
                 timeline_end_ms: hold_end,
+                timeline_start_frame: 0,
+                timeline_end_frame: 0,
             });
             spans.push(EditSpan {
                 kind: "play".into(),
@@ -172,12 +203,29 @@ pub fn build_edit_plan(
                 source_end_tick: take.end_tick,
                 timeline_start_ms: hold_end,
                 timeline_end_ms: end + lineup_hold_ms,
+                timeline_start_frame: 0,
+                timeline_end_frame: 0,
             });
         }
     }
-    let throw_timeline_ms = source_ms(origin, request.throw_tick, request.tick_rate)?
+    let raw_throw_ms = source_ms(origin, request.throw_tick, request.tick_rate)?
         .checked_add(lineup_hold_ms)
         .ok_or("throw timeline overflow")?;
+    for span in &mut spans {
+        span.timeline_start_frame = frame_at_ms(span.timeline_start_ms)?;
+        span.timeline_end_frame = frame_at_ms(span.timeline_end_ms)?;
+        if span.timeline_end_frame <= span.timeline_start_frame {
+            return Err(format!(
+                "{} {} span is shorter than one editor frame",
+                span.camera_role, span.kind
+            ));
+        }
+        span.timeline_start_ms = ms_at_frame(span.timeline_start_frame)?;
+        span.timeline_end_ms = ms_at_frame(span.timeline_end_frame)?;
+    }
+    let lineup_hold_frames = frame_at_ms(hold_end)? - frame_at_ms(hold_start)?;
+    let throw_timeline_frame = frame_at_ms(raw_throw_ms)?;
+    let throw_timeline_ms = ms_at_frame(throw_timeline_frame)?;
     Ok(OfflineEditPlan {
         version: EDIT_HANDOFF_VERSION,
         status: "planning_only".into(),
@@ -185,7 +233,10 @@ pub fn build_edit_plan(
         timeline_origin_tick: origin,
         lineup_hold_tick: hold_tick,
         lineup_hold_ms,
+        lineup_hold_frames,
         throw_timeline_ms,
+        throw_timeline_frame,
+        editor_frame_rate: EDITOR_FRAME_RATE,
         spans,
         editor_project: "ClipStrike .cstrike with empty editorial lanes and editable cue markers"
             .into(),
@@ -223,29 +274,25 @@ pub fn clipstrike_project(plan: &OfflineEditPlan) -> Project {
         Track::new(2, "Third person reference (unrecorded)"),
         Track::new(3, "Projectile path (unrecorded)"),
     ];
-    let hold_start = source_ms(
+    let hold = plan
+        .spans
+        .iter()
+        .find(|span| span.camera_role == "player_pov" && span.kind == "hold")
+        .unwrap();
+    let hold_start = hold.timeline_start_ms;
+    let detonate_ms = source_ms(
         plan.timeline_origin_tick,
-        plan.lineup_hold_tick,
+        request.detonate_tick,
         request.tick_rate,
     )
-    .unwrap();
+    .unwrap()
+        + plan.lineup_hold_ms;
+    let detonate_ms = ms_at_frame(frame_at_ms(detonate_ms).unwrap()).unwrap();
     let cues = [
         (hold_start, "Lineup pause begins - both cameras"),
-        (
-            hold_start + plan.lineup_hold_ms,
-            "Lineup pause ends - both cameras",
-        ),
+        (hold.timeline_end_ms, "Lineup pause ends - both cameras"),
         (plan.throw_timeline_ms, "Grenade release - synchronized"),
-        (
-            source_ms(
-                plan.timeline_origin_tick,
-                request.detonate_tick,
-                request.tick_rate,
-            )
-            .unwrap()
-                + plan.lineup_hold_ms,
-            "Detonation",
-        ),
+        (detonate_ms, "Detonation"),
     ];
     project.markers = cues
         .into_iter()
@@ -264,7 +311,7 @@ pub fn clipstrike_project(plan: &OfflineEditPlan) -> Project {
 pub fn filmcraft_project_bytes(plan: &OfflineEditPlan) -> Result<Vec<u8>, String> {
     use filmcraft_project::{
         ItemKind, Label, Marker as FilmcraftMarker, MarkerId, MarkerKind,
-        Project as FilmcraftProject, ProjectView, SequenceSettings,
+        Project as FilmcraftProject, ProjectView, SequenceSettings, SequenceView,
     };
     use filmcraft_time::{FrameRate, Tick};
 
@@ -301,11 +348,11 @@ pub fn filmcraft_project_bytes(plan: &OfflineEditPlan) -> Result<Vec<u8>, String
     ]) {
         track.name = name.into();
     }
-    let hold_start = source_ms(
-        plan.timeline_origin_tick,
-        plan.lineup_hold_tick,
-        request.tick_rate,
-    )?;
+    let hold = plan
+        .spans
+        .iter()
+        .find(|span| span.camera_role == "player_pov" && span.kind == "hold")
+        .ok_or("editor plan has no shared lineup hold")?;
     let detonate_ms = source_ms(
         plan.timeline_origin_tick,
         request.detonate_tick,
@@ -313,21 +360,21 @@ pub fn filmcraft_project_bytes(plan: &OfflineEditPlan) -> Result<Vec<u8>, String
     )?
     .checked_add(plan.lineup_hold_ms)
     .ok_or("detonation timeline overflow")?;
-    for ((time_ms, name), marker_id) in [
-        (hold_start, "Lineup pause begins - both cameras"),
+    for ((frame, name), marker_id) in [
         (
-            hold_start + plan.lineup_hold_ms,
-            "Lineup pause ends - both cameras",
+            hold.timeline_start_frame,
+            "Lineup pause begins - both cameras",
         ),
-        (plan.throw_timeline_ms, "Grenade release - synchronized"),
-        (detonate_ms, "Detonation"),
+        (hold.timeline_end_frame, "Lineup pause ends - both cameras"),
+        (plan.throw_timeline_frame, "Grenade release - synchronized"),
+        (frame_at_ms(detonate_ms)?, "Detonation"),
     ]
     .into_iter()
     .zip(marker_ids)
     {
         sequence.markers.push(FilmcraftMarker {
             id: marker_id,
-            start: Tick::from_units(time_ms, 1_000),
+            start: FrameRate::FPS_60.tick_of(frame),
             duration: Tick::ZERO,
             name: name.into(),
             comment: "Planning cue only; no recorded media".into(),
@@ -335,11 +382,27 @@ pub fn filmcraft_project_bytes(plan: &OfflineEditPlan) -> Result<Vec<u8>, String
             color: Label::Mango,
         });
     }
-    let view = ProjectView {
+    // An empty sequence normally fits a one-second ruler and hides planning
+    // cues several seconds later. Persist a usable initial view without adding
+    // fake media to the handoff.
+    let cue_end_ms = detonate_ms.max(plan.throw_timeline_ms);
+    let cue_pps = (560.0 / (cue_end_ms as f64 / 1_000.0 + 0.75)).clamp(28.0, 100.0);
+    let mut view = ProjectView {
         open_sequences: vec![id],
         active_sequence: Some(id),
         ..ProjectView::default()
     };
+    view.sequences.insert(
+        id,
+        SequenceView {
+            pps: cue_pps,
+            scroll: 0.0,
+            v_scroll: 0.0,
+            a_scroll: 0.0,
+            video_track_h: 52.0,
+            audio_track_h: 36.0,
+        },
+    );
     let bytes = filmcraft_format::encode_with_view(&project, Some(&view), true);
     filmcraft_format::decode(&bytes)
         .map_err(|error| format!("FilmCraft project validation failed: {error}"))?;
@@ -461,6 +524,9 @@ mod tests {
         let plan = build_edit_plan(request(), DEFAULT_LINEUP_HOLD_MS).unwrap();
         assert_eq!(plan.lineup_hold_tick, 952);
         assert_eq!(plan.throw_timeline_ms, 4700);
+        assert_eq!(plan.editor_frame_rate, 60);
+        assert_eq!(plan.lineup_hold_frames, 72);
+        assert_eq!(plan.throw_timeline_frame, 282);
         let pov: Vec<_> = plan
             .spans
             .iter()
@@ -474,6 +540,10 @@ mod tests {
         assert_eq!(
             (pov[1].timeline_start_ms, pov[1].timeline_end_ms),
             (third[1].timeline_start_ms, third[1].timeline_end_ms)
+        );
+        assert_eq!(
+            (pov[1].timeline_start_frame, pov[1].timeline_end_frame),
+            (third[1].timeline_start_frame, third[1].timeline_end_frame)
         );
         assert_eq!(pov[2].timeline_end_ms, third[2].timeline_end_ms);
         assert_eq!(

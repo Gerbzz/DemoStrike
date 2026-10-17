@@ -290,7 +290,10 @@ async function main() {
     assert.equal(editPlan.captureRequest.eventId, finderTarget.item.id);
     assert.equal(editPlan.captureRequest.throwTick, finderTarget.item.tick);
     assert.equal(editPlan.status, 'planning_only');
+    assert.equal(editPlan.version, 2);
+    assert.equal(editPlan.editorFrameRate, 60);
     assert.equal(editPlan.lineupHoldMs, 2000);
+    assert.equal(editPlan.lineupHoldFrames, 120);
     const pov = editPlan.spans.filter((span) => span.cameraRole === 'player_pov');
     const third = editPlan.spans.filter((span) => span.cameraRole === 'third_person_reference');
     const projectile = editPlan.spans.filter((span) => span.cameraRole === 'projectile');
@@ -299,6 +302,10 @@ async function main() {
     assert.equal(projectile.length, 1);
     assert.deepEqual([pov[1].timelineStartMs, pov[1].timelineEndMs],
       [third[1].timelineStartMs, third[1].timelineEndMs]);
+    assert.deepEqual([pov[1].timelineStartFrame, pov[1].timelineEndFrame],
+      [third[1].timelineStartFrame, third[1].timelineEndFrame]);
+    assert.equal(pov[1].timelineEndFrame - pov[1].timelineStartFrame, 120);
+    assert.equal(projectile[0].timelineStartFrame, editPlan.throwTimelineFrame);
     assert.equal(pov[2].timelineEndMs, third[2].timelineEndMs);
     assert.equal(projectile[0].timelineStartMs, editPlan.throwTimelineMs);
     assert.equal(editProject.tracks.length, 3);
