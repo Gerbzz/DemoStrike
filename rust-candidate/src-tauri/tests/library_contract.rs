@@ -149,6 +149,75 @@ fn full_combat_is_read_only_and_gated_by_schema_and_parser_provenance() {
 }
 
 #[test]
+fn ordered_deaths_and_round_fields_remain_distinct_from_missing_facts() {
+    let (_dir, path) = fixture();
+    let db = Connection::open(&path).unwrap();
+    db.execute_batch(
+        "PRAGMA user_version = 8;
+         ALTER TABLE rounds ADD COLUMN freeze_end_tick INTEGER;
+         ALTER TABLE rounds ADD COLUMN end_reason TEXT;
+         ALTER TABLE rounds ADD COLUMN ct_equip_value INTEGER;
+         ALTER TABLE rounds ADD COLUMN t_equip_value INTEGER;
+         UPDATE rounds SET freeze_end_tick = 120, end_reason = 'bomb_defused',
+           ct_equip_value = 18000, t_equip_value = 12000;
+         INSERT INTO rounds (match_id, round_number, winner, start_tick, end_tick)
+           VALUES (1, 2, 'T', 201, 300);
+         CREATE TABLE player_round_combat (
+           match_id INTEGER, round_number INTEGER, steamid TEXT, side TEXT,
+           enemy_kills INTEGER, deaths INTEGER, enemy_assists INTEGER,
+           enemy_health_damage INTEGER);
+         INSERT INTO player_round_combat VALUES (1,1,'7656','CT',2,1,1,88);
+         CREATE TABLE raw_combat_deaths (
+           match_id INTEGER, source_index INTEGER, event_order INTEGER, tick INTEGER,
+           round_number INTEGER, weapon TEXT, attacker_steamid TEXT,
+           attacker_side TEXT, victim_steamid TEXT, victim_side TEXT,
+           assister_steamid TEXT);
+         UPDATE matches SET parser_capability = 'native-combat-full-v2';",
+    )
+    .unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let missing = get_match_detail(&path, 1).unwrap();
+    assert!(missing.rounds[0].deaths.is_none());
+    assert_eq!(missing.rounds[0].freeze_end_tick, Some(120));
+    assert_eq!(
+        missing.rounds[0].end_reason.as_deref(),
+        Some("bomb_defused")
+    );
+    assert_eq!(missing.rounds[0].ct_equip_value, Some(18000));
+    assert_eq!(missing.rounds[0].t_equip_value, Some(12000));
+    assert_eq!(missing.rounds[1].freeze_end_tick, None);
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+
+    db.execute_batch(
+        "INSERT INTO raw_combat_deaths VALUES
+           (1, 0, 2, 175, 1, 'ak47', '7656', 'CT', 'opponent', 'T', NULL),
+           (1, 1, 1, 150, 1, 'm4a1', 'opponent', 'T', '7656', 'CT', NULL);",
+    )
+    .unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let observed = get_match_detail(&path, 1).unwrap();
+    let deaths = observed.rounds[0].deaths.as_ref().unwrap();
+    assert_eq!(
+        deaths.iter().map(|event| event.tick).collect::<Vec<_>>(),
+        vec![150, 175]
+    );
+    assert_eq!(deaths[0].weapon.as_deref(), Some("m4a1"));
+    assert_eq!(observed.rounds[1].deaths.as_ref().unwrap().len(), 0);
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+
+    db.execute(
+        "UPDATE matches SET parser_capability = 'test-synthetic-combat-v1'",
+        [],
+    )
+    .unwrap();
+    assert!(
+        get_match_detail(&path, 1).unwrap().rounds[0]
+            .deaths
+            .is_none()
+    );
+}
+
+#[test]
 fn effect_totals_follow_supported_view_provenance() {
     let (_dir, path) = fixture();
     let db = Connection::open(&path).unwrap();
