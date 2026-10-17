@@ -481,7 +481,8 @@ pub fn list_matches(path: &str) -> Result<LibrarySnapshot, LibraryError> {
 
 fn has_column(connection: &Connection, table: &str, column: &str) -> Result<bool, LibraryError> {
     let mut query = connection.prepare(&format!("PRAGMA table_info({table})"))?;
-    let columns = query.query_map([], |row| row.get::<_, String>(1))?
+    let columns = query
+        .query_map([], |row| row.get::<_, String>(1))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(columns.iter().any(|name| name == column))
 }
@@ -496,15 +497,25 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
     let mut combat_by_player: HashMap<String, Vec<PlayerRoundCombat>> = HashMap::new();
     let mut combat_by_round: HashMap<i64, Vec<PlayerRoundCombat>> = HashMap::new();
     if full_combat_coverage {
-        let effective = if has_column(&connection, "player_round_combat", "effective_enemy_health_damage")? {
+        let effective = if has_column(
+            &connection,
+            "player_round_combat",
+            "effective_enemy_health_damage",
+        )? {
             "effective_enemy_health_damage"
-        } else { "NULL" };
+        } else {
+            "NULL"
+        };
         let stable = if has_column(&connection, "player_round_combat", "stable_team")? {
             "stable_team"
-        } else { "NULL" };
-        let sql = format!("SELECT round_number, steamid, side, enemy_kills, deaths,
+        } else {
+            "NULL"
+        };
+        let sql = format!(
+            "SELECT round_number, steamid, side, enemy_kills, deaths,
                     enemy_assists, enemy_health_damage, {effective}, {stable}
-             FROM player_round_combat WHERE match_id = ?1 ORDER BY round_number, steamid");
+             FROM player_round_combat WHERE match_id = ?1 ORDER BY round_number, steamid"
+        );
         let mut query = connection.prepare(&sql)?;
         let records = query.query_map([match_id], |row| {
             Ok((
@@ -583,12 +594,16 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
     if full_combat_coverage && has_ordered_combat_hurts(&connection, &summary.parser_capability)? {
         let effective = if has_column(&connection, "raw_combat_hurts", "effective_health_damage")? {
             "effective_health_damage"
-        } else { "NULL" };
-        let sql = format!("SELECT source_index, event_order, tick, round_number, weapon,
+        } else {
+            "NULL"
+        };
+        let sql = format!(
+            "SELECT source_index, event_order, tick, round_number, weapon,
                     attacker_steamid, attacker_side, victim_steamid, victim_side, raw_dmg_health,
                     {effective}
              FROM raw_combat_hurts WHERE match_id = ?1
-             ORDER BY tick, event_order, source_index");
+             ORDER BY tick, event_order, source_index"
+        );
         let mut query = connection.prepare(&sql)?;
         let records = query.query_map([match_id], |row| {
             Ok((
@@ -696,8 +711,14 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
                 combat: combat_by_player
                     .get(&row.get::<_, String>(0)?)
                     .map(|records| PlayerCombat {
-                        stable_team: records.first().and_then(|first| first.stable_team.clone())
-                            .filter(|team| records.iter().all(|item| item.stable_team.as_ref() == Some(team))),
+                        stable_team: records
+                            .first()
+                            .and_then(|first| first.stable_team.clone())
+                            .filter(|team| {
+                                records
+                                    .iter()
+                                    .all(|item| item.stable_team.as_ref() == Some(team))
+                            }),
                         enemy_kills: records
                             .iter()
                             .try_fold(0_i64, |sum, item| Some(sum + item.enemy_kills?)),
@@ -710,7 +731,9 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
                             .try_fold(0_i64, |sum, item| Some(sum + item.enemy_health_damage?)),
                         effective_enemy_health_damage: records
                             .iter()
-                            .try_fold(0_i64, |sum, item| Some(sum + item.effective_enemy_health_damage?)),
+                            .try_fold(0_i64, |sum, item| {
+                                Some(sum + item.effective_enemy_health_damage?)
+                            }),
                         rounds: records.clone(),
                     }),
             })
