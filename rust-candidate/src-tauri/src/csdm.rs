@@ -1,0 +1,224 @@
+//! First persistent backend slice for the preserved CS Demo Manager renderer.
+//! Unsupported protocol requests fail explicitly until their contracts are ported.
+use rusqlite::Connection;
+use serde_json::{Value, json};
+use std::fs;
+use std::path::PathBuf;
+use tauri::Manager;
+
+struct Store {
+    root: PathBuf,
+}
+
+impl Store {
+    fn new(root: PathBuf) -> Self {
+        Self { root }
+    }
+
+    fn settings(&self, defaults: Value) -> Result<Value, String> {
+        fs::create_dir_all(&self.root).map_err(|error| error.to_string())?;
+        let path = self.root.join("csdm-settings.json");
+        if path.exists() {
+            return serde_json::from_slice(&fs::read(path).map_err(|error| error.to_string())?)
+                .map_err(|error| format!("Could not read saved settings: {error}"));
+        }
+        if defaults.is_null() {
+            return Err("Settings have not been initialized for this profile.".into());
+        }
+        self.save_settings(&defaults)?;
+        Ok(defaults)
+    }
+
+    fn save_settings(&self, settings: &Value) -> Result<(), String> {
+        fs::create_dir_all(&self.root).map_err(|error| error.to_string())?;
+        let path = self.root.join("csdm-settings.json");
+        let bytes = serde_json::to_vec_pretty(settings).map_err(|error| error.to_string())?;
+        fs::write(path, bytes).map_err(|error| error.to_string())
+    }
+
+    fn database(&self) -> Result<Connection, String> {
+        fs::create_dir_all(&self.root).map_err(|error| error.to_string())?;
+        let connection = Connection::open(self.root.join("csdm-library.sqlite"))
+            .map_err(|error| format!("Could not open the local library: {error}"))?;
+        connection.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE IF NOT EXISTS matches (id INTEGER PRIMARY KEY, checksum TEXT NOT NULL UNIQUE);
+             CREATE TABLE IF NOT EXISTS maps (payload TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS cameras (payload TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS tags (payload TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS faceit_accounts (payload TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS five_eplay_accounts (payload TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS renown_accounts (payload TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS ignored_steam_accounts (payload TEXT NOT NULL);",
+        ).map_err(|error| format!("Could not initialize the local library: {error}"))?;
+        Ok(connection)
+    }
+
+    fn payloads(connection: &Connection, table: &str) -> Result<Vec<Value>, String> {
+        let mut statement = connection
+            .prepare(&format!("SELECT payload FROM {table}"))
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?;
+        rows.map(|row| {
+            let payload = row.map_err(|error| error.to_string())?;
+            serde_json::from_str(&payload).map_err(|error| error.to_string())
+        })
+        .collect()
+    }
+
+    fn request(
+        &self,
+        name: &str,
+        _payload: Option<Value>,
+        settings: Value,
+    ) -> Result<Value, String> {
+        match name {
+            "connect-database" => {
+                self.database()?;
+                Ok(Value::Null)
+            }
+            "init-application" => {
+                let connection = self.database()?;
+                let mut statement = connection
+                    .prepare("SELECT checksum FROM matches")
+                    .map_err(|error| error.to_string())?;
+                let checksums = statement
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .map_err(|error| error.to_string())?
+                    .map(|row| row.map_err(|error| error.to_string()))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(json!({
+                    "matchChecksums": checksums,
+                    "maps": Self::payloads(&connection, "maps")?,
+                    "cameras": Self::payloads(&connection, "cameras")?,
+                    "tags": Self::payloads(&connection, "tags")?,
+                    "settings": settings,
+                    "faceitAccounts": Self::payloads(&connection, "faceit_accounts")?,
+                    "fiveEPlayAccounts": Self::payloads(&connection, "five_eplay_accounts")?,
+                    "renownAccounts": Self::payloads(&connection, "renown_accounts")?,
+                    "ignoredSteamAccounts": Self::payloads(&connection, "ignored_steam_accounts")?,
+                    "analyses": [], "downloads": [], "videos": [], "isVideoQueuePaused": false
+                }))
+            }
+            "fetch-matches-table" => {
+                let connection = self.database()?;
+                let count: i64 = connection
+                    .query_row("SELECT COUNT(*) FROM matches", [], |row| row.get(0))
+                    .map_err(|error| error.to_string())?;
+                if count != 0 {
+                    return Err("Match rows exist, but the full CS Demo Manager MatchTable migration is not implemented yet.".into());
+                }
+                Ok(json!([]))
+            }
+            _ => Err(format!(
+                "CS Demo Manager request '{name}' has not been ported to the Rust backend."
+            )),
+        }
+    }
+}
+
+fn app_store(app: &tauri::AppHandle) -> Result<Store, String> {
+    let root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    Ok(Store::new(root))
+}
+
+#[tauri::command]
+pub fn csdm_load_settings(app: tauri::AppHandle, defaults: Value) -> Result<Value, String> {
+    app_store(&app)?.settings(defaults)
+}
+
+#[tauri::command]
+pub fn csdm_save_settings(app: tauri::AppHandle, settings: Value) -> Result<(), String> {
+    app_store(&app)?.save_settings(&settings)
+}
+
+#[tauri::command]
+pub fn csdm_request(
+    app: tauri::AppHandle,
+    name: String,
+    payload: Option<Value>,
+) -> Result<Value, String> {
+    let store = app_store(&app)?;
+    let settings = store.settings(Value::Null)?;
+    store.request(&name, payload, settings)
+}
+
+#[tauri::command]
+pub fn csdm_window_action(window: tauri::Window, action: String) -> Result<bool, String> {
+    match action.as_str() {
+        "is-maximized" => window.is_maximized().map_err(|error| error.to_string()),
+        "maximize" => window
+            .maximize()
+            .map(|_| true)
+            .map_err(|error| error.to_string()),
+        "unmaximize" => window
+            .unmaximize()
+            .map(|_| true)
+            .map_err(|error| error.to_string()),
+        "minimize" => window
+            .minimize()
+            .map(|_| true)
+            .map_err(|error| error.to_string()),
+        "close" => window
+            .close()
+            .map(|_| true)
+            .map_err(|error| error.to_string()),
+        _ => Err(format!("Unsupported window action: {action}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::params;
+
+    #[test]
+    fn fresh_library_reports_actual_empty_state_and_rejects_unsupported_data() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path().to_owned());
+        let settings = json!({"ui":{"theme":"dark"}});
+        assert_eq!(store.settings(settings.clone()).unwrap(), settings);
+        assert_eq!(
+            store
+                .request("connect-database", None, settings.clone())
+                .unwrap(),
+            Value::Null
+        );
+        let initial = store
+            .request("init-application", None, settings.clone())
+            .unwrap();
+        assert_eq!(initial["matchChecksums"], json!([]));
+        assert_eq!(initial["maps"], json!([]));
+        assert_eq!(
+            store
+                .request("fetch-matches-table", None, settings.clone())
+                .unwrap(),
+            json!([])
+        );
+        store
+            .database()
+            .unwrap()
+            .execute(
+                "INSERT INTO matches (checksum) VALUES (?1)",
+                params!["real-checksum"],
+            )
+            .unwrap();
+        assert!(
+            store
+                .request("fetch-matches-table", None, settings)
+                .unwrap_err()
+                .contains("MatchTable migration")
+        );
+        assert!(
+            store
+                .request("delete-matches", None, Value::Null)
+                .unwrap_err()
+                .contains("not been ported")
+        );
+    }
+}

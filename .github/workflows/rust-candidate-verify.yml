@@ -30,6 +30,8 @@ jobs:
         run: |
           mkdir -p static
           ./node_modules/.bin/vp build --config vite.config.ts
+      - name: Compile original routes with Tauri startup adapters
+        run: ./node_modules/.bin/vp build --config ../../ported/vite.config.mjs
   verify:
     runs-on: windows-latest
     timeout-minutes: 90
