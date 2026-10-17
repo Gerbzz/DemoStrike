@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const { chromium } = require('playwright-core');
 
 const outputDir = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-smoke');
@@ -28,7 +28,19 @@ async function waitForCdp(app, getExit) {
     } catch { /* WebView2 is still starting. */ }
     await sleep(1000);
   }
-  throw new Error('Tauri WebView2 CDP endpoint did not open within 60 seconds');
+  let diagnostics = 'PowerShell process inspection unavailable';
+  try {
+    const command = [
+      `$target = Get-CimInstance Win32_Process -Filter 'ProcessId=${app.pid}'`,
+      '$target | Select-Object ProcessId, ParentProcessId, SessionId, Name | Format-List',
+      `Get-Process -Id ${app.pid} -ErrorAction SilentlyContinue | Select-Object Id, MainWindowHandle, MainWindowTitle, Responding | Format-List`,
+      'Get-Process msedgewebview2, explorer -ErrorAction SilentlyContinue | Select-Object -First 12 Id, ProcessName, SessionId, MainWindowHandle | Format-Table',
+    ].join('; ');
+    diagnostics = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { encoding: 'utf8', timeout: 10000 });
+  } catch (error) {
+    diagnostics = `Process inspection failed: ${error.message}`;
+  }
+  throw new Error(`Tauri WebView2 CDP endpoint did not open within 60 seconds. SESSIONNAME=${process.env.SESSIONNAME || 'unset'}; app exit=${getExit() ?? 'still running'}; process snapshot:\n${diagnostics}`);
 }
 
 async function findAppPage(browser) {

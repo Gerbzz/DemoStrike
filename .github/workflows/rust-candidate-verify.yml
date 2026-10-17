@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install frontend dependencies on hosted runner
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Typecheck and build frontend
         run: npm run build
       - name: Test adapted upstream score contract
@@ -34,7 +34,7 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: Run Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets -- --test-threads=1
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets -- --test-threads=1
       - name: Compile native application
         run: npm run tauri build
       - name: Generate sanitized synthetic SQLite fixture
@@ -44,6 +44,9 @@ jobs:
       - name: Record resolved dependency metadata
         if: always()
         run: python tests/dependency_manifest.py
+      - name: Verify dependency locks did not drift
+        if: always()
+        run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
       - name: Upload app-only synthetic UI evidence
         if: always()
         uses: actions/upload-artifact@v4
