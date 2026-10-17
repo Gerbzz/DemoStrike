@@ -104,7 +104,8 @@ def kind(value):
 for row in grenade_rows:
     key = (row["round_number"], row["trajectory_index"])
     path = native_paths.setdefault(key, {"kind": kind(row["grenade_type"]),
-        "label": row["grenade_type"], "thrower": row["thrower_steamid"], "ticks": {}})
+        "label": row["grenade_type"], "thrower": row["thrower_steamid"],
+        "entity": row["entity_id"], "ticks": {}})
     path["ticks"][row["tick"]] = tuple(row[axis] for axis in "xyz")
 with grenade_file[0].open(newline="", encoding="utf-8") as file:
     for row in csv.DictReader(file):
@@ -153,10 +154,19 @@ for count, neg_delta, native_key, oracle_key in candidate_pairs:
     paired_oracle.add(oracle_key)
     native_ticks = native_paths[native_key]["ticks"]
     oracle_ticks = oracle_paths[oracle_key]["ticks"]
+    releases = database.execute("""SELECT utility_type,throw_tick,detonate_tick,thrower_steamid
+        FROM utility_events WHERE projectile_entity_id=? AND thrower_steamid=?
+        ORDER BY throw_tick""", (native_paths[native_key]["entity"],
+                            native_paths[native_key]["thrower"])).fetchall()
     path_pairs.append({"sharedTicks": count, "maxAxisDelta": -neg_delta,
+        "nativeTrajectory": native_key, "upstreamProjectile": oracle_key,
+        "nativeEntity": native_paths[native_key]["entity"],
         "kind": native_paths[native_key]["kind"],
         "nativeLabel": native_paths[native_key]["label"],
         "upstreamLabel": oracle_paths[oracle_key]["label"],
+        "nativeStartTick": min(native_ticks), "nativeEndTick": max(native_ticks),
+        "upstreamStartTick": min(oracle_ticks), "upstreamEndTick": max(oracle_ticks),
+        "releaseCandidates": [dict(row) for row in releases],
         "startTickDelta": min(native_ticks) - min(oracle_ticks),
         "endTickDelta": max(native_ticks) - max(oracle_ticks)})
 
@@ -195,7 +205,7 @@ report = {
         "maxEndTickDifference": max((abs(pair["endTickDelta"]) for pair in path_pairs), default=None),
         "lifetimeDifferenceCount": sum(pair["endTickDelta"] != 0 for pair in path_pairs),
         "lifetimeDifferenceSamples": [pair for pair in path_pairs if pair["endTickDelta"] != 0][:8],
-        "fireSubtypeSamples": [pair for pair in path_pairs if pair["kind"] == "fire"][:8],
+        "fireSubtypeSamples": [pair for pair in path_pairs if pair["kind"] == "fire"],
         "unmatchedNativeSamples": list(map(str, set(native_paths) - paired_native))[:8],
         "unmatchedNativeDetails": [{"round": key[0], "trajectory": key[1],
             "kind": native_paths[key]["kind"], "thrower": native_paths[key]["thrower"],
