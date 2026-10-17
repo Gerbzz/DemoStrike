@@ -21,6 +21,16 @@ async function main() {
   assert.equal(fs.statSync(demoPath).size, 60601900);
   const sourceHash = sha256(demoPath);
   fs.mkdirSync(outputDir, { recursive: true });
+  let portFree = false;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      const old = await fetch(`${cdpUrl}/json/version`, { signal: AbortSignal.timeout(500) });
+      if (old.ok) { await sleep(500); continue; }
+      portFree = true;
+      break;
+    } catch { portFree = true; break; }
+  }
+  assert.ok(portFree, 'Prior native app still owns the WebView2 debugging endpoint');
   const env = { ...process.env };
   delete env.DEMOSTRIKE_SYNTHETIC_RAW_FACTS;
   const app = spawn(appPath, [], { cwd: path.dirname(appPath), windowsHide: false, stdio: 'pipe', env });
@@ -56,6 +66,9 @@ async function main() {
     assert.ok(page, 'No Tauri IPC-enabled page appeared');
     page.on('pageerror', (error) => pageErrors.push(error.message));
     await page.evaluate(() => { location.hash = '#/matches'; });
+    await page.waitForFunction(() => Boolean(document.querySelector('#demo-import-path'))
+      || [...document.querySelectorAll('button')].some((button) => button.textContent?.includes('Change library')),
+      null, { timeout: 30000 });
     const changeLibrary = page.getByRole('button', { name: 'Change library' });
     if (await changeLibrary.isVisible().catch(() => false)) await changeLibrary.click();
     await page.getByRole('textbox', { name: 'Import a CS2 demo' }).fill(demoPath);
