@@ -22,7 +22,7 @@ assert.ok(bundle.includes('Round history') && bundle.includes('Recorded death ev
 assert.ok(bundle.includes('Raw DMG') && bundle.includes('Map preview unavailable'), 'Partial original overview was not included');
 assert.ok(bundle.includes('Recorded utility') && bundle.includes('This match analysis is still being ported'), 'Utility and unsupported-route states were not included');
 assert.ok(bundle.includes('csdm_choose_library'), 'Native library picker was not included');
-assert.ok(bundle.includes('csdm_import_demo') && bundle.includes('csdm_choose_demo'), 'Native demo import route was not included');
+assert.ok(bundle.includes('csdm_enqueue_demo') && bundle.includes('csdm_list_import_jobs') && bundle.includes('csdm_choose_demo'), 'Native demo import queue was not included');
 assert.ok(bundle.includes('csdm_list_demo_files') && bundle.includes('csdm_choose_demo_folder'), 'Read-only demo-folder route was not included');
 assert.ok(!bundle.includes('WS:: connecting to server'), 'Electron WebSocket client remained in the ported bundle');
 assert.ok(styles.includes('.gap-x-8'), 'Original UI spacing classes were not generated');
