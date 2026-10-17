@@ -122,7 +122,10 @@ export function Rounds() {
   const detail = useSourceMatch();
   const { number } = useParams();
   const selected = number === undefined ? null : detail.rounds.find((round) => String(round.roundNumber) === number);
-  if (number !== undefined && !selected) return <Content><p role="alert">Round {number} is not recorded in this library.</p></Content>;
+  if (number !== undefined && !selected) return <Content>
+    <p role="alert">Round {number} is not recorded in this library.</p>
+    <Link to=".." relative="path" className="mt-8 inline-block text-blue-600 underline">All rounds</Link>
+  </Content>;
   const selectedIndex = selected ? detail.rounds.findIndex((round) => round.roundNumber === selected.roundNumber) : -1;
   return <Content>
     <div className="flex flex-wrap items-center justify-between gap-12">
