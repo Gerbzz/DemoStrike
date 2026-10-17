@@ -196,12 +196,14 @@ export function GrenadesFinderLoader() {
         {handoffError && <p role="alert" className="rounded-4 border border-red-400 p-8 text-red-700">{handoffError}</p>}
         {handoff && handoff.eventId === selected?.id && <div role="status"
           className="rounded-4 border border-green-500 p-8 text-gray-800">
-          <strong>Offline plan saved locally.</strong> The ClipStrike and FilmCraft projects have editable cue markers and empty camera tracks.
-          No capture or media was created. The POV and third-person lanes share a {handoff.lineupHoldMs / 1000}s lineup pause.
-          <div className="mt-4 break-all text-small">CSthrowback request: {handoff.requestPath}</div>
-          <div className="break-all text-small">Plan: {handoff.planPath}</div>
-          <div className="break-all text-small">Project: {handoff.projectPath}</div>
-          {handoff.filmcraftProjectPath && <div className="break-all text-small">FilmCraft: {handoff.filmcraftProjectPath}</div>}
+          <strong>Offline plan saved locally.</strong> The POV and third-person lanes share a {handoff.lineupHoldMs / 1000}s lineup pause.
+          ClipStrike and FilmCraft projects contain editable cues and empty camera tracks. No capture or media was created.
+          <details className="mt-4"><summary className="cursor-pointer text-blue-600 underline">Show saved file paths</summary>
+            <div className="mt-4 break-all text-small">CSthrowback request: {handoff.requestPath}</div>
+            <div className="break-all text-small">Plan: {handoff.planPath}</div>
+            <div className="break-all text-small">Project: {handoff.projectPath}</div>
+            {handoff.filmcraftProjectPath && <div className="break-all text-small">FilmCraft: {handoff.filmcraftProjectPath}</div>}
+          </details>
         </div>}
         {!map ? <div className="flex min-h-[340px] items-center justify-center bg-gray-100 p-16 text-center text-gray-700">
           This map has no verified CSDM coordinate calibration. Throw details remain available in the list.

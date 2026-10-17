@@ -316,6 +316,12 @@ async function main() {
       } catch (error) { return String(error); }
     }, finderTarget.item);
     assert.match(mismatch, /does not belong to this recorded match/);
+    const savedPaths = page.locator('[data-selected-throw] [role="status"] details');
+    await savedPaths.locator('summary').click();
+    assert.equal(await savedPaths.getAttribute('open'), '');
+    assert.ok(await savedPaths.getByText('FilmCraft:', { exact: false }).isVisible());
+    await savedPaths.locator('summary').click();
+    assert.equal(await savedPaths.getAttribute('open'), null);
     await page.getByText('Offline plan saved locally.').scrollIntoViewIfNeeded();
     const handoffShot = path.join(outputDir, 'real-demo-finder-edit-handoff.png');
     await captureAppOnly(page, handoffShot);
