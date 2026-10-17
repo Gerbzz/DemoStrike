@@ -59,6 +59,7 @@ pub fn score_relation(score: i64, opposite_score: i64) -> ScoreRelation {
 pub struct MatchSummary {
     pub id: i64,
     pub file_name: String,
+    pub demo_file_path: Option<String>,
     pub map_name: String,
     pub score_ct: i64,
     pub score_t: i64,
@@ -66,6 +67,9 @@ pub struct MatchSummary {
     pub score_t_relation: ScoreRelation,
     pub imported_at: String,
     pub parser_capability: String,
+    pub source_sha256: Option<String>,
+    pub tick_rate: Option<f64>,
+    pub duration_ticks: Option<i64>,
     pub player_count: i64,
     pub round_count: i64,
     pub utility_count: i64,
@@ -214,14 +218,31 @@ fn has_verified_effect_view(connection: &Connection) -> Result<bool, LibraryErro
 }
 
 fn read_matches(connection: &Connection) -> Result<Vec<MatchSummary>, LibraryError> {
-    let mut statement = connection.prepare(
+    let mut columns = connection.prepare("PRAGMA table_info(matches)")?;
+    let available = columns
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let optional = |name: &str| {
+        if available.iter().any(|column| column == name) {
+            format!("m.{name}")
+        } else {
+            "NULL".to_owned()
+        }
+    };
+    let query = format!(
         "SELECT m.id, m.file_name, m.map_name, m.score_ct, m.score_t, m.imported_at,
                 m.parser_capability,
                 (SELECT COUNT(*) FROM players p WHERE p.match_id = m.id),
                 (SELECT COUNT(*) FROM rounds r WHERE r.match_id = m.id),
-                (SELECT COUNT(*) FROM utility_events u WHERE u.match_id = m.id)
+                (SELECT COUNT(*) FROM utility_events u WHERE u.match_id = m.id),
+                {}, {}, {}, {}
          FROM matches m ORDER BY m.imported_at DESC, m.id DESC",
-    )?;
+        optional("file_path"),
+        optional("source_sha256"),
+        optional("tick_rate"),
+        optional("duration_ticks")
+    );
+    let mut statement = connection.prepare(&query)?;
     let matches = statement
         .query_map([], |row| {
             let score_ct: i64 = row.get(3)?;
@@ -229,6 +250,7 @@ fn read_matches(connection: &Connection) -> Result<Vec<MatchSummary>, LibraryErr
             Ok(MatchSummary {
                 id: row.get(0)?,
                 file_name: row.get(1)?,
+                demo_file_path: row.get(10)?,
                 map_name: row.get(2)?,
                 score_ct,
                 score_t,
@@ -236,6 +258,9 @@ fn read_matches(connection: &Connection) -> Result<Vec<MatchSummary>, LibraryErr
                 score_t_relation: score_relation(score_t, score_ct),
                 imported_at: row.get(5)?,
                 parser_capability: row.get(6)?,
+                source_sha256: row.get(11)?,
+                tick_rate: row.get(12)?,
+                duration_ticks: row.get(13)?,
                 player_count: row.get(7)?,
                 round_count: row.get(8)?,
                 utility_count: row.get(9)?,

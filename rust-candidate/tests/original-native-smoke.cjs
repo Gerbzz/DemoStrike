@@ -69,18 +69,28 @@ async function main() {
     assert.ok(fs.statSync(screenshot).size > 10000, 'Native screenshot is unexpectedly small');
     await page.getByRole('textbox', { name: 'Open an existing DemoStrike SQLite library' }).fill(fixturePath);
     await page.getByRole('button', { name: 'Open local library' }).click();
-    await page.getByRole('button', { name: 'synthetic-alpha.dem' }).waitFor({ timeout: 20000 });
-    assert.equal(await page.getByRole('button', { name: 'synthetic-beta.dem' }).count(), 1);
-    await page.getByRole('tab', { name: 'Rounds' }).click();
-    assert.equal(await page.getByRole('tabpanel').locator('tbody tr').count(), 3);
-    await page.getByRole('tab', { name: 'Players' }).click();
-    assert.equal(await page.getByRole('tabpanel').locator('tbody tr').count(), 2);
-    await page.getByRole('tab', { name: 'Utility' }).click();
-    assert.equal(await page.getByRole('tabpanel').locator('tbody tr').count(), 3);
-    assert.ok((await page.getByRole('tabpanel').innerText()).includes('Unavailable'));
-    const libraryScreenshot = path.join(outputDir, 'original-local-library.png');
-    await page.screenshot({ path: libraryScreenshot, animations: 'disabled' });
-    assert.ok(fs.statSync(libraryScreenshot).size > 10000, 'Local-library screenshot is unexpectedly small');
+    await page.getByText('2 recorded matches').waitFor({ timeout: 20000 });
+    const firstMatch = page.getByRole('row').filter({ hasText: 'synthetic-alpha.dem' });
+    assert.equal(await firstMatch.count(), 1, 'First synthetic match missing from original table engine');
+    assert.equal(await page.getByRole('row').filter({ hasText: 'synthetic-beta.dem' }).count(), 1);
+    const matchesScreenshot = path.join(outputDir, 'ported-populated-matches.png');
+    await page.screenshot({ path: matchesScreenshot, animations: 'disabled' });
+    await firstMatch.dblclick();
+    await page.getByRole('heading', { name: 'de_mirage' }).waitFor({ timeout: 20000 });
+    assert.ok((await page.getByText('Team identities, kills, assists, ratings, and economy are unavailable').count()) > 0);
+    const overviewScreenshot = path.join(outputDir, 'ported-match-overview.png');
+    await page.screenshot({ path: overviewScreenshot, animations: 'disabled' });
+    await page.getByRole('link', { name: 'Rounds' }).click();
+    await page.getByRole('heading', { name: 'Recorded rounds' }).waitFor({ timeout: 20000 });
+    assert.equal(await page.locator('tbody tr').count(), 3);
+    assert.ok((await page.locator('tbody').innerText()).includes('Unavailable'));
+    const roundsScreenshot = path.join(outputDir, 'ported-match-rounds.png');
+    await page.screenshot({ path: roundsScreenshot, animations: 'disabled' });
+    await page.getByRole('link', { name: 'Players' }).click();
+    await page.getByRole('heading', { name: 'Recorded players' }).waitFor({ timeout: 20000 });
+    assert.equal(await page.locator('tbody tr').count(), 2);
+    const playersScreenshot = path.join(outputDir, 'ported-match-players.png');
+    await page.screenshot({ path: playersScreenshot, animations: 'disabled' });
     assert.equal(sha256(fixturePath), fixtureSha256, 'Read-only viewer changed the synthetic fixture');
     const demoFolder = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-synthetic-demos');
     fs.mkdirSync(demoFolder, { recursive: true });
@@ -109,11 +119,14 @@ async function main() {
     const proof = {
       source: 'actual hosted Tauri WebView2 window with original CS Demo Manager renderer',
       data: 'new empty local SQLite plus a separate sanitized synthetic DemoStrike library',
-      scope: 'original startup and read-only local library; import and other route backends remain unported',
+      scope: 'original CSDM shell and table engine with data-limited match, rounds, players, and demo-folder routes; import and other backend contracts remain unported',
       commit: process.env.GITHUB_SHA || null,
       executableSha256: sha256(appPath),
       screenshotSha256: sha256(screenshot),
-      libraryScreenshotSha256: sha256(libraryScreenshot),
+      matchesScreenshotSha256: sha256(matchesScreenshot),
+      overviewScreenshotSha256: sha256(overviewScreenshot),
+      roundsScreenshotSha256: sha256(roundsScreenshot),
+      playersScreenshotSha256: sha256(playersScreenshot),
       demoFolderScreenshotSha256: sha256(demoScreenshot),
       syntheticDemoHashes: [alphaHash, betaHash],
       fixtureSha256,
@@ -121,7 +134,8 @@ async function main() {
       originalSidebarRoutes: ['matches', 'demos', 'players', 'teams'],
     };
     fs.writeFileSync(path.join(outputDir, 'proof.json'), `${JSON.stringify(proof, null, 2)}\n`);
-    console.log('PASS: original renderer startup and read-only local library in native Tauri WebView2');
+    assert.deepEqual(pageErrors, [], `Renderer errors: ${pageErrors.join('; ')}`);
+    console.log('PASS: original renderer routes and populated read-only match workflow in native Tauri WebView2');
   } catch (error) {
     if (page) {
       const screenshot = path.join(outputDir, 'original-startup-failure.png');

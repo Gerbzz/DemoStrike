@@ -30,6 +30,12 @@ export default {
       { find: './error-boundary', replacement: path.resolve(portedRoot, 'error-boundary.tsx') },
       { find: 'csdm/ui/matches/table/matches-table', replacement: path.resolve(portedRoot, 'matches-table.tsx') },
       { find: 'csdm/ui/matches/matches', replacement: path.resolve(portedRoot, 'matches.tsx') },
+      { find: 'csdm/ui/match/match-loader', replacement: path.resolve(portedRoot, 'match-loader.tsx') },
+      { find: 'csdm/ui/match/overview/match-overview', replacement: path.resolve(portedRoot, 'match-overview.tsx') },
+      { find: 'csdm/ui/match/rounds/overview/rounds', replacement: path.resolve(portedRoot, 'match-rounds.tsx') },
+      { find: 'csdm/ui/match/rounds/round/round', replacement: path.resolve(portedRoot, 'match-rounds.tsx') },
+      { find: 'csdm/ui/match/players/match-players-loader', replacement: path.resolve(portedRoot, 'match-players.tsx') },
+      { find: 'csdm/ui/match/players/match-players', replacement: path.resolve(portedRoot, 'match-players.tsx') },
       { find: 'csdm/ui/demos/demos', replacement: path.resolve(portedRoot, 'demos.tsx') },
       { find: 'csdm/ui/web-socket-client', replacement: path.resolve(portedRoot, 'web-socket-client.ts') },
       // The preserved provider imports this client relatively; redirect that

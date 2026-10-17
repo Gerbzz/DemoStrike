@@ -37,6 +37,8 @@ fn lists_real_schema_rows_without_writing() {
     assert_eq!(snapshot.matches.len(), 1);
     assert_eq!(snapshot.matches[0].utility_count, 1);
     assert_eq!(snapshot.matches[0].player_count, 1);
+    assert_eq!(snapshot.matches[0].source_sha256, None);
+    assert_eq!(snapshot.matches[0].tick_rate, None);
     assert_eq!(
         snapshot.matches[0].score_ct_relation,
         ScoreRelation::Leading
@@ -45,6 +47,32 @@ fn lists_real_schema_rows_without_writing() {
         snapshot.matches[0].score_t_relation,
         ScoreRelation::Trailing
     );
+    assert_eq!(std::fs::read(path).unwrap(), before);
+}
+
+#[test]
+fn preserves_extended_import_metadata_without_guessing_missing_fields() {
+    let (_dir, path) = fixture();
+    let db = Connection::open(&path).unwrap();
+    db.execute_batch(
+        "ALTER TABLE matches ADD COLUMN file_path TEXT;
+         ALTER TABLE matches ADD COLUMN source_sha256 TEXT;
+         ALTER TABLE matches ADD COLUMN tick_rate REAL;
+         ALTER TABLE matches ADD COLUMN duration_ticks INTEGER;
+         UPDATE matches SET file_path = 'C:/synthetic/cache.dem',
+           source_sha256 = 'synthetic-checksum', tick_rate = 64.0,
+           duration_ticks = 57600;",
+    )
+    .unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let summary = &list_matches(&path).unwrap().matches[0];
+    assert_eq!(
+        summary.demo_file_path.as_deref(),
+        Some("C:/synthetic/cache.dem")
+    );
+    assert_eq!(summary.source_sha256.as_deref(), Some("synthetic-checksum"));
+    assert_eq!(summary.tick_rate, Some(64.0));
+    assert_eq!(summary.duration_ticks, Some(57600));
     assert_eq!(std::fs::read(path).unwrap(), before);
 }
 
