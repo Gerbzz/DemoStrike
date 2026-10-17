@@ -21,9 +21,12 @@ fn public_demo_import_is_transactional_and_persistent() {
 
     let imported = import_demo(&demo, &db, &parser, &ImportControl::new(), |_| {}).unwrap();
     assert_eq!(imported.capabilities.key(), "native-combat-full-v2");
+    // Frozen expectations from the pinned public recording, measured by the
+    // real native probe rather than the synthetic JSON fixture.
+    assert_eq!(imported.analyzed.events.len(), 150);
+    assert_eq!(imported.analyzed.raw_combat_hurts.len(), 264);
+    assert_eq!(imported.analyzed.raw_combat_deaths.len(), 73);
     assert!(imported.analyzed.rounds.len() > 1);
-    assert!(!imported.analyzed.raw_combat_hurts.is_empty());
-    assert!(!imported.analyzed.raw_combat_deaths.is_empty());
     drop(imported);
 
     // A separate connection represents application restart, and checks that
