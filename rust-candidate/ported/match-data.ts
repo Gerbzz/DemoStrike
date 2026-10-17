@@ -113,6 +113,14 @@ export type ViewerFrameChunk = {
   players: ViewerPlayerFrame[]; grenades: ViewerGrenadeFrame[];
 };
 
+export type FinderThrow = {
+  id: number; roundNumber: number; utilityType: string;
+  throwerSteamid: string; throwerName: string; throwerSide: string;
+  throwTick: number; throwPosition: [number, number, number];
+  detonateTick: number | null; detonatePosition: [number, number, number] | null;
+  trajectory: [number, number, number, number][];
+};
+
 export const libraryPathKey = 'csdm-port-selected-library';
 export const matchRouteKey = (id: number) => `local-${id}`;
 export function matchIdFromRoute(key: string | undefined) {

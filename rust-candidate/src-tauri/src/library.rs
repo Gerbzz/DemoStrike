@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
@@ -246,6 +246,76 @@ pub struct ViewerUtilityEvent {
     pub thrower_steamid: String,
     pub thrower_name: String,
     pub thrower_side: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinderThrow {
+    pub id: i64,
+    pub round_number: i64,
+    pub utility_type: String,
+    pub thrower_steamid: String,
+    pub thrower_name: String,
+    pub thrower_side: String,
+    pub throw_tick: i64,
+    pub throw_position: [f64; 3],
+    pub detonate_tick: Option<i64>,
+    pub detonate_position: Option<[f64; 3]>,
+    pub trajectory: Vec<[f64; 4]>,
+}
+
+/// A read-only native edge for the original grenade finder. Every coordinate
+/// comes from the imported event; invalid or absent paths remain unavailable.
+pub fn get_utility_finder(path: &str, match_id: i64) -> Result<Vec<FinderThrow>, LibraryError> {
+    let connection = open_library(path)?;
+    if !read_matches(&connection)?
+        .iter()
+        .any(|item| item.id == match_id)
+    {
+        return Err(LibraryError::MatchNotFound(match_id));
+    }
+    let mut query = connection.prepare(
+        "SELECT id,round_number,utility_type,thrower_steamid,thrower_name,thrower_team,
+                throw_tick,throw_x,throw_y,throw_z,detonate_tick,
+                detonate_x,detonate_y,detonate_z,trajectory
+         FROM utility_events WHERE match_id=?1 ORDER BY round_number,throw_tick,id",
+    )?;
+    let throws = query
+        .query_map([match_id], |row| {
+            let detonate = (
+                row.get::<_, Option<f64>>(11)?,
+                row.get::<_, Option<f64>>(12)?,
+                row.get::<_, Option<f64>>(13)?,
+            );
+            let raw_path: String = row.get(14)?;
+            let trajectory: Vec<[f64; 4]> = serde_json::from_str::<Vec<[f64; 4]>>(&raw_path)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|point| point.iter().all(|value| value.is_finite()))
+                .collect();
+            Ok(FinderThrow {
+                id: row.get(0)?,
+                round_number: row.get(1)?,
+                utility_type: row.get(2)?,
+                thrower_steamid: row.get(3)?,
+                thrower_name: row.get(4)?,
+                thrower_side: row.get(5)?,
+                throw_tick: row.get(6)?,
+                throw_position: [row.get(7)?, row.get(8)?, row.get(9)?],
+                detonate_tick: row.get(10)?,
+                detonate_position: match detonate {
+                    (Some(x), Some(y), Some(z))
+                        if [x, y, z].iter().all(|value| value.is_finite()) =>
+                    {
+                        Some([x, y, z])
+                    }
+                    _ => None,
+                },
+                trajectory,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(throws)
 }
 
 #[derive(Debug, Serialize)]

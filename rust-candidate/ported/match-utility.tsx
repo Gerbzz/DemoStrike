@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Outlet } from 'react-router';
 import { Content } from 'csdm/ui/components/content';
+import { GrenadesTabs } from 'csdm/ui/match/grenades/grenades-tabs';
 import { useSourceMatch } from './match-loader';
 
 export function MatchGrenades() {
-  return <Outlet />;
+  return <><GrenadesTabs /><Outlet /></>;
 }
 
 export function GrenadesStats() {

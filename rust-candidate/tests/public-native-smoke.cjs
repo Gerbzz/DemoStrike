@@ -227,6 +227,39 @@ async function main() {
     assert.equal(utilityRows, 150);
     const utilityShot = path.join(outputDir, 'real-demo-utility.png');
     await captureAppOnly(page, utilityShot);
+    await page.getByRole('link', { name: 'Finder' }).click();
+    await page.getByRole('heading', { name: 'Grenade finder' }).waitFor({ timeout: 30000 });
+    await page.waitForFunction(() => document.querySelector('[data-finder-count]')?.getAttribute('data-finder-count') === '150',
+      null, { timeout: 30000 });
+    const finderTarget = await page.evaluate(async () => {
+      const library = localStorage.getItem('csdm-port-selected-library');
+      const matchId = Number(location.hash.match(/local-(\d+)/)?.[1]);
+      const throws = await window.__TAURI_INTERNALS__.invoke('get_utility_finder', { path: library, matchId });
+      const detail = await window.__TAURI_INTERNALS__.invoke('get_match_detail', { path: library, matchId });
+      const item = throws.find((entry) => entry.trajectory.length >= 2
+        && detail.rounds.some((round) => round.roundNumber === entry.roundNumber
+          && entry.throwTick >= round.startTick && entry.throwTick <= round.endTick));
+      return { count: throws.length, item: item && { id: item.id, round: item.roundNumber,
+        type: item.utilityType, tick: item.throwTick, points: item.trajectory.length } };
+    });
+    assert.equal(finderTarget.count, 150);
+    assert.ok(finderTarget.item, 'Pinned public demo has no recorded finder path inside a replay round');
+    await page.getByRole('combobox', { name: 'Round' }).selectOption(String(finderTarget.item.round));
+    await page.getByRole('combobox', { name: 'Grenade type' }).selectOption(finderTarget.item.type);
+    await page.locator(`[data-throw-id="${finderTarget.item.id}"]`).click();
+    assert.equal(await page.locator('[data-selected-throw]').getAttribute('data-selected-throw'), String(finderTarget.item.id));
+    assert.equal(await page.locator('svg polyline').count(), 1, 'Selected measured path was not drawn');
+    await page.getByLabel('Choose local radar PNG').setInputFiles(process.env.CSDM_PUBLIC_RADAR_PATH);
+    await page.locator('svg image').waitFor({ timeout: 15000 });
+    const finderShot = path.join(outputDir, 'real-demo-grenade-finder.png');
+    await captureAppOnly(page, finderShot);
+    await page.getByRole('link', { name: 'Open at throw in 2D Viewer' }).click();
+    await page.getByRole('heading', { name: `2D Viewer - Round ${finderTarget.item.round}` })
+      .waitFor({ timeout: 60000 });
+    await page.waitForFunction((tick) => Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')) === tick,
+      finderTarget.item.tick, { timeout: 60000 });
+    const finderViewerShot = path.join(outputDir, 'real-demo-finder-viewer-link.png');
+    await captureAppOnly(page, finderViewerShot);
     // The pinned CSDM Viewer2D canvas, playback bar, rounds bar and drawing
     // hooks receive bounded native frame chunks through the Tauri adapter.
     await page.getByRole('link', { name: '2D Viewer' }).click();
@@ -448,8 +481,8 @@ async function main() {
       featureFreeReleaseBuild: featureFree,
       syntheticEnvironmentDeliberatelySet: featureFree,
       parserCapability: capability,
-      observed: { roundRows, playerRows, playerDetailRows, utilityRows, nativeFacts, viewerFacts, pausedTick, bombRound },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, effectiveDamageShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, eventShot, viewerSeekShot, viewerRoundShot, betweenRoundsShot, bombShot, duplicateShot, invalidShot]
+      observed: { roundRows, playerRows, playerDetailRows, utilityRows, finderTarget, nativeFacts, viewerFacts, pausedTick, bombRound },
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, effectiveDamageShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, finderShot, finderViewerShot, eventShot, viewerSeekShot, viewerRoundShot, betweenRoundsShot, bombShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',

@@ -37,6 +37,11 @@ fn get_viewer_frames(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn get_utility_finder(path: String, match_id: i64) -> Result<Vec<library::FinderThrow>, String> {
+    library::get_utility_finder(&path, match_id).map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -56,6 +61,7 @@ pub fn run() {
             get_match_detail,
             get_viewer_round,
             get_viewer_frames,
+            get_utility_finder,
             import::csdm_import_demo,
             import::csdm_choose_demo,
             import_queue::csdm_enqueue_demo,

@@ -38,7 +38,7 @@ export default {
       { find: 'csdm/ui/match/players/match-players', replacement: path.resolve(portedRoot, 'match-players.tsx') },
       { find: 'csdm/ui/match/grenades/match-grenades', replacement: path.resolve(portedRoot, 'match-utility.tsx') },
       { find: 'csdm/ui/match/grenades/stats/grenades-stats', replacement: path.resolve(portedRoot, 'match-utility.tsx') },
-      { find: 'csdm/ui/match/grenades/finder/grenades-finder-loader', replacement: path.resolve(portedRoot, 'unsupported-match-view.tsx') },
+      { find: 'csdm/ui/match/grenades/finder/grenades-finder-loader', replacement: path.resolve(portedRoot, 'native-grenades-finder.tsx') },
       { find: 'csdm/ui/match/heatmap/match-heatmap', replacement: path.resolve(portedRoot, 'unsupported-match-view.tsx') },
       { find: 'csdm/ui/match/duels/match-duels', replacement: path.resolve(originalSource, 'ui/match/duels/match-duels.tsx') },
       { find: 'csdm/ui/match/duels/opening-duels-map/opening-duels-map-loader', replacement: path.resolve(portedRoot, 'unsupported-match-view.tsx') },

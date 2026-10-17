@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Game, GrenadeName, TeamNumber, WeaponName } from 'csdm/common/types/counter-strike';
 import type { Map } from 'csdm/common/types/map';
 import type { Kill } from 'csdm/common/types/kill';
@@ -132,8 +132,9 @@ function observedKills(detail: MatchDetail, recorded: RecordedRound, frames: Fra
   });
 }
 
-function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap }: {
-  detail: MatchDetail; recorded: RecordedRound; meta: ViewerRoundMeta; frames: Frames; radarBitmap: ImageBitmap | null;
+function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap, initialTick }: {
+  detail: MatchDetail; recorded: RecordedRound; meta: ViewerRoundMeta; frames: Frames;
+  radarBitmap: ImageBitmap | null; initialTick: number | null;
 }) {
   const { checksum } = useParams();
   const navigate = useNavigate();
@@ -150,7 +151,7 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap }: {
   const [drawingTool, setDrawingTool] = useState<ViewerValue['drawingTool']>('pen');
   const [drawingSize, setDrawingSize] = useState(2);
   const [drawingColor, setDrawingColor] = useState('#ff0000');
-  const [currentTick, setTick] = useState(recorded.freezeEndTick ?? start);
+  const [currentTick, setTick] = useState(initialTick ?? recorded.freezeEndTick ?? start);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [focusedPlayerId, setFocusedPlayerId] = useState<string | undefined>();
@@ -216,11 +217,17 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap }: {
 
 export function Viewer2DLoader() {
   const detail = useSourceMatch();
+  const [searchParams] = useSearchParams();
   const { checksum, number } = useParams();
   const matchId = matchIdFromRoute(checksum);
   const path = localStorage.getItem(libraryPathKey);
   const roundNumber = Number(number || 1);
   const recorded = detail.rounds.find((round) => round.roundNumber === roundNumber);
+  const requestedTick = Number(searchParams.get('tick'));
+  const initialTick = searchParams.has('tick') && Number.isSafeInteger(requestedTick)
+    && typeof recorded?.startTick === 'number' && typeof recorded?.endTick === 'number'
+    && requestedTick >= recorded!.startTick! && requestedTick <= recorded!.endTick!
+    ? requestedTick : null;
   const [meta, setMeta] = useState<ViewerRoundMeta | null>(null);
   const [frames, setFrames] = useState<Frames | null>(null);
   const [progress, setProgress] = useState(0);
@@ -298,6 +305,7 @@ export function Viewer2DLoader() {
           onChange={(event) => void chooseRadar(event.target.files?.[0])} /></label>
     </header>
     {radarError && <p role="alert" className="px-16 py-4 text-red-600">{radarError}</p>}
-    <NativeOriginalViewer key={roundNumber} detail={detail} recorded={recorded} meta={meta} frames={frames} radarBitmap={radarBitmap} />
+    <NativeOriginalViewer key={`${roundNumber}-${initialTick ?? 'default'}`} detail={detail} recorded={recorded}
+      meta={meta} frames={frames} radarBitmap={radarBitmap} initialTick={initialTick} />
   </div>;
 }
