@@ -183,7 +183,9 @@ comparison = {
         {"number": native["number"], "upstreamStart": upstream.get("startTick"),
          "nativeStart": native["start"], "nativeFreezeEnd": native["freezeEnd"],
          "upstreamEnd": upstream.get("endTick"),
-         "nativeEnd": native["end"], "upstreamFreezeEnd": upstream.get("freezeTimeEndTick")}
+         "nativeEnd": native["end"], "upstreamFreezeEnd": upstream.get("freezeTimeEndTick"),
+         "upstreamTeamASide": upstream.get("teamASide"),
+         "upstreamTeamBSide": upstream.get("teamBSide")}
         for upstream, native in zip(oracle.get("rounds", []), rounds)
     ],
     "damageEventIdentityWithinMatchWithoutAmount": event_differences(
