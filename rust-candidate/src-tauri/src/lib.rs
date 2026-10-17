@@ -23,8 +23,9 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager;
             let directory = app.path().app_data_dir()?;
-            let queue = std::sync::Arc::new(import_queue::ImportQueue::new(&directory)
-                .map_err(std::io::Error::other)?);
+            let queue = std::sync::Arc::new(
+                import_queue::ImportQueue::new(&directory).map_err(std::io::Error::other)?,
+            );
             queue.start();
             app.manage(queue);
             Ok(())
