@@ -142,7 +142,7 @@ async function main() {
     await page.getByRole('heading', { name: firstPlayerName, exact: true }).waitFor({ timeout: 30000 });
     await page.getByRole('heading', { name: 'Round by round' }).waitFor({ timeout: 30000 });
     const playerDetailRows = await page.locator('section[aria-label="Player rounds"] tbody tr').count();
-    assert.equal(playerDetailRows, 10, 'Selected real-demo player lacks ten recorded round rows');
+    assert.equal(playerDetailRows, 9, 'Only nine live rounds have recorded player facts; the final surrender must stay unavailable');
     const playerDetailShot = path.join(outputDir, 'real-demo-player-detail.png');
     await captureAppOnly(page, playerDetailShot);
     await page.getByRole('link', { name: 'All players' }).click();
