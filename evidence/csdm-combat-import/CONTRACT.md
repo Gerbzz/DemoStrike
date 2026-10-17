@@ -48,8 +48,7 @@ The normal app build has no synthetic parser feature and uses the native CS2
 decoder. Passing synthetic smoke proves the import wiring and UI contract,
 not that this new parser version successfully decodes Neil's private demo.
 
-A private read-only inspection of the already available v6 library found one
-`native-combat-flash-v1` match, 10 players, 16 rounds, and 253 utility events,
-with its source `.dem` still present. It was not migrated or uploaded. A
-current-build private native GUI import remains unverified under the task's
-no-local-build and no-executable-download constraint.
+The hosted fixture and screenshots are public synthetic data. A current-build
+private native GUI import remains unverified under the task's no-local-build
+and no-executable-download constraint.
+
