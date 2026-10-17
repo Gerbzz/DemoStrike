@@ -1334,6 +1334,8 @@ mod tests {
             }],
             raw_combat_hurts: vec![],
             raw_combat_deaths: vec![],
+            bomb_events: vec![],
+            bomb_event_stream_available: false,
             position_stream_available: false,
             viewer_positions: vec![],
             viewer_trajectories: vec![],

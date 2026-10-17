@@ -10,7 +10,7 @@ from pathlib import Path
 import sqlite3
 
 
-root = Path(os.environ["RUNNER_TEMP"])
+root = Path(os.environ.get("ORACLE_RUN_ROOT", os.environ["RUNNER_TEMP"]))
 database = sqlite3.connect(root / "oracle-demostrike.sqlite")
 database.row_factory = sqlite3.Row
 rows = database.execute("""SELECT tick, steamid, x, y, z, is_alive, health, yaw FROM viewer_player_positions
@@ -69,7 +69,9 @@ with player_files[0].open(newline="", encoding="utf-8") as file:
                             "nativeYaw": local["yaw"], "upstreamYaw": original})
                 if direct and not rotated_match and len(player_attribute_samples["yawDirectOnly"]) < 8:
                     player_attribute_samples["yawDirectOnly"].append({"tick": key[0],
-                        "nativeYaw": local["yaw"], "upstreamYaw": original})
+                        "nativeYaw": local["yaw"], "upstreamYaw": original,
+                        "nativeAlive": local["is_alive"], "upstreamAlive": row["is alive"],
+                        "nativeHealth": local["health"]})
                 if not direct and not rotated_match and len(player_attribute_samples["yawNeither"]) < 8:
                     player_attribute_samples["yawNeither"].append({"tick": key[0],
                         "nativeYaw": local["yaw"], "upstreamYaw": original})

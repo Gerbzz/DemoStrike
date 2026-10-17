@@ -351,6 +351,23 @@ for field in ("killVsInMatchDeathIdentity", "damageEventIdentityWithinMatchWitho
     result = comparison[field]
     if result["upstreamCount"] != result["nativeCount"] or result["upstreamOnlyCount"] or result["nativeOnlyCount"]:
         failures.append(f"{field} differs: {result}")
+for result in comparison["bombTickRoundDiscovery"].values():
+    if result["upstreamCount"] != result["nativeCount"] or result["upstreamOnlyCount"] or result["nativeOnlyCount"]:
+        failures.append(f"Observed bomb tick/round identity differs: {result}")
+for kind in ("smoke", "he", "decoy"):
+    result = comparison["grenadeDetonationTickRoundDiscovery"][kind]
+    if result["upstreamCount"] != result["nativeCount"] or result["upstreamOnlyCount"] or result["nativeOnlyCount"]:
+        failures.append(f"{kind} detonation tick/round identity differs: {result}")
+# The pinned analyzer emits two FlashExplode records per observed native
+# detonation on both public fixtures. Preserve its multiplicity as an explicit
+# source difference while checking every distinct tick/round identity.
+flash_fields = ("roundNumber", "tick")
+upstream_flashes = Counter(key(event, flash_fields) for event in oracle.get("flashbangsExplode") or [])
+native_flashes = Counter(key(event, flash_fields) for event in native_detonations if event["kind"] == "flash")
+if set(upstream_flashes) != set(native_flashes) or any(
+    upstream_flashes[identity] != 2 * count for identity, count in native_flashes.items()
+):
+    failures.append("Flash detonation identities or pinned analyzer 2x export multiplicity changed")
 if len(player_comparison) != 10 or set(native_players) != set(oracle.get("players", {})):
     failures.append("Pinned player identity set changed")
 for player in player_comparison:

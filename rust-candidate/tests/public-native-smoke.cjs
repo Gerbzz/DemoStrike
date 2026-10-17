@@ -362,6 +362,14 @@ async function main() {
       document.querySelector('[data-round-number]')?.getAttribute('data-round-number') === '3'
       && Number(document.querySelector('[data-player-count]')?.getAttribute('data-player-count')) > 0,
     null, { timeout: 30000 });
+    const betweenRounds = page.locator('details.native-recorded-events');
+    await betweenRounds.locator('summary').click();
+    const outsideReplay = betweenRounds.locator('[data-event-kind="bomb"][data-event-tick="21853"]');
+    await outsideReplay.waitFor({ timeout: 15000 });
+    assert.ok(await outsideReplay.isDisabled(), 'Inter-round bomb plant must not seek to an invented playable frame');
+    assert.ok((await outsideReplay.innerText()).includes('between rounds'));
+    const betweenRoundsShot = path.join(outputDir, 'real-demo-viewer-between-rounds.png');
+    await captureAppOnly(page, betweenRoundsShot);
     await page.goBack();
     await page.getByRole('heading', { name: '2D Viewer - Round 2' }).waitFor({ timeout: 60000 });
     const bombRound = await page.evaluate(async () => {
@@ -371,7 +379,8 @@ async function main() {
       for (let roundNumber = 1; roundNumber <= 10; roundNumber++) {
         const meta = await invoke('get_viewer_round', { path: library, matchId, roundNumber });
         const plant = meta.bombEvents.find((event) => event.kind === 'bomb_planted'
-          && event.x !== null && event.y !== null && event.z !== null);
+          && event.x !== null && event.y !== null && event.z !== null
+          && event.tick >= meta.startTick && event.tick <= meta.endTick);
         if (plant) return { roundNumber, tick: plant.tick, eventCount: meta.bombEvents.length };
       }
       return null;
@@ -425,7 +434,7 @@ async function main() {
       syntheticEnvironmentDeliberatelySet: featureFree,
       parserCapability: capability,
       observed: { roundRows, playerRows, playerDetailRows, utilityRows, nativeFacts, viewerFacts, pausedTick, bombRound },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, effectiveDamageShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, eventShot, viewerSeekShot, viewerRoundShot, bombShot, duplicateShot, invalidShot]
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, effectiveDamageShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, eventShot, viewerSeekShot, viewerRoundShot, betweenRoundsShot, bombShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',

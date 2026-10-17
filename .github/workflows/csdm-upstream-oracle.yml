@@ -98,6 +98,17 @@ jobs:
         env:
           ORACLE_RUN_ROOT: ${{ runner.temp }}/ancient
         run: python tests/csdm_oracle_inventory.py
+      - name: Export second recording position frames to hosted temporary storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ancient/csdm-position-oracle"
+          "$RUNNER_TEMP/csda" -demo-path="$RUNNER_TEMP/ancient/public-cs2-fixture.dem" \
+            -output="$RUNNER_TEMP/ancient/csdm-position-oracle" -format=csv -positions
+      - name: Compare second recording positions and projectile paths
+        env:
+          ORACLE_RUN_ROOT: ${{ runner.temp }}/ancient
+        run: python tests/csdm_position_oracle.py
       - name: Upload public-demo oracle discovery output
         if: always()
         uses: actions/upload-artifact@v4
@@ -110,6 +121,7 @@ jobs:
             ${{ runner.temp }}/csdm-oracle/*.json
             ${{ runner.temp }}/ancient/csdm-oracle-inventory.json
             ${{ runner.temp }}/ancient/csdm-oracle-comparison.json
+            ${{ runner.temp }}/ancient/csdm-position-comparison.json
             ${{ runner.temp }}/ancient/csdm-oracle/*.json
           if-no-files-found: warn
           retention-days: 1
