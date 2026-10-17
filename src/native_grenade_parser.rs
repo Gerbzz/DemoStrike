@@ -523,8 +523,8 @@ impl GrenadeObserver {
                                         .and_then(|user| controller_by_user(ctx, user))
                                         .and_then(|controller| pawn_of(ctx, controller))
                                         .map(|pawn| format!("{:?}", pawn.get_property("m_iHealth")));
-                                    eprintln!("HEALTH_TRACE tick={} round={round} order={} raw={damage} post={:?} pawn={pawn_health:?}",
-                                        ctx.tick(), self.combat_event_order, event_int(event, "health"));
+                                    eprintln!("HEALTH_TRACE tick={} round={round} order={} raw={damage} post_value={:?} pawn={pawn_health:?}",
+                                        ctx.tick(), self.combat_event_order, event.get_value("health"));
                                 }
                                 self.combat_hurts.push(RawCombatHurt {
                                 event_order: Some(self.combat_event_order),
