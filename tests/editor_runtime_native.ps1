@@ -26,12 +26,15 @@ foreach ($case in $cases) {
     Write-Output "EDITOR_CAPTURE_LAUNCH $($case.Name)"
     $start = [System.Diagnostics.ProcessStartInfo]::new($app)
     $start.UseShellExecute = $false
+    $start.RedirectStandardError = $true
+    $start.Environment['DEMOSTRIKE_EDITOR_CAPTURE_PROOF'] = '1'
     [void]$start.ArgumentList.Add('--project')
     [void]$start.ArgumentList.Add($project)
     [void]$start.ArgumentList.Add('--capture')
     [void]$start.ArgumentList.Add($png)
     $process = [System.Diagnostics.Process]::Start($start)
     if (-not $process) { throw "Native editor process did not start for $($case.Name)" }
+    $stderrTask = $process.StandardError.ReadToEndAsync()
     try {
         if (-not $process.WaitForExit(90000)) {
             $process.Kill($true)
@@ -40,6 +43,12 @@ foreach ($case in $cases) {
         }
         $exitCode = $process.ExitCode
     } finally {
+        if ($stderrTask.Wait(10000)) {
+            Write-Output "EDITOR_NATIVE_STDERR $($case.Name)"
+            Write-Output $stderrTask.Result
+        } else {
+            Write-Output "EDITOR_NATIVE_STDERR_TIMEOUT $($case.Name)"
+        }
         $process.Dispose()
     }
     if ($exitCode -ne 0 -or -not (Test-Path -LiteralPath $png)) {

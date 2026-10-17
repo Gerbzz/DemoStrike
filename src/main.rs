@@ -45,6 +45,7 @@ fn main() -> eframe::Result<()> {
     let capturing = capture.is_some();
     let capture_status = Arc::new(Mutex::new(None));
     let capture_status_ui = Arc::clone(&capture_status);
+    if capturing { eprintln!("EDITOR_BOOT before_run_native"); }
     eframe::run_native(
         "DemoStrike — utility analysis",
         eframe::NativeOptions {
@@ -57,6 +58,7 @@ fn main() -> eframe::Result<()> {
             ..Default::default()
         },
         Box::new(move |context| {
+            if capturing { eprintln!("EDITOR_BOOT creation_callback"); }
             let mut app = match &project {
                 Some(path) => DemoStrikeApp::with_saved_project(context, path)
                     .map_err(std::io::Error::other)?,
@@ -64,8 +66,10 @@ fn main() -> eframe::Result<()> {
                     DemoStrikeApp::with_native_context(context).map_err(std::io::Error::other)?
                 }
             };
+            if capturing { eprintln!("EDITOR_BOOT project_loaded"); }
             if let Some(path) = capture.clone() {
                 app.capture_once(path, Arc::clone(&capture_status_ui));
+                eprintln!("EDITOR_BOOT capture_armed");
             }
             Ok(Box::new(app))
         }),

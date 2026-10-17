@@ -330,25 +330,51 @@ impl DemoStrikeApp {
     }
 
     pub fn with_saved_project(cc: &eframe::CreationContext<'_>, path: &Path) -> Result<Self, String> {
+        let trace = std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some();
+        if trace {
+            eprintln!("EDITOR_BOOT before_native_context");
+        }
         let mut app = Self::with_native_context(cc)?;
+        if trace {
+            eprintln!("EDITOR_BOOT before_open_saved_project");
+        }
         app.open_saved_project(path)?;
+        if trace {
+            eprintln!("EDITOR_BOOT after_open_saved_project");
+        }
         Ok(app)
     }
 
     fn open_saved_project(&mut self, path: &Path) -> Result<(), String> {
         if self.embedded_editor.is_some() { return Err("return from the current edit before opening another project".into()); }
         if self.pilot_messages.is_some() { return Err("finish or cancel the capture operation before opening the editor".into()); }
+        if std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some() {
+            eprintln!("EDITOR_BOOT before_load_editor_session");
+        }
         let (session, legacy) = load_editor_session(path)?;
+        if std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some() {
+            eprintln!("EDITOR_BOOT after_load_editor_session");
+        }
         self.install_editor(session, legacy, true)
     }
 
     fn install_editor(&mut self, mut session: Session, legacy: bool,
         recovery: bool) -> Result<(), String> {
+        let trace = std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some();
+        if trace {
+            eprintln!("EDITOR_BOOT before_autosave");
+        }
         if recovery { if let Some(root) = std::env::var_os("LOCALAPPDATA") {
             session.start_autosave(AutosaveConfig::new(PathBuf::from(root).join("DemoStrike/FilmCraftEditor")))
                 .map_err(|error| format!("could not start editor recovery: {error}"))?;
         }}
+        if trace {
+            eprintln!("EDITOR_BOOT before_filmcraft_new");
+        }
         let mut editor = FilmcraftApp::new(session);
+        if trace {
+            eprintln!("EDITOR_BOOT after_filmcraft_new");
+        }
         editor.host_brand = filmcraft_ui_egui::brand::HostBrand {
             product_name: "DemoStrike", wordmark: "DEMOSTRIKE",
         };
@@ -356,8 +382,17 @@ impl DemoStrikeApp {
         if legacy {
             editor.ui.status = "Capture project converted in memory. Save As a new .fcproj; the original .cstrike remains unchanged.".into();
         }
+        if trace {
+            eprintln!("EDITOR_BOOT before_set_wgpu");
+        }
         if let Some(state) = self.editor_render_state.clone() { editor.set_wgpu(state); }
+        if trace {
+            eprintln!("EDITOR_BOOT before_audio_init");
+        }
         editor.audio = Some(Box::new(filmcraft_audio::CpalOut::new()));
+        if trace {
+            eprintln!("EDITOR_BOOT after_audio_init");
+        }
         editor.hooks.pick_files = Some(Box::new(|exts| rfd::FileDialog::new()
             .add_filter("Media", exts).pick_files().unwrap_or_default()
             .into_iter().map(|p| p.to_string_lossy().into_owned()).collect()));
