@@ -7,6 +7,8 @@ on:
       - 'src/native_grenade_parser.rs'
       - 'src/analysis/mod.rs'
       - 'src/demo_import.rs'
+      - 'src/db/**'
+      - 'tests/public_demo_integration.rs'
   workflow_dispatch:
 
 permissions:
@@ -38,3 +40,9 @@ jobs:
         run: |
           set -euo pipefail
           cargo run --locked --bin demostrike-cli -- probe-demo "$RUNNER_TEMP/public-cs2-fixture.dem"
+      - name: Verify real decoder to SQLite transaction and restart
+        shell: bash
+        env:
+          PUBLIC_CS2_DEMO: ${{ runner.temp }}/public-cs2-fixture.dem
+        run: cargo test --locked --test public_demo_integration -- --ignored --nocapture
+
