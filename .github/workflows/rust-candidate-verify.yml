@@ -33,10 +33,12 @@ jobs:
         run: npm run test:contracts
       - name: Check Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Keep CDP out of normal app configuration
+        run: python tests/check_smoke_config.py
       - name: Run Rust tests
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets -- --test-threads=1
       - name: Compile native application
-        run: npm run tauri build
+        run: npm run tauri -- build --config src-tauri/tauri.smoke.conf.json
       - name: Generate sanitized synthetic SQLite fixture
         run: python tests/make_smoke_fixture.py
       - name: Launch real Tauri WebView2 and exercise IPC

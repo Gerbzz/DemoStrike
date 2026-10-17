@@ -111,7 +111,7 @@ function UtilityView({ detail }: { detail: MatchDetail }) {
 
 function UtilityTable({ events }: { events: UtilityEvent[] }) {
   return <div className="table-scroll"><table className="data-table"><thead><tr><th className="numeric">Round</th><th>Type</th><th>Thrower</th><th>Team</th><th className="numeric">Tick</th><th className="numeric">Enemies blinded</th><th className="numeric">Enemy damage</th></tr></thead><tbody>
-    {events.map((event) => <tr key={event.id}><td className="numeric">{event.roundNumber}</td><td>{event.utilityType}</td><td>{event.throwerName}</td><td className={event.throwerTeam === 'CT' ? 'ct' : 't'}>{event.throwerTeam}</td><td className="numeric">{event.throwTick}</td><td className="numeric">{event.enemiesBlinded}</td><td className="numeric">{event.damageEnemy}</td></tr>)}
+    {events.map((event) => <tr key={event.id}><td className="numeric">{event.roundNumber}</td><td>{event.utilityType}</td><td>{event.throwerName}</td><td className={event.throwerTeam === 'CT' ? 'ct' : 't'}>{event.throwerTeam}</td><td className="numeric">{event.throwTick}</td><td className="numeric">{event.enemiesBlinded === null ? <span className="muted" title="Blind attribution is not verified for this event">Unavailable</span> : event.enemiesBlinded}</td><td className="numeric">{event.damageEnemy === null ? <span className="muted" title="Damage attribution is not verified for this event">Unavailable</span> : event.damageEnemy}</td></tr>)}
   </tbody></table></div>;
 }
 

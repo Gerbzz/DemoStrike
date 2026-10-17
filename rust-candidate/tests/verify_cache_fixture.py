@@ -22,8 +22,16 @@ def main() -> None:
         # Execute the actual static SELECT strings from the Rust adapter against
         # this import. This catches SQL/schema drift without compiling a binary.
         adapter_sql = re.findall(r'"(SELECT[^\"]+)"', RUST_ADAPTER.read_text(encoding="utf-8"))
-        assert len(adapter_sql) == 6, len(adapter_sql)
+        assert len(adapter_sql) == 7, len(adapter_sql)
+        version = db.execute("PRAGMA user_version").fetchone()[0]
+        supported_columns = {row[1] for row in db.execute("PRAGMA table_info(utility_events_supported)")}
+        verified_view = version >= 6 and {
+            "effect_attribution_version", "blind_attribution_complete",
+            "damage_attribution_complete", "enemies_blinded", "damage_enemy",
+        }.issubset(supported_columns)
         for query in adapter_sql:
+            if "JOIN utility_events_supported" in query and not verified_view:
+                continue
             parameters = ("matches",) if "sqlite_master" in query else (() if "FROM matches m" in query else (1,))
             db.execute(query, parameters).fetchall()
         match = db.execute(
@@ -52,7 +60,7 @@ def main() -> None:
         }, utility
         assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     assert hashlib.sha256(db_path.read_bytes()).hexdigest() == before
-    print("PASS: Cache fixture, six Rust SQL queries, unknown winner, utility breakdown, integrity, unchanged bytes")
+    print("PASS: Cache fixture, compatible Rust SQL paths, unknown winner, utility breakdown, integrity, unchanged bytes")
 
 
 if __name__ == "__main__":

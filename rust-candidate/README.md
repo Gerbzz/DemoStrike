@@ -2,7 +2,7 @@
 
 An isolated Tauri 2 and React migration candidate for CS Demo Manager 3.20.1. The source baseline is [`akiver/cs-demo-manager` at `7270bc95c8cab87b7f9ddd490fea13c6eda3ace7`](https://github.com/akiver/cs-demo-manager/tree/7270bc95c8cab87b7f9ddd490fea13c6eda3ace7). The candidate does not replace the current DemoStrike, CSthrowback, ClipStrike, or FilmCraft applications.
 
-The first implemented slice reads an existing DemoStrike SQLite import and shows the match library, overview, rounds, players, and utility events. It never imports a demo, writes to the database, launches Counter-Strike, or captures video. The UI adapts the upstream Matches and Match Overview information architecture to a smaller temporary data contract; see `docs/UPSTREAM_ADAPTATIONS.md`. This is not a completed rewrite or upstream feature parity.
+The first implemented slice reads an existing DemoStrike SQLite import and shows the match library, overview, rounds, players, and utility events. It never imports a demo, writes to the database, launches Counter-Strike, or captures video. Effect metrics honor DemoStrike's versioned supported view; unverified raw values appear as Unavailable. The UI adapts the upstream Matches and Match Overview information architecture to a smaller temporary data contract; see `docs/UPSTREAM_ADAPTATIONS.md`. This is not a completed rewrite or upstream feature parity.
 
 ## Intended development run
 

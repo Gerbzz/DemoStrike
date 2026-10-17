@@ -72,11 +72,6 @@ async function main() {
   const fixtureHash = sha256(fixturePath);
   const app = spawn(appPath, [], {
     cwd: path.dirname(appPath),
-    env: {
-      ...process.env,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
-      WEBVIEW2_USER_DATA_FOLDER: path.join(outputDir, 'webview2-profile'),
-    },
     windowsHide: false,
     stdio: 'pipe',
   });
@@ -114,9 +109,11 @@ async function main() {
 
     await page.getByRole('tab', { name: 'Utility' }).click();
     assert.equal(await page.locator('.tab-content tbody tr').count(), 3);
+    assert.equal(await page.getByRole('cell', { name: 'Unavailable' }).count(), 4);
     await page.getByRole('combobox', { name: 'Round' }).selectOption('2');
     assert.equal(await page.locator('.tab-content tbody tr').count(), 1);
     assert.ok((await page.getByRole('tabpanel').innerText()).includes('flash'));
+    assert.ok((await page.getByRole('tabpanel').innerText()).includes('Unavailable'));
     screenshots.push(await capture(page, 'utility-round-2'));
 
     await page.getByRole('button', { name: 'synthetic-beta.dem' }).click();

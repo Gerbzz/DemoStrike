@@ -103,8 +103,8 @@ pub struct UtilityEvent {
     pub thrower_name: String,
     pub thrower_team: String,
     pub throw_tick: i64,
-    pub enemies_blinded: i64,
-    pub damage_enemy: i64,
+    pub enemies_blinded: Option<i64>,
+    pub damage_enemy: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -163,8 +163,6 @@ fn open_library(path: &str) -> Result<Connection, LibraryError> {
                 "thrower_name",
                 "thrower_team",
                 "throw_tick",
-                "enemies_blinded",
-                "damage_enemy",
             ][..],
         ),
     ] {
@@ -191,6 +189,28 @@ fn open_library(path: &str) -> Result<Connection, LibraryError> {
         }
     }
     Ok(connection)
+}
+
+/// Earlier imports can retain stored effect totals without verified attribution.
+/// Only the v6+ public view can expose those totals as measured facts.
+fn has_verified_effect_view(connection: &Connection) -> Result<bool, LibraryError> {
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version < 6 {
+        return Ok(false);
+    }
+    let mut statement = connection.prepare("PRAGMA table_info(utility_events_supported)")?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok([
+        "effect_attribution_version",
+        "blind_attribution_complete",
+        "damage_attribution_complete",
+        "enemies_blinded",
+        "damage_enemy",
+    ]
+    .iter()
+    .all(|column| columns.iter().any(|name| name == column)))
 }
 
 fn read_matches(connection: &Connection) -> Result<Vec<MatchSummary>, LibraryError> {
@@ -267,11 +287,17 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
-    let mut events_query = connection.prepare(
+    let events_sql = if has_verified_effect_view(&connection)? {
+        "SELECT e.id, e.round_number, e.utility_type, e.thrower_name, e.thrower_team,
+                e.throw_tick, v.enemies_blinded, v.damage_enemy
+         FROM utility_events e LEFT JOIN utility_events_supported v ON v.id = e.id
+         WHERE e.match_id = ?1 ORDER BY e.round_number, e.throw_tick, e.id"
+    } else {
         "SELECT id, round_number, utility_type, thrower_name, thrower_team,
-                throw_tick, enemies_blinded, damage_enemy
-         FROM utility_events WHERE match_id = ?1 ORDER BY round_number, throw_tick, id",
-    )?;
+                throw_tick, NULL AS enemies_blinded, NULL AS damage_enemy
+         FROM utility_events WHERE match_id = ?1 ORDER BY round_number, throw_tick, id"
+    };
+    let mut events_query = connection.prepare(events_sql)?;
     let utility_events = events_query
         .query_map([match_id], |row| {
             Ok(UtilityEvent {

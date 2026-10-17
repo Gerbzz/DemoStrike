@@ -27,8 +27,8 @@ export type UtilityEvent = {
   throwerName: string;
   throwerTeam: string;
   throwTick: number;
-  enemiesBlinded: number;
-  damageEnemy: number;
+  enemiesBlinded: number | null;
+  damageEnemy: number | null;
 };
 export type UtilityCount = { utilityType: string; count: number };
 export type MatchDetail = {

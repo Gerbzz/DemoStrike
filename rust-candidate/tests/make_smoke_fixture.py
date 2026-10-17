@@ -21,11 +21,12 @@ def main() -> None:
     with sqlite3.connect(db_path) as db:
         db.executescript(
             """
+            PRAGMA user_version = 6;
             CREATE TABLE matches (
                 id INTEGER PRIMARY KEY, file_name TEXT NOT NULL,
                 map_name TEXT NOT NULL, score_ct INTEGER NOT NULL,
                 score_t INTEGER NOT NULL, imported_at TEXT NOT NULL,
-                parser_capability TEXT NOT NULL
+                parser_capability TEXT NOT NULL, effect_attribution_version INTEGER
             );
             CREATE TABLE players (match_id INTEGER, steamid TEXT, name TEXT);
             CREATE TABLE rounds (
@@ -35,13 +36,21 @@ def main() -> None:
             CREATE TABLE utility_events (
                 id INTEGER PRIMARY KEY, match_id INTEGER, round_number INTEGER,
                 utility_type TEXT, thrower_name TEXT, thrower_team TEXT,
-                throw_tick INTEGER, enemies_blinded INTEGER, damage_enemy INTEGER
+                throw_tick INTEGER, enemies_blinded INTEGER, damage_enemy INTEGER,
+                blind_attribution_complete INTEGER NOT NULL DEFAULT 0,
+                damage_attribution_complete INTEGER NOT NULL DEFAULT 0
             );
+            CREATE VIEW utility_events_supported AS
+            SELECT e.id, e.match_id, m.effect_attribution_version,
+                   e.blind_attribution_complete, e.damage_attribution_complete,
+                   CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.blind_attribution_complete != 1 THEN NULL ELSE e.enemies_blinded END AS enemies_blinded,
+                   CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.damage_attribution_complete != 1 THEN NULL ELSE e.damage_enemy END AS damage_enemy
+            FROM utility_events e JOIN matches m ON m.id = e.match_id;
             INSERT INTO matches VALUES
                 (101, 'synthetic-alpha.dem', 'de_mirage', 13, 9,
-                 '2026-01-02T12:00:00Z', 'synthetic-ci-only'),
+                 '2026-01-02T12:00:00Z', 'synthetic-ci-only', 2),
                 (102, 'synthetic-beta.dem', 'de_inferno', 6, 13,
-                 '2026-01-01T12:00:00Z', 'synthetic-ci-only');
+                 '2026-01-01T12:00:00Z', 'synthetic-ci-only', NULL);
             INSERT INTO players VALUES
                 (101, 'synthetic-ct-1', 'Synthetic CT'),
                 (101, 'synthetic-t-1', 'Synthetic T');
@@ -50,9 +59,9 @@ def main() -> None:
                 (101, 2, 'T', 201, 300),
                 (101, 3, NULL, 301, 400);
             INSERT INTO utility_events VALUES
-                (1, 101, 1, 'smoke', 'Synthetic CT', 'CT', 130, 0, 0),
-                (2, 101, 2, 'flash', 'Synthetic T', 'T', 240, 2, 0),
-                (3, 101, 3, 'molotov', 'Synthetic CT', 'CT', 330, 0, 18);
+                (1, 101, 1, 'smoke', 'Synthetic CT', 'CT', 130, 0, 0, 0, 0),
+                (2, 101, 2, 'flash', 'Synthetic T', 'T', 240, 2, 0, 1, 0),
+                (3, 101, 3, 'molotov', 'Synthetic CT', 'CT', 330, 0, 18, 0, 1);
             """
         )
         assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
