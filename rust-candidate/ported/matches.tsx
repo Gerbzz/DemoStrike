@@ -25,8 +25,8 @@ const columns: readonly Column<MatchSummary>[] = [
   { id: 'playerCount', accessor: 'playerCount', headerText: 'Players', headerTooltip: 'Recorded player rows', width: 75, textAlign: 'right' },
   { id: 'utilityCount', accessor: 'utilityCount', headerText: 'Utility', headerTooltip: 'Recorded utility events', width: 70, textAlign: 'right' },
   { id: 'duration', accessor: (match) => durationSeconds(match) ?? 'Unavailable',
-    headerText: 'Duration', headerTooltip: 'Duration from recorded ticks and tick rate', width: 85,
-    formatter: (seconds: number | string) => typeof seconds === 'number' ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : seconds },
+    headerText: 'Duration', headerTooltip: 'Duration from recorded ticks and tick rate; — means unavailable', width: 105,
+    formatter: (seconds: number | string) => typeof seconds === 'number' ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : '—' },
   { id: 'importedAt', accessor: 'importedAt', headerText: 'Imported', headerTooltip: 'DemoStrike import time', width: 175,
     formatter: (value: string) => {
       const date = new Date(value);
@@ -94,7 +94,7 @@ function SourceMatches({ path, onChangeLibrary }: { path: string; onChangeLibrar
       />
       <div className="border-b border-gray-300 px-16 py-8">
         <span className="text-body-strong">Existing DemoStrike library</span>
-        <span className="ml-8 text-gray-700 select-text">{path}</span>
+        <span className="ml-8 break-all text-gray-700 select-text">{path}</span>
       </div>
       {status === 'loading' && <CenteredContent><p role="status">Loading recorded matches.</p></CenteredContent>}
       {status === 'error' && <CenteredContent><div className="flex max-w-[520px] flex-col items-center gap-y-8 text-center" role="alert">

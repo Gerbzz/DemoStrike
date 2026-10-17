@@ -49,6 +49,6 @@ export function describe(error: unknown) {
 export function durationSeconds(summary: MatchSummary) {
   const rate = summary.tickRate;
   const ticks = summary.durationTicks;
-  return rate !== null && rate > 0 && ticks !== null && ticks >= 0
+  return rate !== null && Number.isFinite(rate) && rate > 0 && ticks !== null && Number.isFinite(ticks) && ticks >= 0
     ? Math.round(ticks / rate) : null;
 }

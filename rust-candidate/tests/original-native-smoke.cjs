@@ -72,7 +72,9 @@ async function main() {
     await page.getByText('2 recorded matches').waitFor({ timeout: 20000 });
     const firstMatch = page.getByRole('row').filter({ hasText: 'synthetic-alpha.dem' });
     assert.equal(await firstMatch.count(), 1, 'First synthetic match missing from original table engine');
-    assert.equal(await page.getByRole('row').filter({ hasText: 'synthetic-beta.dem' }).count(), 1);
+    const secondMatch = page.getByRole('row').filter({ hasText: 'synthetic-beta.dem' });
+    assert.equal(await secondMatch.count(), 1);
+    assert.ok((await secondMatch.innerText()).includes('—'), 'Unknown duration must not appear as zero');
     const matchesScreenshot = path.join(outputDir, 'ported-populated-matches.png');
     await page.screenshot({ path: matchesScreenshot, animations: 'disabled' });
     await firstMatch.dblclick();
