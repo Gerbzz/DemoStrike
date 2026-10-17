@@ -1244,19 +1244,24 @@ impl eframe::App for DemoStrikeApp {
         egui::Panel::top("header").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("DemoStrike");
-                ui.label("Utility event analysis");
-                if ui.add_enabled(self.import_messages.is_none(), egui::Button::new("Import CS2 demo (Rust analysis)" )).clicked() {
+                ui.separator();
+                ui.label("Match events and capture");
+            });
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                if ui.add_enabled(self.import_messages.is_none(), egui::Button::new("Import CS2 demo")).on_hover_text("Analyze grenade, combat, and flash events locally").clicked() {
                     if let Some(path) = rfd::FileDialog::new().add_filter("CS2 demo", &["dem"]).pick_file() {
                         let _ = self.start_demo_import(&path);
                     }
                 }
+                if ui.button("Saved matches").clicked() {
+                    if let Err(error) = self.refresh_library() { self.error = Some(error); }
+                }
+                ui.menu_button("Other sources and projects", |ui| {
                 if ui.add_enabled(self.import_messages.is_none(), egui::Button::new("Import with reference extractor")).clicked() {
                     if let Some(path) = rfd::FileDialog::new().add_filter("CS2 demo", &["dem"]).pick_file() {
                         let _ = self.start_reference_demo_import(&path);
                     }
-                }
-                if ui.button("Open saved matches").clicked() {
-                    if let Err(error) = self.refresh_library() { self.error = Some(error); }
                 }
                 if ui.button("Open editable project").clicked() {
                     if let Some(path) = rfd::FileDialog::new()
@@ -1292,6 +1297,7 @@ impl eframe::App for DemoStrikeApp {
                         let _ = self.load_raw_json(&path);
                     }
                 }
+                });
             });
         });
 
@@ -1587,7 +1593,7 @@ impl eframe::App for DemoStrikeApp {
             }
             if let Some(result) = &self.package_result {
                 ui.colored_label(egui::Color32::LIGHT_GREEN, result);
-            } else {
+            } else if self.analyzed.is_some() || self.draft.is_some() {
                 ui.colored_label(egui::Color32::YELLOW, "No capture media verified in this view.");
             }
             if let Some(error) = &self.error {
@@ -1617,8 +1623,21 @@ impl eframe::App for DemoStrikeApp {
             }
             if build_requested { let _ = self.build_capture_package(); }
             let Some(analyzed) = &self.analyzed else {
-                ui.heading("Import a CS2 demo or open raw facts");
-                ui.label("Open a CS2 demo for local grenade, combat, and flash event analysis. Unsupported schemas fail before saving; economy and game capture are separate.");
+                if !self.library_opened && self.draft.is_none() {
+                    ui.add_space(32.0);
+                    ui.vertical_centered(|ui| {
+                        ui.heading("Find the moments worth clipping");
+                        ui.add_space(8.0);
+                        ui.label("Import a CS2 demo to review grenade, combat, and flash events.");
+                        ui.label("Your saved matches and editable capture projects are available above.");
+                        ui.add_space(18.0);
+                        if ui.add_enabled(self.import_messages.is_none(), egui::Button::new("Import CS2 demo…")).clicked() {
+                            if let Some(path) = rfd::FileDialog::new().add_filter("CS2 demo", &["dem"]).pick_file() {
+                                let _ = self.start_demo_import(&path);
+                            }
+                        }
+                    });
+                }
                 return;
             };
             if let Some(path) = &self.source_label {

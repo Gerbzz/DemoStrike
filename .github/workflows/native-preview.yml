@@ -1,6 +1,8 @@
 name: Native preview executable
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [feature/native-screenshot-2026-10-15]
 
