@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Status } from 'csdm/common/types/status';
 import { MatchesActionBar } from 'csdm/ui/matches/actionbar/action-bar';
@@ -15,6 +15,7 @@ import type { Column } from 'csdm/ui/components/table/table-types';
 import { MatchesTable } from './matches-table';
 import { describe, durationSeconds, invoke, libraryPathKey, matchRouteKey } from './match-data';
 import { DemoImport } from './demo-import';
+import type { ImportJob } from './demo-import';
 import type { LibrarySnapshot, MatchSummary } from './match-data';
 
 const columns: readonly Column<MatchSummary>[] = [
@@ -26,8 +27,8 @@ const columns: readonly Column<MatchSummary>[] = [
   { id: 'playerCount', accessor: 'playerCount', headerText: 'Players', headerTooltip: 'Recorded player rows', width: 75, textAlign: 'right' },
   { id: 'utilityCount', accessor: 'utilityCount', headerText: 'Utility', headerTooltip: 'Recorded utility events', width: 70, textAlign: 'right' },
   { id: 'duration', accessor: (match) => durationSeconds(match) ?? 'Unavailable',
-    headerText: 'Duration', headerTooltip: 'Duration from recorded ticks and tick rate; — means unavailable', width: 105,
-    formatter: (seconds: number | string) => typeof seconds === 'number' ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : '—' },
+    headerText: 'Duration', headerTooltip: 'Duration from recorded ticks and tick rate; - means unavailable', width: 105,
+    formatter: (seconds: number | string) => typeof seconds === 'number' ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : '-' },
   { id: 'importedAt', accessor: 'importedAt', headerText: 'Imported', headerTooltip: 'DemoStrike import time', width: 175,
     formatter: (value: string) => {
       const date = new Date(value);
@@ -44,6 +45,9 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [showImport, setShowImport] = useState(false);
+  const [jobs, setJobs] = useState<ImportJob[]>([]);
+  const [queueError, setQueueError] = useState('');
+  const seenCompleted = useRef(new Set<number>());
   const table = useTable<MatchSummary>({
     columns,
     data: matches,
@@ -75,6 +79,31 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
     return () => { active = false; };
   }, [path, refresh]);
 
+  useEffect(() => {
+    let active = true;
+    async function pollQueue() {
+      try {
+        const next = await invoke<ImportJob[]>('csdm_list_import_jobs');
+        if (!active) return;
+        let newlyCompleted = false;
+        for (const job of next) {
+          if (job.state === 'completed' && !seenCompleted.current.has(job.id)) {
+            seenCompleted.current.add(job.id);
+            newlyCompleted = true;
+          }
+        }
+        setJobs(next);
+        setQueueError('');
+        if (newlyCompleted) setRefresh((value) => value + 1);
+      } catch (failure) {
+        if (active) setQueueError(describe(failure));
+      }
+    }
+    void pollQueue();
+    const timer = window.setInterval(() => void pollQueue(), 1200);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+
   return (
     <>
       <ActionBar
@@ -96,12 +125,18 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
         </label>}
       />
       {showImport && <div className="border-b border-gray-300 px-16 py-12">
-        <div className="max-w-[540px]"><DemoImport onImported={(receipt) => {
-          setShowImport(false);
-          if (receipt.path === path) setRefresh((value) => value + 1);
-          else onOpenLibrary(receipt.path);
+        <div className="max-w-[540px]"><DemoImport onQueued={(job) => {
+          setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)]);
         }} /></div>
       </div>}
+      {(jobs.length > 0 || queueError) && <section className="border-b border-gray-300 px-16 py-8" aria-label="Import queue">
+        <h2 className="text-body-strong">Import queue</h2>
+        {queueError && <p role="alert" className="mt-4 text-red-500 select-text">Could not read import jobs: {queueError}</p>}
+        {jobs.slice(0, 5).map((job) => <p key={job.id} className="mt-4 break-all text-gray-700" role={job.state === 'failed' ? 'alert' : 'status'}>
+          <span className="text-body-strong">{job.state === 'running' ? 'Analyzing' : job.state === 'completed' ? 'Imported' : job.state === 'failed' ? 'Import failed' : 'Queued'}</span>
+          {' '}{job.demoPath}{job.error ? `: ${job.error}` : ''}
+        </p>)}
+      </section>}
       <div className="border-b border-gray-300 px-16 py-8">
         <span className="text-body-strong">Existing DemoStrike library</span>
         <span className="ml-8 break-all text-gray-700 select-text">{path}</span>
@@ -117,7 +152,7 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
       </CenteredContent>}
       {status === 'ready' && matches.length > 0 && <Table table={table} />}
       <div className="flex justify-end border-t border-gray-300 px-16 py-8 text-gray-700">
-        {status === 'ready' ? `${matches.length} recorded ${matches.length === 1 ? 'match' : 'matches'} · Read only` : 'Read only'}
+        {status === 'ready' ? `${matches.length} recorded ${matches.length === 1 ? 'match' : 'matches'} � Read only` : 'Read only'}
       </div>
     </>
   );
