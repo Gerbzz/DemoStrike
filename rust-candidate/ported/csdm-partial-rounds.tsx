@@ -139,7 +139,7 @@ export function Rounds() {
         {selectedIndex < detail.rounds.length - 1 && <Link to={'../' + detail.rounds[selectedIndex + 1].roundNumber} relative="path" className="text-blue-600 underline">Next round</Link>}
       </nav>}
     </div>
-    <p className="mt-4 max-w-[760px] text-gray-700">The history follows the original CSDM round view. Recorded side winners, ticks, equipment values and ordered combat events appear where available; tags, full economy, playback and stable teams are unavailable.</p>
+    <p className="mt-4 max-w-[760px] text-gray-700">The history follows the original CSDM round view. Recorded winners, ticks, Team A/B sides and ordered combat events appear where observed. Tags, full economy and playback remain unavailable.</p>
     {detail.rounds.length === 0 ? <p className="mt-16" role="status">No rounds were recorded for this match.</p> : <>
       {!selected && <RoundsHistory rounds={detail.rounds} />}
       <section className="mt-16" aria-label="Round entries">
