@@ -36,7 +36,7 @@ export function PlayersDuelsMatrix() {
         <p className="mt-4 max-w-[760px] text-gray-700">Rows are attackers; columns are victims. Counts include only opposing sides observed at each death. A side switch does not establish a stable team.</p>
       </div>
       <label className="flex items-center gap-8 text-body-strong">Round
-        <select aria-label="Round filter" className="rounded border border-gray-400 bg-white px-8 py-4 text-body"
+        <select aria-label="Round filter" className="rounded border border-gray-400 bg-gray-50 px-8 py-4 text-body"
           value={roundFilter} onChange={(event) => { setRoundFilter(event.target.value); setSelectedPair(null); }}>
           <option value="all">All recorded rounds</option>
           {detail.rounds.map((round) => <option key={round.roundNumber} value={round.roundNumber}>Round {round.roundNumber}</option>)}
@@ -56,7 +56,7 @@ export function PlayersDuelsMatrix() {
                 <span className="block truncate">{player.name}</span></th>)}
             </tr></thead>
             <tbody>{players.map((attacker) => <tr key={attacker.steamid} className="border-t border-gray-200">
-              <th scope="row" title={attacker.name} className="sticky left-0 max-w-[160px] border-r border-gray-300 bg-white px-12 py-8 text-left">
+              <th scope="row" title={attacker.name} className="sticky left-0 max-w-[160px] border-r border-gray-300 bg-gray-50 px-12 py-8 text-left">
                 <span className="block truncate">{attacker.name}</span></th>
               {players.map((victim) => {
                 const pair = pairKey(attacker.steamid, victim.steamid);
