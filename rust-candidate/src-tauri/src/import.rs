@@ -76,7 +76,13 @@ pub async fn csdm_import_demo(
 pub(crate) fn import_native(demo: &Path, library: &Path) -> Result<ImportReceipt, String> {
     #[cfg(feature = "synthetic-import-smoke")]
     if let Some(facts) = std::env::var_os("DEMOSTRIKE_SYNTHETIC_RAW_FACTS") {
-        return import_with_parser(demo, library, &SyntheticFactsParser { facts: facts.into() });
+        return import_with_parser(
+            demo,
+            library,
+            &SyntheticFactsParser {
+                facts: facts.into(),
+            },
+        );
     }
     import_with_parser(demo, library, &NativeGrenadeParser)
 }
