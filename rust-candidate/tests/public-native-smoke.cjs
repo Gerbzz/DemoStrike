@@ -105,14 +105,25 @@ async function main() {
     await page.getByRole('heading', { name: 'de_mirage' }).waitFor({ timeout: 30000 });
     await page.getByRole('heading', { name: 'Recorded players' }).waitFor({ timeout: 30000 });
     assert.equal(await page.getByText('Synthetic CI fixture:', { exact: false }).count(), 0);
-    const capability = await page.evaluate(async () => {
+    const nativeFacts = await page.evaluate(async () => {
       const library = localStorage.getItem('csdm-port-selected-library');
       const matchId = Number(location.hash.match(/local-(\d+)/)?.[1]);
       if (!library || !Number.isSafeInteger(matchId)) throw new Error('Local match route not available');
       const detail = await window.__TAURI_INTERNALS__.invoke('get_match_detail', { path: library, matchId });
-      return detail.summary.parserCapability;
+      return {
+        capability: detail.summary.parserCapability,
+        roundStarts: detail.rounds.map((round) => round.startTick),
+        deaths: detail.rounds.reduce((count, round) => count + (round.deaths?.length ?? 0), 0),
+        hurts: detail.rounds.reduce((count, round) => count + (round.hurts?.length ?? 0), 0),
+        missingStreams: detail.rounds.filter((round) => round.deaths === null || round.hurts === null).length,
+      };
     });
+    const capability = nativeFacts.capability;
     assert.equal(capability, 'native-combat-full-v2', 'Real decoder provenance was not retained');
+    assert.equal(nativeFacts.roundStarts[0], 67, 'Pinned Mirage first round differs from the original analyzer');
+    assert.equal(nativeFacts.deaths, 64, 'Persisted in-match deaths were not attributed to recorded rounds');
+    assert.equal(nativeFacts.hurts, 264, 'Persisted raw damage event identities did not reach the native service');
+    assert.equal(nativeFacts.missingStreams, 0, 'A verified round lost its raw combat stream');
     const overviewShot = path.join(outputDir, 'real-demo-overview.png');
     await captureAppOnly(page, overviewShot);
     await page.getByRole('link', { name: 'Rounds', exact: true }).click();
@@ -129,6 +140,29 @@ async function main() {
       'Native raw death events did not reach the partial CSDM round view');
     const roundDetailShot = path.join(outputDir, 'real-demo-round-detail.png');
     await captureAppOnly(page, roundDetailShot);
+    await page.getByRole('link', { name: 'Open round 1' }).click();
+    await page.getByRole('heading', { name: 'Round 1', exact: true }).waitFor({ timeout: 30000 });
+    await page.getByRole('heading', { name: 'Recorded damage events' }).waitFor({ timeout: 30000 });
+    assert.ok(await page.locator('section[aria-label="Round raw damage"] ol li').count() > 0,
+      'Raw damage events did not reach the selected round route');
+    await page.getByRole('link', { name: 'Next round' }).click();
+    await page.getByRole('heading', { name: 'Round 2', exact: true }).waitFor({ timeout: 30000 });
+    await page.evaluate(() => { location.hash = location.hash.split('/rounds/')[0] + '/rounds/999'; });
+    await page.getByRole('alert').filter({ hasText: 'not recorded in this library' }).waitFor({ timeout: 30000 });
+    await page.getByRole('link', { name: 'All rounds' }).click();
+    await page.getByRole('heading', { name: 'Recorded rounds' }).waitFor({ timeout: 30000 });
+    await page.getByRole('link', { name: 'Duels', exact: true }).click();
+    await page.getByRole('heading', { name: 'Recorded duels' }).waitFor({ timeout: 30000 });
+    const matrix = page.locator('section[aria-label="Observed duel matrix"]');
+    const nonzero = matrix.locator('button:not([disabled])');
+    assert.ok(await nonzero.count() > 0, 'No opposing-side duel pairs appeared');
+    await nonzero.first().click();
+    const duelEvents = page.locator('section[aria-label="Selected duel events"] li');
+    assert.ok(await duelEvents.count() > 0, 'Selecting a duel did not reveal source events');
+    const duelsShot = path.join(outputDir, 'real-demo-duels.png');
+    await captureAppOnly(page, duelsShot);
+    await duelEvents.first().getByRole('link').click();
+    await page.getByRole('heading', { name: /^Round [0-9]+$/ }).waitFor({ timeout: 30000 });
     await page.getByRole('link', { name: 'Players' }).click();
     await page.getByRole('heading', { name: 'Recorded players' }).waitFor({ timeout: 30000 });
     await page.waitForFunction(() => document.querySelectorAll('tbody tr').length >= 10, null, { timeout: 30000 });
@@ -197,8 +231,8 @@ async function main() {
       featureFreeReleaseBuild: featureFree,
       syntheticEnvironmentDeliberatelySet: featureFree,
       parserCapability: capability,
-      observed: { roundRows, playerRows, playerDetailRows, utilityRows },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, playersShot, playerDetailShot, utilityShot, duplicateShot, invalidShot]
+      observed: { roundRows, playerRows, playerDetailRows, utilityRows, nativeFacts },
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, duelsShot, playersShot, playerDetailShot, utilityShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',
