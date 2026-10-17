@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   original-native:
+    needs: upstream-renderer
     runs-on: windows-latest
     timeout-minutes: 90
     defaults:
@@ -26,17 +27,12 @@ jobs:
         with:
           node-version: '24'
       - name: Install hosted tooling
-        run: |
-          npm ci --no-audit --no-fund
-          npm install --global pnpm@12.6.0 --ignore-scripts --no-audit --no-fund
-      - name: Install original frontend dependencies
-        working-directory: rust-candidate/upstream/cs-demo-manager
-        run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Bundle original renderer with Tauri startup adapters
-        working-directory: rust-candidate/upstream/cs-demo-manager
-        run: |
-          New-Item -ItemType Directory -Force static | Out-Null
-          ./node_modules/.bin/vp.cmd build --config ../../ported/vite.config.mjs
+        run: npm ci --no-audit --no-fund
+      - name: Download verified original renderer bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: csdm-ported-renderer
+          path: rust-candidate/ported/dist
       - name: Build native original renderer host
         run: npm run tauri -- build --config src-tauri/tauri.upstream.smoke.conf.json
       - name: Exercise original startup and capture native app
@@ -70,6 +66,13 @@ jobs:
           ./node_modules/.bin/vp build --config vite.config.ts
       - name: Compile original routes with Tauri startup adapters
         run: ./node_modules/.bin/vp build --config ../../ported/vite.config.mjs
+      - name: Share renderer bundle with hosted native job
+        uses: actions/upload-artifact@v4
+        with:
+          name: csdm-ported-renderer
+          path: rust-candidate/ported/dist
+          if-no-files-found: error
+          retention-days: 1
   verify:
     runs-on: windows-latest
     timeout-minutes: 90
