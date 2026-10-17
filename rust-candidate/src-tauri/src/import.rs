@@ -3,12 +3,12 @@
 
 use demostrike::demo_import::{DemoFactsParser, ImportControl};
 use demostrike::native_grenade_parser::NativeGrenadeParser;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportReceipt {
     pub path: String,
@@ -67,20 +67,18 @@ pub async fn csdm_import_demo(
         .join("demostrike-library.sqlite");
     tauri::async_runtime::spawn_blocking(move || {
         let demo = Path::new(&demo_path);
-        #[cfg(feature = "synthetic-import-smoke")]
-        if let Some(facts) = std::env::var_os("DEMOSTRIKE_SYNTHETIC_RAW_FACTS") {
-            return import_with_parser(
-                demo,
-                &library,
-                &SyntheticFactsParser {
-                    facts: facts.into(),
-                },
-            );
-        }
-        import_with_parser(demo, &library, &NativeGrenadeParser)
+        import_native(demo, &library)
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+pub(crate) fn import_native(demo: &Path, library: &Path) -> Result<ImportReceipt, String> {
+    #[cfg(feature = "synthetic-import-smoke")]
+    if let Some(facts) = std::env::var_os("DEMOSTRIKE_SYNTHETIC_RAW_FACTS") {
+        return import_with_parser(demo, library, &SyntheticFactsParser { facts: facts.into() });
+    }
+    import_with_parser(demo, library, &NativeGrenadeParser)
 }
 
 #[tauri::command]
