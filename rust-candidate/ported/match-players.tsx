@@ -50,7 +50,7 @@ export function MatchPlayers() {
       <div className="mt-16 h-[420px] min-w-0 overflow-hidden rounded-8 border border-gray-300" aria-label="Recorded player scoreboard">
         <Table table={table} />
       </div> :
-      <div className="mt-16 overflow-auto rounded-8 border border-gray-300">
+      <div className="mt-16 shrink-0 overflow-auto rounded-8 border border-gray-300">
         <table className="w-full text-left"><thead className="bg-gray-100"><tr>
           <th className="p-8">Player</th><th className="p-8">Steam ID</th>
           <th className="p-8 text-right">Enemy kills</th><th className="p-8 text-right">Assists</th>
@@ -64,7 +64,7 @@ export function MatchPlayers() {
           <td className="p-8 text-right tabular-nums">{player.combat?.enemyHealthDamage ?? '-'}</td>
         </tr>)}</tbody></table>
       </div>}
-    {selected?.combat && <section className="mt-24" aria-label="Player rounds">
+    {selected?.combat && <section className="mt-24 shrink-0" aria-label="Player rounds">
       <h2 className="text-subtitle">Round by round</h2>
       <div className="mt-12 overflow-auto rounded-8 border border-gray-300">
         <table className="w-full text-left"><thead className="bg-gray-100"><tr>
@@ -80,7 +80,7 @@ export function MatchPlayers() {
         </tr>)}</tbody></table>
       </div>
     </section>}
-    {selected && <Link to=".." relative="path" className="mt-16 text-blue-600 underline">All players</Link>}
+    {selected && <Link to=".." relative="path" className="mt-16 shrink-0 text-blue-600 underline">All players</Link>}
   </Content>;
 }
 
