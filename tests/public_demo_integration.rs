@@ -26,7 +26,12 @@ fn public_demo_import_is_transactional_and_persistent() {
     assert_eq!(imported.analyzed.events.len(), 150);
     assert_eq!(imported.analyzed.raw_combat_hurts.len(), 264);
     assert_eq!(imported.analyzed.raw_combat_deaths.len(), 73);
-    assert!(imported.analyzed.rounds.len() > 1);
+    assert!(imported.analyzed.rounds.len() >= 10);
+    for round in &imported.analyzed.rounds {
+        if let (Some(start), Some(end)) = (round.start_tick, round.end_tick) {
+            assert!(start < end, "round {} starts at {start} after ending at {end}", round.round_number);
+        }
+    }
     drop(imported);
 
     // A separate connection represents application restart, and checks that
