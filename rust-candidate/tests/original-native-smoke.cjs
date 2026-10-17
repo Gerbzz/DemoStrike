@@ -24,6 +24,7 @@ async function main() {
   app.stdout.on('data', (data) => process.stdout.write(data));
   app.stderr.on('data', (data) => process.stderr.write(data));
   let browser;
+  let page;
   try {
     let ready = false;
     for (let attempt = 0; attempt < 60; attempt += 1) {
@@ -36,7 +37,6 @@ async function main() {
     }
     assert.ok(ready, 'Native WebView2 debugging endpoint did not open');
     browser = await chromium.connectOverCDP(cdpUrl, { timeout: 15000 });
-    let page;
     for (let attempt = 0; attempt < 30 && !page; attempt += 1) {
       for (const context of browser.contexts()) {
         for (const target of context.pages()) {
@@ -72,6 +72,23 @@ async function main() {
     };
     fs.writeFileSync(path.join(outputDir, 'proof.json'), `${JSON.stringify(proof, null, 2)}\n`);
     console.log('PASS: original renderer startup and empty Matches route in native Tauri WebView2');
+  } catch (error) {
+    if (page) {
+      const screenshot = path.join(outputDir, 'original-startup-failure.png');
+      await page.screenshot({ path: screenshot, animations: 'disabled' }).catch(() => {});
+      const visible = await page.evaluate(() => ({
+        url: location.href,
+        title: document.title,
+        text: document.body.innerText.slice(0, 3000),
+      })).catch((inspectionError) => ({ inspectionError: String(inspectionError) }));
+      fs.writeFileSync(path.join(outputDir, 'failure.json'), `${JSON.stringify({
+        source: 'hosted fresh-profile Tauri WebView2 window',
+        error: String(error),
+        visible,
+      }, null, 2)}\n`);
+      console.error('Native app visible state:', JSON.stringify(visible));
+    }
+    throw error;
   } finally {
     if (browser) await browser.close().catch(() => {});
     if (exit === null) app.kill();
