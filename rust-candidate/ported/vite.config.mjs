@@ -25,6 +25,7 @@ export default {
       { find: 'react/jsx-runtime', replacement: path.resolve(upstreamModules, 'react/jsx-runtime.js') },
       { find: './index.css', replacement: path.resolve(portedRoot, 'index.css') },
       { find: 'csdm/ui/settings/database/database-settings', replacement: path.resolve(portedRoot, 'database-settings.tsx') },
+      { find: './database/database-settings', replacement: path.resolve(portedRoot, 'database-settings.tsx') },
       { find: 'csdm/ui/matches/table/matches-table', replacement: path.resolve(portedRoot, 'matches-table.tsx') },
       { find: 'csdm/ui/web-socket-client', replacement: path.resolve(portedRoot, 'web-socket-client.ts') },
       // The preserved provider imports this client relatively; redirect that
