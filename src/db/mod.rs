@@ -296,4 +296,22 @@ mod capability_migration_tests {
         assert_eq!(detail.damage_team, None);
         assert_eq!(detail.ct_equip_value, None);
     }
+
+    #[test]
+    fn v6_import_migrates_without_inventing_combat_or_replacing_annotations() {
+        let conn = Connection::open_in_memory().unwrap();
+        configure(&conn).unwrap();
+        for sql in &MIGRATIONS[..6] { conn.execute_batch(sql).unwrap(); }
+        conn.pragma_update(None, "user_version", 6).unwrap();
+        conn.execute("INSERT INTO matches (id,file_path,file_name,map_name,tick_rate,imported_at,parser_capability)
+            VALUES (7,'C:/old.dem','old.dem','de_train',64,'2026-10-08','native-combat-flash-v1')", []).unwrap();
+        conn.execute("INSERT INTO players (match_id,steamid,name) VALUES (7,'s1','preserved')", []).unwrap();
+        migrate(&conn).unwrap();
+        let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+        let player: String = conn.query_row("SELECT name FROM players WHERE match_id=7", [], |row| row.get(0)).unwrap();
+        let combat: i64 = conn.query_row("SELECT COUNT(*) FROM player_round_combat WHERE match_id=7", [], |row| row.get(0)).unwrap();
+        assert_eq!(version, 7);
+        assert_eq!(player, "preserved");
+        assert_eq!(combat, 0);
+    }
 }

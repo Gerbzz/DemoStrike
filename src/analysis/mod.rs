@@ -196,7 +196,12 @@ fn build_player_round_combat(raw: &RawDemo) -> Vec<AnalyzedPlayerRoundCombat> {
         }
     }
     for key in conflicting_sides {
-        if let Some(row) = rows.get_mut(&key) { row.side = None; }
+        if let Some(row) = rows.get_mut(&key) {
+            row.side = None;
+            row.enemy_kills = None;
+            row.enemy_assists = None;
+            row.enemy_health_damage = None;
+        }
     }
     let mut result: Vec<_> = rows.into_values().collect();
     result.sort_by(|a, b| (a.round_number, &a.steamid).cmp(&(b.round_number, &b.steamid)));
@@ -867,6 +872,14 @@ mod tests {
         assert_eq!(find("s2").deaths, 1);
         assert_eq!(find("s3").enemy_assists, Some(1));
         assert_eq!(find("s3").deaths, 1);
+
+        raw.round_sides.push(serde_json::from_value(serde_json::json!(
+            {"round":1,"steamid":"s1","side":"T"}
+        )).unwrap());
+        let ambiguous = build_match(&raw);
+        let ada = ambiguous.player_round_combat.iter().find(|row| row.steamid == "s1").unwrap();
+        assert_eq!(ada.side, None);
+        assert_eq!(ada.enemy_kills, None);
     }
 
     #[test]

@@ -82,12 +82,24 @@ async function main() {
     await page.getByText('complete non-warmup native event stream').waitFor({ timeout: 20000 });
     const importedOverviewScreenshot = path.join(outputDir, 'imported-combat-overview.png');
     await page.screenshot({ path: importedOverviewScreenshot, animations: 'disabled' });
+    await page.getByRole('link', { name: 'Rounds' }).click();
+    await page.getByRole('heading', { name: 'Recorded rounds' }).waitFor({ timeout: 20000 });
+    await page.waitForFunction(() => document.querySelectorAll('tbody tr').length === 2, null, { timeout: 20000 });
+    assert.ok((await page.locator('tbody').innerText()).includes('2 / 1'), 'Observed CT/T round roster missing');
+    const importedRoundsScreenshot = path.join(outputDir, 'imported-combat-rounds.png');
+    await page.screenshot({ path: importedRoundsScreenshot, animations: 'disabled' });
     await page.getByRole('link', { name: 'Players' }).click();
     await page.getByRole('cell', { name: 'Synthetic Ada' }).waitFor({ timeout: 20000 });
     await page.waitForFunction(() => document.querySelectorAll('tbody tr').length === 3, null, { timeout: 20000 });
     const importedPlayersScreenshot = path.join(outputDir, 'imported-combat-players.png');
     await page.screenshot({ path: importedPlayersScreenshot, animations: 'disabled' });
-    await page.locator('a[href="#/matches"]').click();
+    await page.getByRole('link', { name: 'Synthetic Ada' }).click();
+    await page.getByRole('heading', { name: 'Round by round' }).waitFor({ timeout: 20000 });
+    assert.ok((await page.getByRole('table').last().innerText()).includes('CT'));
+    assert.ok((await page.getByRole('table').last().innerText()).includes('T'));
+    const importedPlayerDetailScreenshot = path.join(outputDir, 'imported-player-detail.png');
+    await page.screenshot({ path: importedPlayerDetailScreenshot, animations: 'disabled' });
+    await page.locator('a[href="#/matches"]').first().click();
     await page.getByRole('button', { name: 'Change library' }).click();
     await page.getByText('Your local library is empty').waitFor({ timeout: 20000 });
     assert.equal(sha256(importDemoPath), importDemoSha256, 'Native import changed source demo bytes');
@@ -164,7 +176,9 @@ async function main() {
       screenshotSha256: sha256(screenshot),
       importedMatchesScreenshotSha256: sha256(importedScreenshot),
       importedOverviewScreenshotSha256: sha256(importedOverviewScreenshot),
+      importedRoundsScreenshotSha256: sha256(importedRoundsScreenshot),
       importedPlayersScreenshotSha256: sha256(importedPlayersScreenshot),
+      importedPlayerDetailScreenshotSha256: sha256(importedPlayerDetailScreenshot),
       syntheticImportDemoSha256: importDemoSha256,
       matchesScreenshotSha256: sha256(matchesScreenshot),
       overviewScreenshotSha256: sha256(overviewScreenshot),

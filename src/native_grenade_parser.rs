@@ -90,9 +90,8 @@ fn validate_coverage(state: &GrenadeObserver, map: &str, trajectories: &[RawTraj
     if state.last_start_count.is_none() {
         return Err("unsupported CS2 GameRules schema: round-start counter unavailable".into());
     }
-    if state.throws.is_empty() {
-        return Err("no grenade releases decoded; grenade analysis cannot establish coverage for this demo".into());
-    }
+    // A combat-only demo can legitimately contain no grenade releases. The
+    // equality and ownership checks below still reject unexplained paths.
     let orphan_trajectories = trajectories.iter().filter(|t| t.steamid.is_none() || t.name.is_none() || t.points.len() < 2).count();
     let orphan_detonations = state.detonations.iter().filter(|d| d.steamid.is_none()).count();
     let invalid_points = trajectories.iter().any(|t| t.points.iter().any(|p| p.iter().any(|v| !v.is_finite()))
@@ -609,6 +608,15 @@ impl GrenadeObserver {
 #[cfg(test)]
 mod round_tests {
     use super::*;
+
+    #[test]
+    fn combat_only_demo_can_have_zero_grenade_releases() {
+        let mut state = GrenadeObserver::default();
+        state.last_start_count = Some(1);
+        state.round_events.push(RawRoundEvent { kind: "round_start".into(), tick: Some(100),
+            round: Some(1), winner: None, reason: None });
+        assert!(validate_coverage(&state, "de_test", &[], 0).is_ok());
+    }
 
     #[test]
     fn malformed_and_cancelled_headers_fail_before_decode() {
