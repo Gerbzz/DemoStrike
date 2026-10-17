@@ -41,12 +41,30 @@ jobs:
         run: node tests/original-native-smoke.cjs
         env:
           DEMOSTRIKE_SYNTHETIC_RAW_FACTS: ${{ github.workspace }}/rust-candidate/tests/fixtures/combat-raw.json
+      - name: Fetch pinned public CS2 demo for real native UI import
+        shell: pwsh
+        run: |
+          $fixture = Join-Path $env:RUNNER_TEMP 'public-cs2-fixture.dem'
+          curl.exe --fail --location --retry 2 --max-filesize 65000000 --max-time 180 --output $fixture 'https://raw.githubusercontent.com/LaihoE/demoparser/45ca85aeac8fb0de9d385124d2c7fe0e7b8ff0c8/src/parser/test_demo.dem'
+          if ($LASTEXITCODE -ne 0) { throw 'Public fixture download failed' }
+          if ((Get-Item -LiteralPath $fixture).Length -ne 60601900) { throw 'Public fixture size changed' }
+          if ((git hash-object -- $fixture) -ne 'e5cc97203262ab36bb756514b02d56eb6bd972a0') { throw 'Public fixture content changed' }
+      - name: Import public demo in actual Tauri WebView2 window
+        run: node tests/public-native-smoke.cjs
       - name: Upload original app-only capture
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: demostrike-original-native-startup
           path: ${{ runner.temp }}/demostrike-original/*
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Upload real-demo app-only capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-public-native-ui
+          path: ${{ runner.temp }}/demostrike-public-native/*
           if-no-files-found: warn
           retention-days: 1
   upstream-renderer:
@@ -152,3 +170,4 @@ jobs:
             rust-candidate/src-tauri/Cargo.lock
           if-no-files-found: warn
           retention-days: 1
+
