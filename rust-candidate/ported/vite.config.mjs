@@ -26,6 +26,7 @@ export default {
       { find: './index.css', replacement: path.resolve(portedRoot, 'index.css') },
       { find: 'csdm/ui/settings/database/database-settings', replacement: path.resolve(portedRoot, 'database-settings.tsx') },
       { find: './database/database-settings', replacement: path.resolve(portedRoot, 'database-settings.tsx') },
+      { find: './error-boundary', replacement: path.resolve(portedRoot, 'error-boundary.tsx') },
       { find: 'csdm/ui/matches/table/matches-table', replacement: path.resolve(portedRoot, 'matches-table.tsx') },
       { find: 'csdm/ui/web-socket-client', replacement: path.resolve(portedRoot, 'web-socket-client.ts') },
       // The preserved provider imports this client relatively; redirect that
