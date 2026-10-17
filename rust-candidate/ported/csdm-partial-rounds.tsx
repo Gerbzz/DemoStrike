@@ -24,10 +24,10 @@ function RoundsHistory({ rounds }: { rounds: RecordedRound[] }) {
           <Link className="flex items-center justify-center bg-gray-50 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
             to={String(round.roundNumber)} aria-label={`Open round ${round.roundNumber}`}>{round.roundNumber}</Link>
           <div className="flex items-center justify-center bg-gray-50 text-blue-600" aria-label={knownSide(round.winner) === 'CT' ? 'CT won' : undefined}>
-            {knownSide(round.winner) === 'CT' ? '?' : null}
+            {knownSide(round.winner) === 'CT' ? 'W' : null}
           </div>
           <div className="flex items-center justify-center bg-gray-50 text-orange-500" aria-label={knownSide(round.winner) === 'T' ? 'T won' : undefined}>
-            {knownSide(round.winner) === 'T' ? '?' : null}
+            {knownSide(round.winner) === 'T' ? 'W' : null}
           </div>
         </React.Fragment>)}
       </div>
@@ -49,10 +49,10 @@ function DeathEntry({ death, detail }: { death: RoundDeath; detail: MatchDetail 
     <span className="tabular-nums text-gray-700">Tick {death.tick}</span>
     <span className="break-words">
       {attacker}{knownSide(death.attackerSide) && <span className="ml-4 text-gray-700">({death.attackerSide})</span>}
-      <span className="mx-8 text-gray-700"></span>{victim}
+      <span className="mx-8 text-gray-700">&gt;</span>{victim}
       {knownSide(death.victimSide) && <span className="ml-4 text-gray-700">({death.victimSide})</span>}
-      {death.weapon && <span className="ml-8 text-gray-700">� {death.weapon}</span>}
-      {death.assisterSteamid && <span className="ml-8 text-gray-700">� assist: {playerLabel(detail, death.assisterSteamid)}</span>}
+      {death.weapon && <span className="ml-8 text-gray-700">- {death.weapon}</span>}
+      {death.assisterSteamid && <span className="ml-8 text-gray-700">- assist: {playerLabel(detail, death.assisterSteamid)}</span>}
     </span>
   </li>;
 }
