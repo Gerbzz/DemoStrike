@@ -29,6 +29,18 @@ export type RoundDeath = {
   assisterSteamid: string | null;
 };
 
+export type RoundHurt = {
+  sourceIndex: number;
+  eventOrder: number | null;
+  tick: number;
+  weapon: string | null;
+  attackerSteamid: string | null;
+  attackerSide: string | null;
+  victimSteamid: string;
+  victimSide: string | null;
+  rawDamage: number;
+};
+
 export type RecordedRound = {
   roundNumber: number;
   winner: string | null;
@@ -40,6 +52,7 @@ export type RecordedRound = {
   tEquipValue: number | null;
   combat: { ctPlayers: number; tPlayers: number; unassignedPlayers: number; enemyKills: number | null } | null;
   deaths: RoundDeath[] | null;
+  hurts: RoundHurt[] | null;
 };
 
 export type MatchDetail = {
