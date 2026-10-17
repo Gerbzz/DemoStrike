@@ -1,6 +1,7 @@
 pub mod capture_provider;
 pub mod csdm;
 pub mod import;
+pub mod import_queue;
 pub mod library;
 
 use library::{LibrarySnapshot, MatchDetail};
@@ -19,11 +20,22 @@ fn get_match_detail(path: String, match_id: i64) -> Result<MatchDetail, String> 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            use tauri::Manager;
+            let directory = app.path().app_data_dir()?;
+            let queue = std::sync::Arc::new(import_queue::ImportQueue::new(&directory)
+                .map_err(std::io::Error::other)?);
+            queue.start();
+            app.manage(queue);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             list_matches,
             get_match_detail,
             import::csdm_import_demo,
             import::csdm_choose_demo,
+            import_queue::csdm_enqueue_demo,
+            import_queue::csdm_list_import_jobs,
             csdm::csdm_load_settings,
             csdm::csdm_save_settings,
             csdm::csdm_request,
