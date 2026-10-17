@@ -1240,7 +1240,18 @@ impl eframe::App for DemoStrikeApp {
         self.poll_capture_request();
         self.poll_pilot();
         self.poll_package_import();
-        ctx.set_visuals(egui::Visuals::dark());
+        let mut style = (*ctx.style()).clone();
+        style.visuals = egui::Visuals::dark();
+        style.visuals.panel_fill = egui::Color32::from_rgb(24, 28, 34);
+        style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(48, 55, 64);
+        style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(67, 77, 88);
+        style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(110, 77, 62);
+        style.spacing.item_spacing = egui::vec2(10.0, 9.0);
+        style.spacing.button_padding = egui::vec2(12.0, 7.0);
+        style.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(15.0));
+        style.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
+        style.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
+        ctx.set_style(style);
         egui::Panel::top("header").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("DemoStrike");
@@ -1624,14 +1635,17 @@ impl eframe::App for DemoStrikeApp {
             if build_requested { let _ = self.build_capture_package(); }
             let Some(analyzed) = &self.analyzed else {
                 if !self.library_opened && self.draft.is_none() {
-                    ui.add_space(32.0);
+                    ui.add_space(52.0);
                     ui.vertical_centered(|ui| {
-                        ui.heading("Find the moments worth clipping");
-                        ui.add_space(8.0);
+                        ui.heading(egui::RichText::new("Find the moments worth clipping").size(24.0).strong());
+                        ui.add_space(10.0);
                         ui.label("Import a CS2 demo to review grenade, combat, and flash events.");
                         ui.label("Your saved matches and editable capture projects are available above.");
-                        ui.add_space(18.0);
-                        if ui.add_enabled(self.import_messages.is_none(), egui::Button::new("Import CS2 demo…")).clicked() {
+                        ui.add_space(22.0);
+                        let primary = egui::Button::new(egui::RichText::new("Import CS2 demo…").strong().color(egui::Color32::WHITE))
+                            .fill(egui::Color32::from_rgb(157, 72, 39))
+                            .min_size(egui::vec2(188.0, 36.0));
+                        if ui.add_enabled(self.import_messages.is_none(), primary).clicked() {
                             if let Some(path) = rfd::FileDialog::new().add_filter("CS2 demo", &["dem"]).pick_file() {
                                 let _ = self.start_demo_import(&path);
                             }
