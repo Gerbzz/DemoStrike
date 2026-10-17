@@ -28,6 +28,21 @@ jobs:
       - name: Build native editor
         shell: pwsh
         run: cargo build --locked --features native-ui --bin demostrike
+      - name: Capture empty native workspace
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'demostrike-empty-data'
+          New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
+          $output = Join-Path $env:RUNNER_TEMP 'demostrike-empty-workspace.png'
+          & target/debug/demostrike.exe --capture $output
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $output)) { throw 'Hosted native capture unavailable' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-workspace-${{ github.sha }}
+          path: ${{ runner.temp }}/demostrike-empty-workspace.png
+          retention-days: 1
+          if-no-files-found: warn
       - name: Bound and hash executable
         shell: pwsh
         run: |
