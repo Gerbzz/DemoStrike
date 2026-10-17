@@ -293,6 +293,14 @@ fn has_ordered_combat_hurts(
 /// Source 2 can advance its raw round counter before the next live round.
 /// Assign events in that gap to the last completed earlier round. Raw rows
 /// remain unchanged, as with the persisted per-player combat attribution.
+fn observed_combat_side(side: Option<String>) -> Option<String> {
+    match side.as_deref() {
+        Some("CT") => Some("CT".to_owned()),
+        Some("T" | "TERRORIST") => Some("T".to_owned()),
+        _ => None,
+    }
+}
+
 fn effective_event_round(
     raw_round: i64,
     tick: i64,
@@ -528,9 +536,9 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
                     tick: row.get(2)?,
                     weapon: row.get(4)?,
                     attacker_steamid: row.get(5)?,
-                    attacker_side: row.get(6)?,
+                    attacker_side: observed_combat_side(row.get(6)?),
                     victim_steamid: row.get(7)?,
-                    victim_side: row.get(8)?,
+                    victim_side: observed_combat_side(row.get(8)?),
                     assister_steamid: row.get(9)?,
                 },
             ))
@@ -566,9 +574,9 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
                     tick: row.get(2)?,
                     weapon: row.get(4)?,
                     attacker_steamid: row.get(5)?,
-                    attacker_side: row.get(6)?,
+                    attacker_side: observed_combat_side(row.get(6)?),
                     victim_steamid: row.get(7)?,
-                    victim_side: row.get(8)?,
+                    victim_side: observed_combat_side(row.get(8)?),
                     raw_damage: row.get(9)?,
                 },
             ))
