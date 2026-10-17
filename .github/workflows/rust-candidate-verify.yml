@@ -1,0 +1,78 @@
+name: Rust candidate source validation
+
+on:
+  pull_request:
+    paths:
+      - 'rust-candidate/**'
+      - '.github/workflows/rust-candidate-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: rust-candidate
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install frontend dependencies on hosted runner
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck and build frontend
+        run: npm run build
+      - name: Test adapted upstream score contract
+        run: npm run test:contracts
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Keep CDP out of normal app configuration
+        run: python tests/check_smoke_config.py
+      - name: Run Rust tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets -- --test-threads=1
+      - name: Compile native application
+        run: npm run tauri -- build --config src-tauri/tauri.smoke.conf.json
+      - name: Generate sanitized synthetic SQLite fixture
+        run: python tests/make_smoke_fixture.py
+      - name: Launch real Tauri WebView2 and exercise IPC
+        run: npm run test:native-smoke
+      - name: Record resolved dependency metadata
+        if: always()
+        run: python tests/dependency_manifest.py
+      - name: Verify dependency locks did not drift
+        if: always()
+        run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
+      - name: Upload app-only synthetic UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-tauri-synthetic-ui
+          path: ${{ runner.temp }}/demostrike-smoke/synthetic-*.png
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Upload synthetic smoke proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-tauri-synthetic-proof
+          path: ${{ runner.temp }}/demostrike-smoke/synthetic-smoke-proof.json
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Upload resolved dependency record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-candidate-dependencies
+          path: |
+            ${{ runner.temp }}/demostrike-smoke/dependencies-resolved.json
+            rust-candidate/package-lock.json
+            rust-candidate/src-tauri/Cargo.lock
+          if-no-files-found: warn
+          retention-days: 1

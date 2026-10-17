@@ -1,0 +1,15 @@
+{
+  "app": {
+    "windows": [
+      {
+        "title": "DemoStrike Rust Candidate",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 880,
+        "minHeight": 600,
+        "dataDirectory": "demostrike-ci-webview2",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-address=127.0.0.1 --remote-debugging-port=19373"
+      }
+    ]
+  }
+}
