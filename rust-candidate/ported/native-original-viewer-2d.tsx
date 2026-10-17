@@ -39,7 +39,7 @@ function grenadeName(kind: string | null): GrenadeName | null {
 function originalViewerYaw(raw: number | null): number {
   if (raw === null) return Number.NaN;
   // This decoder's nonzero Source 2 eye angle is 180 degrees from the
-  // pinned CSDM viewer convention. Keep the observed zero sentinel intact.
+  // pinned CSDM viewer convention. Both pinned exports keep exact zero as zero.
   if (raw === 0) return 0;
   return ((raw % 360 + 360) % 360) - 180;
 }
