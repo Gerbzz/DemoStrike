@@ -170,6 +170,12 @@ for steamid, upstream in sorted(oracle.get("players", {}).items()):
 comparison = {
     "status": "unreviewed independent comparison; differences do not update any expected fixture",
     "roundFieldDifferences": round_comparison,
+    "roundTimeline": [
+        {"number": native["number"], "upstreamStart": upstream.get("startTick"),
+         "nativeStart": native["start"], "upstreamEnd": upstream.get("endTick"),
+         "nativeEnd": native["end"], "upstreamFreezeEnd": upstream.get("freezeTimeEndTick")}
+        for upstream, native in zip(oracle.get("rounds", []), rounds)
+    ],
     "damageEventIdentityWithinMatchWithoutAmount": event_differences(
         oracle.get("damages", []), in_match_hurts,
         damage_fields,
