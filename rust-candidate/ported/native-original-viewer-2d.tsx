@@ -183,6 +183,7 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap }: {
     drawingTool, setDrawingTool, drawingSize, setDrawingSize, drawingColor, setDrawingColor,
   };
   return <div className="original-viewer-bridge relative flex min-h-0 flex-1 flex-col" data-original-csdm-viewer="true"
+    data-round-number={recorded.roundNumber}
     data-radar-selected={radarBitmap ? 'true' : 'false'}
     data-current-tick={currentTick} data-player-count={frames.players.filter((row) => row.tick === currentTick).length}
     data-unknown-alive-count={frames.players.filter((row) => row.tick === currentTick && row.isAlive === null).length}
@@ -275,7 +276,7 @@ export function Viewer2DLoader() {
   return <div className="flex min-h-0 flex-1 flex-col">
     <header className="flex flex-wrap items-center justify-between gap-8 border-b border-gray-300 px-16 py-8">
       <div><h1 className="text-subtitle">2D Viewer - Round {roundNumber}</h1>
-        <p className="text-gray-700">Recorded positions, projectiles and detonations. Audio, equipment, inferno cells and bomb site labels are unavailable.</p></div>
+        <p className="text-gray-700">Recorded positions and detonations. Smoke lifetime, fire cells, flash blindness, bomb sites, audio and equipment are unavailable.</p></div>
       <label className="cursor-pointer rounded border border-gray-300 px-8 py-4 text-blue-600">Choose local radar PNG
         <input className="sr-only" type="file" accept="image/png" aria-label="Choose local radar PNG"
           onChange={(event) => void chooseRadar(event.target.files?.[0])} /></label>

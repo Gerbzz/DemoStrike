@@ -53,7 +53,7 @@ export function NativeOriginalEventList({ detail, recorded, meta }: {
         <span className="w-48 shrink-0 tabular-nums text-gray-700">{event.tick}</span>
         <span className="min-w-0 break-words">{event.label}</span>
       </button>)}
-      <p className="px-8 py-4 text-gray-700">Smoke lifetime, inferno cells and bombsite names are unavailable.</p>
+      <p className="px-8 py-4 text-gray-700">Smoke lifetime, inferno cells, flash blindness and bombsite names are unavailable.</p>
     </div>
   </details>;
 }

@@ -886,7 +886,7 @@ impl GrenadeObserver {
                 round: game_round(ctx),
                 actor_steamid: actor.as_ref().map(|value| value.0.clone()),
                 actor_name: actor.as_ref().map(|value| value.1.clone()),
-                site_id: event_int(event, "site"),
+                site_id: event_int(event, "site").map(i64::from),
                 x: position.map(|value| value[0]),
                 y: position.map(|value| value[1]),
                 z: position.map(|value| value[2]),

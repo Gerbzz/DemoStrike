@@ -313,28 +313,57 @@ async function main() {
       'Recorded players were not available at the selected tick');
     const viewerSeekShot = path.join(outputDir, 'real-demo-viewer-seek.png');
     await captureAppOnly(page, viewerSeekShot);
+    const oneXStartTick = Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick'));
+    const oneXStartWall = Date.now();
     await page.keyboard.press('Space');
-    await page.waitForFunction((selectedTick) =>
-      Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')) > selectedTick,
-    Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick')), { timeout: 15000 });
+    await sleep(900);
     await page.keyboard.press('Space');
+    const oneXElapsed = (Date.now() - oneXStartWall) / 1000;
     const pausedTick = Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick'));
+    const oneXRate = (pausedTick - oneXStartTick) / oneXElapsed;
+    assert.ok(oneXRate > 35 && oneXRate < 100, `1x playback rate drifted: ${oneXRate}`);
     await sleep(500);
     assert.equal(Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick')), pausedTick,
       'Pause did not hold the synchronized absolute tick');
     await page.keyboard.press('ArrowRight');
     await page.getByText('1.5x', { exact: true }).waitFor({ timeout: 5000 });
+    const fastStartWall = Date.now();
     await page.keyboard.press('Space');
-    await page.waitForFunction((paused) =>
-      Number(document.querySelector('[data-current-tick]')?.getAttribute('data-current-tick')) > paused,
-    pausedTick, { timeout: 15000 });
+    await sleep(900);
     await page.keyboard.press('Space');
+    const fastElapsed = (Date.now() - fastStartWall) / 1000;
+    const fastTick = Number(await page.locator('[data-current-tick]').getAttribute('data-current-tick'));
+    const fastRate = (fastTick - pausedTick) / fastElapsed;
+    const speedRatio = fastRate / oneXRate;
+    console.log('VIEWER_PLAYBACK_TIMING', JSON.stringify({ oneXRate, fastRate, speedRatio }));
+    assert.ok(speedRatio > 1.15 && speedRatio < 1.9,
+      `1.5x playback did not advance ticks at the selected speed: ${speedRatio}`);
     await page.keyboard.press('n');
     await page.getByRole('heading', { name: /2D Viewer - Round 2/ }).waitFor({ timeout: 60000 });
     await page.waitForFunction(() => Number(document.querySelector('[data-player-count]')?.getAttribute('data-player-count')) > 0,
       null, { timeout: 30000 });
     const viewerRoundShot = path.join(outputDir, 'real-demo-viewer-next-round.png');
     await captureAppOnly(page, viewerRoundShot);
+    // Change rounds while bounded IPC chunks are in flight, then traverse the
+    // actual WebView2 history. The old loader must not paint stale round data.
+    await page.evaluate(() => {
+      location.hash = location.hash.replace(/viewer-2d\/\d+/, 'viewer-2d/3');
+    });
+    await page.waitForTimeout(50);
+    await page.goBack();
+    await page.getByRole('heading', { name: '2D Viewer - Round 2' }).waitFor({ timeout: 60000 });
+    await page.waitForFunction(() =>
+      document.querySelector('[data-round-number]')?.getAttribute('data-round-number') === '2'
+      && Number(document.querySelector('[data-player-count]')?.getAttribute('data-player-count')) > 0,
+    null, { timeout: 30000 });
+    await page.goForward();
+    await page.getByRole('heading', { name: '2D Viewer - Round 3' }).waitFor({ timeout: 60000 });
+    await page.waitForFunction(() =>
+      document.querySelector('[data-round-number]')?.getAttribute('data-round-number') === '3'
+      && Number(document.querySelector('[data-player-count]')?.getAttribute('data-player-count')) > 0,
+    null, { timeout: 30000 });
+    await page.goBack();
+    await page.getByRole('heading', { name: '2D Viewer - Round 2' }).waitFor({ timeout: 60000 });
     const bombRound = await page.evaluate(async () => {
       const library = localStorage.getItem('csdm-port-selected-library');
       const matchId = Number(location.hash.match(/local-(\d+)/)?.[1]);
