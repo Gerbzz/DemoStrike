@@ -89,6 +89,10 @@ fn parse_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
             state.round_start_game_ticks, state.round_timeout_zero_ticks
         );
         eprintln!("ROUND_TRACE inferred={:?}", state.round_events);
+        eprintln!(
+            "ROUND_TRACE team_phase_known_at_match_start={} unknown_from_tick={:?}",
+            state.team_phase_known_at_match_start, state.team_phase_unknown_from_tick
+        );
     }
     if std::env::var_os("DEMO_POSITION_DIAGNOSTICS").is_some() {
         eprintln!(
@@ -144,6 +148,8 @@ fn parse_demo(path: &Path, control: &ImportControl) -> Result<RawDemo, String> {
         round_events,
         effective_health_damage_available: true,
         observed_match_start: state.observed_match_start,
+        team_phase_known_at_match_start: state.team_phase_known_at_match_start,
+        team_phase_unknown_from_tick: state.team_phase_unknown_from_tick,
         team_side_switch_ticks: state.team_side_switch_ticks.clone(),
         throws: state.throws.clone(),
         detonations: state.detonations.clone(),
@@ -630,6 +636,33 @@ fn timeout_reached_zero(previous: (f32, f32), current: (f32, f32)) -> bool {
     (previous.0 > 0.0 && current.0 == 0.0) || (previous.1 > 0.0 && current.1 == 0.0)
 }
 
+fn known_game_phase(phase: Option<i32>) -> bool {
+    phase.is_some_and(|value| (0..=5).contains(&value))
+}
+
+fn record_game_phase(
+    last: &mut Option<i32>,
+    unknown_from: &mut Option<i64>,
+    switches: &mut Vec<i64>,
+    observed_match_start: bool,
+    match_started: Option<bool>,
+    warmup: Option<bool>,
+    phase: Option<i32>,
+    tick: i64,
+) -> bool {
+    if observed_match_start && !known_game_phase(phase) {
+        unknown_from.get_or_insert(tick);
+    }
+    let changed = phase != *last;
+    if changed && phase == Some(3) && match_started == Some(true) && warmup == Some(false) {
+        switches.push(tick);
+    }
+    if changed {
+        *last = phase;
+    }
+    changed
+}
+
 fn validate_round_outcome_events(
     rounds: &[RawRoundEvent],
     defused: &BTreeSet<u32>,
@@ -749,6 +782,8 @@ struct GrenadeObserver {
     round_start_game_ticks: Vec<i64>,
     round_timeout_zero_ticks: Vec<i64>,
     observed_match_start: bool,
+    team_phase_known_at_match_start: bool,
+    team_phase_unknown_from_tick: Option<i64>,
     team_side_switch_ticks: Vec<i64>,
     last_rules: Option<(i32, bool, i32)>,
     last_timeout: Option<(f32, f32)>,
@@ -794,6 +829,7 @@ impl GrenadeObserver {
             self.round_start_game_ticks.push(i64::from(ctx.tick()));
             if name == "begin_new_match" {
                 self.observed_match_start = true;
+                self.team_phase_known_at_match_start = known_game_phase(self.last_game_phase);
             }
         }
         if name == "bomb_defused" {
@@ -1195,19 +1231,25 @@ impl GrenadeObserver {
                 _ => None,
             };
             let phase = get_i32("m_gamePhase");
-            if phase != self.last_game_phase {
+            let prior_phase = self.last_game_phase;
+            if record_game_phase(
+                &mut self.last_game_phase,
+                &mut self.team_phase_unknown_from_tick,
+                &mut self.team_side_switch_ticks,
+                self.observed_match_start,
+                match_started,
+                warmup(ctx),
+                phase,
+                i64::from(ctx.tick()),
+            ) {
                 if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
                     eprintln!(
                         "ROUND_TRACE phase tick={} old={:?} new={phase:?} total={total:?} warmup={:?}",
                         ctx.tick(),
-                        self.last_game_phase,
+                        prior_phase,
                         warmup(ctx)
                     );
                 }
-                if phase == Some(3) && match_started == Some(true) && warmup(ctx) == Some(false) {
-                    self.team_side_switch_ticks.push(i64::from(ctx.tick()));
-                }
-                self.last_game_phase = phase;
             }
             if match_started != self.last_match_started {
                 if std::env::var_os("DEMO_ROUND_DIAGNOSTICS").is_some() {
@@ -1867,6 +1909,54 @@ mod round_tests {
         update_same_tick_deaths(&mut dead, "player_spawn", 6);
         assert!(include_position(true, dead.contains(&6)));
         assert!(!include_position(false, false));
+    }
+
+    #[test]
+    fn missing_or_unsupported_game_phase_cannot_prove_team_switch_history() {
+        assert!(known_game_phase(Some(2)));
+        assert!(known_game_phase(Some(3)));
+        assert!(!known_game_phase(None));
+        assert!(!known_game_phase(Some(99)));
+        let mut last = Some(2);
+        let mut unknown = None;
+        let mut switches = Vec::new();
+        let observe = |phase, tick, last: &mut _, unknown: &mut _, switches: &mut _| {
+            record_game_phase(
+                last,
+                unknown,
+                switches,
+                true,
+                Some(true),
+                Some(false),
+                phase,
+                tick,
+            )
+        };
+        assert!(!observe(
+            Some(2),
+            10,
+            &mut last,
+            &mut unknown,
+            &mut switches
+        ));
+        assert!(observe(Some(3), 20, &mut last, &mut unknown, &mut switches));
+        assert!(!observe(
+            Some(3),
+            21,
+            &mut last,
+            &mut unknown,
+            &mut switches
+        ));
+        assert!(observe(Some(2), 30, &mut last, &mut unknown, &mut switches));
+        assert!(observe(Some(3), 40, &mut last, &mut unknown, &mut switches));
+        assert_eq!(switches, [20, 40]);
+        assert_eq!(unknown, None);
+        // Wrong-type GameRules data decodes as None, exactly like a missing
+        // property. A later readable notification cannot erase the gap.
+        assert!(observe(None, 50, &mut last, &mut unknown, &mut switches));
+        assert!(observe(Some(2), 60, &mut last, &mut unknown, &mut switches));
+        assert_eq!(unknown, Some(50));
+        assert_eq!(switches, [20, 40]);
     }
 
     #[test]

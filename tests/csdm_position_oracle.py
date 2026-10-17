@@ -64,15 +64,17 @@ report = {
     "sampledPlayerKeys": len(native),
     "sharedPlayerKeys": len(matched),
     "playerMaxAxisDifference": max(matched.values(), default=None),
-    "playerWithin16Units": sum(value <= 16 for value in matched.values()),
+    "playerWithin001Units": sum(value <= 0.001 for value in matched.values()),
     "nativeGrenadeRowsFirstThreeRounds": len(grenade_rows),
     "sharedGrenadeTicks": len(oracle_grenades),
     "grenadeComparisons": len(grenade_matches),
     "grenadeWithin16Units": sum(value <= 16 for value in grenade_matches),
     "grenadeMinAxisDifference": min(grenade_matches, default=None),
+    "grenadeMaxAxisDifference": max(grenade_matches, default=None),
 }
 (root / "csdm-position-comparison.json").write_text(json.dumps(report, indent=2) + "\n")
 print("CSDM_POSITION_COMPARISON", json.dumps(report))
-assert len(matched) >= 100, "Too few shared native and CSDM player tick/identity keys"
-assert report["playerWithin16Units"] >= 100, "Player world coordinates disagree with CSDM"
+assert len(matched) == len(native), "Native player tick/identity samples missing from CSDM"
+assert report["playerWithin001Units"] == len(native), "Player world coordinates disagree with CSDM"
 assert len(grenade_matches) >= 5, "Too few overlapping native and CSDM projectile ticks"
+assert report["grenadeWithin16Units"] == len(grenade_matches), "Projectile world coordinates disagree with CSDM"

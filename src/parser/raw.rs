@@ -14,6 +14,13 @@ pub struct RawDemo {
     /// Initial Team A=CT / Team B=T is trustworthy only with match start.
     #[serde(default)]
     pub observed_match_start: bool,
+    /// GameRules phase was readable before begin_new_match established A=CT.
+    #[serde(default)]
+    pub team_phase_known_at_match_start: bool,
+    /// First post-start tick with missing or unsupported GameRules phase.
+    /// Team sides after this tick are unavailable, even if decoding resumes.
+    #[serde(default)]
+    pub team_phase_unknown_from_tick: Option<i64>,
     /// Observed GameRules phase 3 transitions after match start, in tick order.
     #[serde(default)]
     pub team_side_switch_ticks: Vec<i64>,

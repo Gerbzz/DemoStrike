@@ -79,7 +79,15 @@ with sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True) as connect
 
 
 def key(event, fields):
-    return tuple(str(event.get(field) or "") for field in fields)
+    # The original and SQLite may encode Steam IDs as number/text, but an
+    # absent fact, explicit null and numeric zero are different evidence.
+    return tuple("MISSING" if field not in event else
+                 "NULL" if event[field] is None else
+                 f"VALUE:{event[field]}" for field in fields)
+
+
+assert key({"damage": None}, ("damage",)) != key({"damage": 0}, ("damage",))
+assert key({}, ("damage",)) != key({"damage": None}, ("damage",))
 
 
 def event_differences(oracle_events, native_events, fields):

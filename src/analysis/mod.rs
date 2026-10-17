@@ -437,9 +437,17 @@ pub fn infer_tick_rate(header: &RawHeader) -> f64 {
 
 // The original CSDM analyzer starts Team A on CT and swaps only when the
 // GameRules game phase changes to TeamSideSwitch (3) after match start.
-// A truncated recording without begin_new_match has no proven initial side.
+// Missing phase history cannot be read as zero switches. Stop assigning
+// Team A/B sides at the first unreadable or unsupported phase tick.
 fn team_a_side_at_round(raw: &RawDemo, start_tick: Option<i64>) -> Option<&'static str> {
-    let tick = start_tick.filter(|_| raw.observed_match_start)?;
+    let tick =
+        start_tick.filter(|_| raw.observed_match_start && raw.team_phase_known_at_match_start)?;
+    if raw
+        .team_phase_unknown_from_tick
+        .is_some_and(|unknown| unknown <= tick)
+    {
+        return None;
+    }
     if raw
         .team_side_switch_ticks
         .windows(2)
@@ -1361,6 +1369,7 @@ mod tests {
     fn effective_hp_and_stable_team_follow_observed_match_and_halftime() {
         let mut raw = minimal_raw();
         raw.observed_match_start = true;
+        raw.team_phase_known_at_match_start = true;
         raw.effective_health_damage_available = true;
         raw.team_side_switch_ticks = vec![8400];
         raw.round_events.extend(
@@ -1412,6 +1421,66 @@ mod tests {
         assert_eq!(player(1).effective_enemy_health_damage, Some(100));
         assert_eq!(player(2).effective_enemy_health_damage, Some(20));
 
+        let mut repeated_swap = raw.clone();
+        repeated_swap.team_side_switch_ticks.push(12500);
+        repeated_swap.round_events.extend(
+            serde_json::from_value::<Vec<_>>(serde_json::json!([
+                {"kind":"round_start","tick":13000,"round":3,"winner":null,"reason":null},
+                {"kind":"round_freeze_end","tick":13800,"round":3,"winner":null,"reason":null},
+                {"kind":"round_end","tick":16000,"round":3,"winner":"CT","reason":"t_killed"}
+            ]))
+            .unwrap(),
+        );
+        let three = build_match(&repeated_swap);
+        assert_eq!(
+            three
+                .rounds
+                .iter()
+                .map(|row| row.team_a_side.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("CT"), Some("T"), Some("CT")]
+        );
+
+        raw.team_phase_known_at_match_start = false;
+        let missing_phase = build_match(&raw);
+        assert!(
+            missing_phase
+                .rounds
+                .iter()
+                .all(|row| row.team_a_side.is_none())
+        );
+        assert!(
+            missing_phase
+                .player_round_combat
+                .iter()
+                .all(|row| row.stable_team.is_none())
+        );
+        assert!(
+            missing_phase
+                .player_round_combat
+                .iter()
+                .any(|row| row.effective_enemy_health_damage == Some(100))
+        );
+        raw.team_phase_known_at_match_start = true;
+        raw.team_phase_unknown_from_tick = Some(8400);
+        let phase_gap = build_match(&raw);
+        assert_eq!(
+            phase_gap
+                .rounds
+                .iter()
+                .map(|row| row.team_a_side.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("CT"), None]
+        );
+        assert!(
+            phase_gap
+                .player_round_combat
+                .iter()
+                .filter(|row| row.round_number == 2)
+                .all(|row| row.stable_team.is_none())
+        );
+        raw.team_phase_unknown_from_tick = None;
+
         raw.observed_match_start = false;
         raw.effective_health_damage_available = false;
         let old = build_match(&raw);
@@ -1452,10 +1521,12 @@ mod tests {
         .unwrap();
         let analyzed = build_match(&raw);
         assert_eq!(analyzed.raw_combat_deaths.len(), 2);
-        assert!(!analyzed
-            .player_round_combat
-            .iter()
-            .any(|row| row.round_number == 3));
+        assert!(
+            !analyzed
+                .player_round_combat
+                .iter()
+                .any(|row| row.round_number == 3)
+        );
         let victim = analyzed
             .player_round_combat
             .iter()
@@ -1567,9 +1638,11 @@ mod tests {
         let facts = attribute_effects(&raw, &mut events, 64.0);
         assert_eq!(facts[0].resolution, "ambiguous");
         assert_eq!(facts[0].candidate_events, [0, 1]);
-        assert!(events
-            .iter()
-            .all(|event| event.flash_assists == 0 && !event.assist_attribution_complete));
+        assert!(
+            events
+                .iter()
+                .all(|event| event.flash_assists == 0 && !event.assist_attribution_complete)
+        );
     }
 
     #[test]
