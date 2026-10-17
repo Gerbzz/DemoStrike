@@ -164,6 +164,9 @@ async function main() {
       'Effective HP is absent from the selected round detail');
     const selectedRoundShot = path.join(outputDir, 'real-demo-selected-round.png');
     await captureAppOnly(page, selectedRoundShot);
+    await page.locator('section[aria-label="Round raw damage"] ol li').first().scrollIntoViewIfNeeded();
+    const effectiveDamageShot = path.join(outputDir, 'real-demo-effective-damage.png');
+    await captureAppOnly(page, effectiveDamageShot);
     await page.getByRole('link', { name: 'Next round' }).click();
     await page.getByRole('heading', { name: 'Round 2', exact: true }).waitFor({ timeout: 30000 });
     await page.evaluate(() => { location.hash = location.hash.split('/rounds/')[0] + '/rounds/999'; });
@@ -255,7 +258,7 @@ async function main() {
       syntheticEnvironmentDeliberatelySet: featureFree,
       parserCapability: capability,
       observed: { roundRows, playerRows, playerDetailRows, utilityRows, nativeFacts },
-      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, duplicateShot, invalidShot]
+      screenshots: Object.fromEntries([matchesShot, overviewShot, roundsShot, roundDetailShot, selectedRoundShot, effectiveDamageShot, duelsShot, duelEventsShot, playersShot, playerDetailShot, utilityShot, duplicateShot, invalidShot]
         .map((file) => [path.basename(file), sha256(file)])),
       runtimeUrl: page.url(),
       scope: 'real demo import and data-limited match views; full upstream CSDM match contracts remain unported',
