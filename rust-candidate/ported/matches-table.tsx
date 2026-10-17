@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Status } from 'csdm/common/types/status';
 import { Button } from 'csdm/ui/components/buttons/button';
 import { CenteredContent } from 'csdm/ui/components/content';
@@ -9,20 +9,50 @@ import { useFetchMatches } from 'csdm/ui/matches/use-fetch-matches';
 import { useActiveMatchesFilters } from 'csdm/ui/matches/use-active-matches-filters';
 import { useFuzzySearchText } from 'csdm/ui/matches/use-fuzzy-search-text';
 import { DemoImport } from './demo-import';
+import type { ImportJob } from './demo-import';
+import { describe, invoke } from './match-data';
 
 // Keep the original action bar, table, status bar, and route. This replaces
 // only the messages that would otherwise claim an unported demo import works.
 export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) => void }) {
   const [path, setPath] = useState('');
   const [pickerError, setPickerError] = useState('');
+  const [queued, setQueued] = useState<ImportJob | null>(null);
   const table = useMatchesTable();
   const status = useMatchesStatus();
   const fetchMatches = useFetchMatches();
   const { hasActiveFilter } = useActiveMatchesFilters();
   const search = useFuzzySearchText();
 
+  useEffect(() => {
+    let active = true;
+    void invoke<ImportJob[]>('csdm_list_import_jobs').then((jobs) => {
+      if (active) setQueued(jobs.find((job) => job.state === 'queued' || job.state === 'running') ?? null);
+    }).catch((failure) => { if (active) setPickerError(describe(failure)); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!queued || queued.state === 'completed' || queued.state === 'failed') return;
+    let active = true;
+    async function poll() {
+      try {
+        const jobs = await invoke<ImportJob[]>('csdm_list_import_jobs');
+        const latest = jobs.find((job) => job.id === queued?.id);
+        if (!active || !latest) return;
+        setQueued(latest);
+        if (latest.state === 'completed' && latest.receipt) onOpenLibrary(latest.receipt.path);
+      } catch (failure) {
+        if (active) setPickerError(describe(failure));
+      }
+    }
+    void poll();
+    const timer = window.setInterval(() => void poll(), 1200);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [queued?.id, queued?.state, onOpenLibrary]);
+
   if (status === Status.Idle || status === Status.Loading || !table.isReady()) {
-    return <CenteredContent><p className="text-subtitle">Loading matches…</p></CenteredContent>;
+    return <CenteredContent><p className="text-subtitle">Loading matches.</p></CenteredContent>;
   }
 
   if (status === Status.Error) {
@@ -49,7 +79,12 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
           </p>
           {!hasActiveFilter && !search && (
             <div className="flex w-full flex-col gap-y-16 text-left">
-              <DemoImport onImported={(receipt) => onOpenLibrary(receipt.path)} />
+              <DemoImport onQueued={setQueued} />
+              {queued && <p role={queued.state === 'failed' ? 'alert' : 'status'} className="break-all text-gray-700">
+                {queued.state === 'failed' ? `Import failed: ${queued.error}` : queued.state === 'running'
+                  ? 'Analyzing demo in the import queue. Large matches may take several minutes.'
+                  : 'Demo queued for import.'}
+              </p>}
               <div className="flex w-full flex-col gap-y-8 border-t border-gray-300 pt-16">
               <label htmlFor="local-library-path" className="text-body-strong">Open an existing DemoStrike SQLite library</label>
               <p className="text-gray-700">Paste the path to a library file to inspect its matches, rounds, players, and utility in read-only mode.</p>
@@ -65,7 +100,7 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
                   void native.invoke('csdm_choose_library').then((selected: string | null) => {
                     if (selected) { setPath(selected); onOpenLibrary(selected); }
                   }).catch((error: unknown) => setPickerError(String(error)));
-                }}>Browse…</Button>
+                }}>Browse.</Button>
               </div>
               </div>
             </div>
