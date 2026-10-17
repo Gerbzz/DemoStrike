@@ -162,6 +162,16 @@ fn controller_by_user(ctx: &Context, user: i32) -> Option<&Entity> {
     ctx.entities().iter().find(|e| e.index() == index && e.class().name().contains("PlayerController"))
 }
 
+fn user_resolution(ctx: &Context, user: Option<i32>) -> String {
+    let Some(user) = user else { return "missing".into() };
+    let Some(slot) = source2_user_slot(user) else { return format!("{user}:world-or-invalid") };
+    let Some(controller) = controller_by_user(ctx, user) else { return format!("{user}:slot{slot}:no-controller") };
+    let steam = matches!(controller.get_property("m_steamID"), Ok(FieldValue::Unsigned64(v)) if *v != 0);
+    let name = matches!(controller.get_property("m_iszPlayerName"), Ok(FieldValue::String(_)));
+    let side = match controller.get_property("m_iTeamNum") { Ok(FieldValue::Unsigned8(v)) => v.to_string(), _ => "missing".into() };
+    format!("{user}:slot{slot}:steam={steam}:name={name}:side={side}")
+}
+
 fn controller_by_pawn(ctx: &Context, pawn: u32) -> Option<&Entity> {
     ctx.entities().iter().find(|e| e.class().name().contains("PlayerController") &&
         matches!(e.get_property("m_hPlayerPawn"), Ok(FieldValue::Unsigned32(v)) if *v == pawn))
@@ -425,7 +435,10 @@ impl GrenadeObserver {
                         remember_identity(&mut self.players, &mut self.round_sides, assister, round);
                     }
                     if (expected_attacker && attacker.is_none()) || (expected_assister && assister.is_none()) {
-                        self.errors.push(format!("incomplete combat {name} identity at tick {}", ctx.tick()));
+                        let detail = if self.errors.len() < 8 { format!(" [victim {}, attacker {}, assister {}]",
+                            user_resolution(ctx, event_int(event, "userid")), user_resolution(ctx, event_int(event, "attacker")),
+                            user_resolution(ctx, event_int(event, "assister"))) } else { String::new() };
+                        self.errors.push(format!("incomplete combat {name} identity at tick {}{detail}", ctx.tick()));
                     } else if name == "player_hurt" {
                         match event_int(event, "dmg_health") {
                             Some(damage) if damage >= 0 => {
@@ -456,7 +469,9 @@ impl GrenadeObserver {
                         });
                     }
                 } else {
-                    self.errors.push(format!("incomplete combat {name} round or victim at tick {}", ctx.tick()));
+                    let detail = if self.errors.len() < 8 { format!(" [round {round:?}, victim {}]",
+                        user_resolution(ctx, event_int(event, "userid"))) } else { String::new() };
+                    self.errors.push(format!("incomplete combat {name} round or victim at tick {}{detail}", ctx.tick()));
                 }
             }
             match name {
@@ -739,3 +754,4 @@ mod round_tests {
         assert!(!include_position(false, false));
     }
 }
+
