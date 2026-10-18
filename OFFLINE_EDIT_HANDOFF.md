@@ -14,13 +14,14 @@ The host creates a new local folder under its app data directory. It contains:
   recording is reviewed.
 - `capture-edit-plan.json`: source ticks and editorial spans for the main POV,
   third-person reference, and projectile. The Finder's editable pause is 1.2
-  seconds by default (250–5000 ms allowed). Main and third-person both hold the
+  seconds by default (250-5000 ms allowed). Main and third-person both hold the
   same source lineup tick for that duration at the same timeline position. Their
   release and end cues remain synchronized. The projectile begins at the
   release cue. The common timeline origin is the earliest planned take tick.
   Plan version 2 also stores each span's exact 60 fps editor frames. Timeline
-  milliseconds are rounded display values; source ticks remain exact. A pause
-  requested between frames is placed at the nearest frame, within 8.4 ms.
+  milliseconds are rounded display values; source ticks remain exact. The
+  requested pause duration is rounded once to the nearest frame, within 8.4 ms,
+  and its frame offset is shared by both camera tracks, projectile, and cues.
 - `offline-edit.cstrike`: a native ClipStrike project with three named empty
   tracks and editable lineup, release, and detonation markers.
 - `offline-edit.fcproj`: a schema-versioned FilmCraft project with an empty
@@ -49,3 +50,4 @@ in memory, leaving its original bytes unchanged. The standalone legacy
 ClipStrike app still derives its ruler end from placed clips; the empty original
 may show markers in its list but a zero-length ruler. Actual recorded media and
 capture quality review remain separate gates.
+

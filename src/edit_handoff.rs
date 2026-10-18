@@ -1,7 +1,7 @@
 //! Offline editorial handoff for a verified CSthrowback capture request.
 //! No clips, media assets, receipts, or recording claims are created here.
 use crate::capture_request::{
-    CaptureRequest, PlannedTake, build_capture_request, save_request_noclobber,
+    build_capture_request, save_request_noclobber, CaptureRequest, PlannedTake,
 };
 use clipstrike_core::project::{Marker, Project, Track};
 use serde::{Deserialize, Serialize};
@@ -208,12 +208,30 @@ pub fn build_edit_plan(
             });
         }
     }
-    let raw_throw_ms = source_ms(origin, request.throw_tick, request.tick_rate)?
-        .checked_add(lineup_hold_ms)
-        .ok_or("throw timeline overflow")?;
+    // Quantize the pause duration once, then apply that same frame offset to
+    // every post-hold span and cue. Independently rounded endpoints can make
+    // the displayed pause a full frame shorter or longer than requested.
+    let hold_start_frame = frame_at_ms(hold_start)?;
+    let lineup_hold_frames = frame_at_ms(lineup_hold_ms)?;
+    let hold_end_frame = hold_start_frame
+        .checked_add(lineup_hold_frames)
+        .ok_or("lineup hold frame overflow")?;
+    let shifted_source_frame = |tick: i64, after_hold: bool| -> Result<i64, String> {
+        let source_frame = frame_at_ms(source_ms(origin, tick, request.tick_rate)?)?;
+        source_frame
+            .checked_add(if after_hold { lineup_hold_frames } else { 0 })
+            .ok_or_else(|| "editor frame number overflows".into())
+    };
     for span in &mut spans {
-        span.timeline_start_frame = frame_at_ms(span.timeline_start_ms)?;
-        span.timeline_end_frame = frame_at_ms(span.timeline_end_ms)?;
+        if span.kind == "hold" {
+            span.timeline_start_frame = hold_start_frame;
+            span.timeline_end_frame = hold_end_frame;
+        } else {
+            let after_hold =
+                span.camera_role == "projectile" || span.source_start_tick >= hold_tick;
+            span.timeline_start_frame = shifted_source_frame(span.source_start_tick, after_hold)?;
+            span.timeline_end_frame = shifted_source_frame(span.source_end_tick, after_hold)?;
+        }
         if span.timeline_end_frame <= span.timeline_start_frame {
             return Err(format!(
                 "{} {} span is shorter than one editor frame",
@@ -223,8 +241,7 @@ pub fn build_edit_plan(
         span.timeline_start_ms = ms_at_frame(span.timeline_start_frame)?;
         span.timeline_end_ms = ms_at_frame(span.timeline_end_frame)?;
     }
-    let lineup_hold_frames = frame_at_ms(hold_end)? - frame_at_ms(hold_start)?;
-    let throw_timeline_frame = frame_at_ms(raw_throw_ms)?;
+    let throw_timeline_frame = shifted_source_frame(request.throw_tick, true)?;
     let throw_timeline_ms = ms_at_frame(throw_timeline_frame)?;
     Ok(OfflineEditPlan {
         version: EDIT_HANDOFF_VERSION,
@@ -568,11 +585,48 @@ mod tests {
             };
             assert_eq!(end(&longer) - end(&standard), 800);
         }
-        assert!(
-            build_edit_plan(request(), 0)
-                .unwrap_err()
-                .contains("lineup pause")
+        assert!(build_edit_plan(request(), 0)
+            .unwrap_err()
+            .contains("lineup pause"));
+    }
+
+    #[test]
+    fn lineup_pause_rounds_duration_once_and_keeps_release_synchronized() {
+        let mut capture = request();
+        capture.takes[0].start_tick = 800;
+        let plan = build_edit_plan(capture, 259).unwrap();
+        assert_eq!(
+            source_ms(plan.timeline_origin_tick, plan.lineup_hold_tick, 64.0).unwrap(),
+            2375
         );
+        assert_eq!(plan.lineup_hold_frames, 16);
+        let pov: Vec<_> = plan
+            .spans
+            .iter()
+            .filter(|span| span.camera_role == "player_pov")
+            .collect();
+        let third: Vec<_> = plan
+            .spans
+            .iter()
+            .filter(|span| span.camera_role == "third_person_reference")
+            .collect();
+        let projectile = plan
+            .spans
+            .iter()
+            .find(|span| span.camera_role == "projectile")
+            .unwrap();
+        for view in [pov, third] {
+            assert_eq!(view[1].timeline_start_frame, 143);
+            assert_eq!(
+                view[1].timeline_end_frame - view[1].timeline_start_frame,
+                16
+            );
+            assert_eq!(view[1].timeline_end_frame, view[2].timeline_start_frame);
+            assert_eq!(view[2].timeline_start_ms, view[1].timeline_end_ms);
+        }
+        assert_eq!(projectile.timeline_start_frame, plan.throw_timeline_frame);
+        assert_eq!(projectile.timeline_start_ms, plan.throw_timeline_ms);
+        assert!((i64::from(plan.lineup_hold_frames) * 1_000 - 259 * 60).abs() <= 500);
     }
 
     #[test]
@@ -611,12 +665,10 @@ mod tests {
                 panic!("FilmCraft handoff is not a sequence");
             };
             assert_eq!(sequence.video_tracks.len(), 3);
-            assert!(
-                sequence
-                    .video_tracks
-                    .iter()
-                    .all(|track| track.items.is_empty())
-            );
+            assert!(sequence
+                .video_tracks
+                .iter()
+                .all(|track| track.items.is_empty()));
             assert_eq!(sequence.markers.len(), 4);
         }
         assert_eq!(
