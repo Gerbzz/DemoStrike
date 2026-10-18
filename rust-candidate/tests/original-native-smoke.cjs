@@ -31,24 +31,31 @@ async function emitAppPreview(page, label) {
 // The library behind the receipt remains the real read-only SQLite fixture.
 async function installQueueReply(page, initialJob, cancelResult = null) {
   await page.evaluate(({ initialJob, cancelResult }) => {
-    const native = window.__TAURI_INTERNALS__;
-    const original = native.invoke;
+    // Tauri defines invoke as a non-writable property. Its Windows IPC uses
+    // fetch against the ipc custom protocol, which we can intercept here.
+    const original = window.fetch;
     let current = initialJob;
     window.__ciQueueListCalls = 0;
-    const replacement = function (command, args) {
+    const replacement = function (input, init) {
+      const command = new URL(typeof input === 'string' ? input : input.url).pathname.slice(1);
       if (command === 'csdm_list_import_jobs') {
         window.__ciQueueListCalls += 1;
-        return Promise.resolve([current]);
+        return Promise.resolve(new Response(JSON.stringify([current]), {
+          headers: { 'Content-Type': 'application/json', 'Tauri-Response': 'ok' },
+        }));
       }
-      if (command === 'csdm_cancel_import' && cancelResult && args?.jobId === current.id) {
+      if (command === 'csdm_cancel_import' && cancelResult &&
+          JSON.parse(init?.body || '{}').jobId === current.id) {
         current = cancelResult;
-        return Promise.resolve(current);
+        return Promise.resolve(new Response(JSON.stringify(current), {
+          headers: { 'Content-Type': 'application/json', 'Tauri-Response': 'ok' },
+        }));
       }
-      return original.call(native, command, args);
+      return original.call(window, input, init);
     };
-    native.invoke = replacement;
-    if (native.invoke !== replacement) throw new Error('Could not install hosted queue reply');
-    window.__restoreQueueInvoke = () => { native.invoke = original; };
+    window.fetch = replacement;
+    if (window.fetch !== replacement) throw new Error('Could not install hosted queue reply');
+    window.__restoreQueueInvoke = () => { window.fetch = original; };
   }, { initialJob, cancelResult });
 }
 
