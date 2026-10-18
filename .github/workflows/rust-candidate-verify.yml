@@ -236,12 +236,14 @@ jobs:
           $output = Join-Path $env:RUNNER_TEMP 'demostrike-editor-runtime'
           & .\target\debug\demostrike-editor-runtime-proof.exe $handoff $output
           if ($LASTEXITCODE -ne 0) { throw 'Editor runtime roundtrip failed' }
-      - name: Capture actual editor windows for original and edited projects
+      - name: Capture native editor and exercise GUI import, drag, edit, Save As, reopen
         shell: pwsh
         run: |
           $handoff = Join-Path $env:RUNNER_TEMP 'demostrike-editor-input/offline-handoff'
           $output = Join-Path $env:RUNNER_TEMP 'demostrike-editor-runtime'
           .\tests\editor_runtime_native.ps1 -HandoffDir $handoff -EvidenceDir $output
+          & .\target\debug\demostrike-editor-runtime-proof.exe --verify-gui $handoff $output
+          if ($LASTEXITCODE -ne 0) { throw 'Native editor GUI project verification failed' }
       - name: Upload genuine editor runtime screenshots and proof
         if: always()
         uses: actions/upload-artifact@v4
@@ -250,3 +252,4 @@ jobs:
           path: ${{ runner.temp }}/demostrike-editor-runtime/*
           if-no-files-found: warn
           retention-days: 1
+

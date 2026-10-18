@@ -250,8 +250,74 @@ fn run_one(
     }))
 }
 
+fn verify_gui_controls(handoff: &Path, output: &Path) -> Result<(), String> {
+    let plan: OfflineEditPlan = serde_json::from_slice(
+        &fs::read(handoff.join("capture-edit-plan.json")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let before_path = output.join("gui-after-drag.fcproj");
+    let after_path = output.join("gui-after-edit.fcproj");
+    let before = open_document(&before_path)?;
+    let after = open_document(&after_path)?;
+    assert_cues(&before, &plan)?;
+    assert_cues(&after, &plan)?;
+    let one_clip = |session: &Session| -> Result<(usize, i64, i64), String> {
+        let sequence = session
+            .active_sequence()
+            .ok_or("GUI project has no active sequence")?;
+        let clips: Vec<_> = sequence
+            .video_tracks
+            .iter()
+            .enumerate()
+            .flat_map(|(index, track)| {
+                track
+                    .items
+                    .iter()
+                    .map(move |item| (index, item.start.0, item.duration.0))
+            })
+            .collect();
+        let [clip] = clips.as_slice() else {
+            return Err(format!(
+                "GUI project has {} video clips, expected one",
+                clips.len()
+            ));
+        };
+        if session.project.items.len() < 2 || clip.0 != 0 || clip.2 <= 0 {
+            return Err("GUI import or V1 placement was not saved".into());
+        }
+        Ok(*clip)
+    };
+    let dragged = one_clip(&before)?;
+    let edited = one_clip(&after)?;
+    if edited.1 <= dragged.1 || edited.2 != dragged.2 {
+        return Err(format!(
+            "GUI clip move did not persist: dragged={dragged:?} edited={edited:?}"
+        ));
+    }
+    let proof = json!({
+        "scope": "native FilmCraft controls: file import, project-bin drag, timeline move, Save As twice, File Open, and engine reopen verification",
+        "syntheticMediaOnly": true,
+        "draggedClip": {"track": dragged.0, "startTick": dragged.1, "durationTick": dragged.2},
+        "editedClip": {"track": edited.0, "startTick": edited.1, "durationTick": edited.2},
+        "cueCount": 4,
+        "savedSha256": file_sha(&after_path)?,
+    });
+    fs::write(
+        output.join("gui-controls-proof.json"),
+        serde_json::to_vec_pretty(&proof).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    println!("EDITOR_GUI_PROOF {proof}");
+    Ok(())
+}
+
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if let [flag, handoff, output] = args.as_slice() {
+        if flag.to_string_lossy() == "--verify-gui" {
+            return verify_gui_controls(&PathBuf::from(handoff), &PathBuf::from(output));
+        }
+    }
     let [handoff, output] = args.as_slice() else {
         return Err(fail(
             "usage: demostrike-editor-runtime-proof HANDOFF_DIR OUTPUT_DIR",
