@@ -1,0 +1,53 @@
+name: Historical FilmCraft audio diagnostic (manual)
+
+# The full serial library suite has a known Windows access violation when the
+# unchanged FilmCraft audio test starts on both the historical base and PR #2.
+# See https://github.com/Gerbzz/DemoStrike/actions/runs/38992294811.
+# Run this manually when investigating that native call. A new failure in the
+# focused PR gates remains a required fix.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  historical-base:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 18edbf1fb2bb078b15fc5afb7eb291988dcc5313
+      - name: Select stable Rust
+        shell: pwsh
+        run: rustup default stable
+      - name: Isolated audio generation invariant on historical base
+        shell: pwsh
+        run: cargo test --locked --features native-ui --lib ui::filmcraft_audio::tests::stale_ready_generation_cannot_activate_or_become_the_clock -- --exact --test-threads=1 --nocapture
+      - name: Full serial library suite on historical base
+        shell: pwsh
+        run: cargo test --locked --features native-ui --lib -- --test-threads=1 --nocapture
+
+  selected-ref:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select stable Rust
+        shell: pwsh
+        run: rustup default stable
+      - name: Isolated audio generation invariant on selected ref
+        shell: pwsh
+        run: cargo test --locked --features native-ui --lib ui::filmcraft_audio::tests::stale_ready_generation_cannot_activate_or_become_the_clock -- --exact --test-threads=1 --nocapture
+      - name: Full serial library suite on selected ref
+        shell: pwsh
+        run: cargo test --locked --features native-ui --lib -- --test-threads=1 --nocapture
