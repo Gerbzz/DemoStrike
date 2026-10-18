@@ -1904,7 +1904,7 @@ mod tests {
     fn synthetic_filmcraft_project_opens_through_demo_workspace() {
         let dir = tempfile::tempdir().unwrap();
         let project = std::env::var_os("DEMOSTRIKE_NATIVE_SMOKE_PROJECT")
-            .map(PathBuf::from)
+            .map(std::path::PathBuf::from)
             .unwrap_or_else(|| dir.path().join("synthetic.fcproj"));
         let mut source = Session::default();
         source.execute("file.openDemoProject", json!({})).unwrap();
