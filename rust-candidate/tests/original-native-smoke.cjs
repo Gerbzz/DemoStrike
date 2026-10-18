@@ -17,6 +17,16 @@ const cdpUrl = 'http://127.0.0.1:19375';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
+async function emitAppPreview(page, label) {
+  const jpeg = await page.screenshot({ type: 'jpeg', quality: 45, animations: 'disabled' });
+  const encoded = jpeg.toString('base64');
+  console.log(`APP_PREVIEW_BEGIN ${label} ${jpeg.length}`);
+  for (let offset = 0; offset < encoded.length; offset += 4096) {
+    console.log(`APP_PREVIEW_CHUNK ${label} ${offset / 4096} ${encoded.slice(offset, offset + 4096)}`);
+  }
+  console.log(`APP_PREVIEW_END ${label} ${crypto.createHash('sha256').update(jpeg).digest('hex')}`);
+}
+
 async function main() {
   assert.equal(process.platform, 'win32');
   assert.ok(fs.existsSync(appPath), `Native app missing: ${appPath}`);
@@ -24,6 +34,7 @@ async function main() {
   assert.ok(fs.existsSync(importDemoPath), `Synthetic import source missing: ${importDemoPath}`);
   const fixtureSha256 = sha256(fixturePath);
   const importDemoSha256 = sha256(importDemoPath);
+  fs.mkdirSync(path.dirname(cancelDemoPath), { recursive: true });
   fs.writeFileSync(cancelDemoPath, Buffer.from('PBDEMS2\0synthetic cancellation fixture'));
   const cancelDemoSha256 = sha256(cancelDemoPath);
   fs.mkdirSync(outputDir, { recursive: true });
@@ -88,6 +99,7 @@ async function main() {
     await page.getByText('Your local library is empty').waitFor({ timeout: 20000 });
     const cancelledScreenshot = path.join(outputDir, 'cancelled-synthetic-import.png');
     await page.screenshot({ path: cancelledScreenshot, animations: 'disabled' });
+    await emitAppPreview(page, 'cancelled-synthetic-import');
     await page.getByRole('textbox', { name: 'Import a CS2 demo' }).fill(importDemoPath);
     await page.getByRole('button', { name: 'Import demo' }).click();
     await page.getByText('1 recorded match').waitFor({ timeout: 30000 });
