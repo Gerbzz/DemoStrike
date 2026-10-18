@@ -143,7 +143,9 @@ async function main() {
     await second.page.evaluate(() => { location.hash = '#/matches'; });
     // The queue IPC may complete before its 1.2-second UI poll and library refresh.
     // Capture only after the visible status and saved match row agree with IPC.
-    await second.page.getByRole('status').filter({ hasText: /Imported.*resumed after restart/ })
+    await second.page.getByRole('status')
+      .filter({ hasText: sourcePath })
+      .filter({ hasText: /Imported.*resumed after restart/ })
       .waitFor({ timeout: 30000 });
     await second.page.getByRole('row').filter({ hasText: 'de_ancient' })
       .waitFor({ timeout: 30000 });
