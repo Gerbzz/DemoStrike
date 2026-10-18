@@ -215,6 +215,11 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: '0'
     steps:
       - uses: actions/checkout@v4
+      - name: Test 259 ms hold and FilmCraft cues with optional feature
+        shell: pwsh
+        run: |
+          cargo test --locked --features offline-filmcraft --lib lineup_pause_rounds_duration_once_and_keeps_release_synchronized -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'FilmCraft 259 ms hold regression failed' }
       - name: Download exact public Finder handoff produced by native WebView2
         uses: actions/download-artifact@v4
         with:
