@@ -13,6 +13,12 @@ import type { ImportJob } from './demo-import';
 import { describe, invoke } from './match-data';
 
 export const manualLibraryChangeKey = 'csdm-port-manual-library-change';
+export const intendedImportJobKey = 'csdm-port-intended-import-job-id';
+
+function canOpenRecoveredJob(job: ImportJob) {
+  return localStorage.getItem(manualLibraryChangeKey) !== '1' ||
+    localStorage.getItem(intendedImportJobKey) === String(job.id);
+}
 
 // Keep the original action bar, table, status bar, and route. This replaces
 // only the messages that would otherwise claim an unported demo import works.
@@ -34,17 +40,22 @@ export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
     // A stale startup or poll reply may arrive after the user chooses Change
     // library. Read the current choice when opening, not only at effect mount.
     if (job.state === 'completed' && job.receipt &&
-        (fromCancel || !job.recovered || localStorage.getItem(manualLibraryChangeKey) !== '1')) {
+        (fromCancel || !job.recovered || canOpenRecoveredJob(job))) {
       onOpenLibrary(job.receipt.path);
     }
   }, [onOpenLibrary]);
+  const acceptNewImport = useCallback((job: ImportJob) => {
+    localStorage.setItem(intendedImportJobKey, String(job.id));
+    acceptJob(job);
+  }, [acceptJob]);
 
   useEffect(() => {
     let active = true;
     void invoke<ImportJob[]>('csdm_list_import_jobs').then((jobs) => {
       if (!active) return;
-      const recovered = autoOpenRecovered ? jobs.find((job) =>
-        job.recovered && job.state === 'completed' && job.receipt) : null;
+      const recovered = jobs.find((job) =>
+        job.recovered && job.state === 'completed' && job.receipt &&
+        (autoOpenRecovered || canOpenRecoveredJob(job)));
       const pending = jobs.find((job) => job.state === 'queued' || job.state === 'running');
       const selected = recovered ?? pending;
       if (selected) acceptJob(selected);
@@ -98,7 +109,7 @@ export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
           </p>
           {!hasActiveFilter && !search && (
             <div className="flex w-full flex-col gap-y-16 text-left">
-              <DemoImport onQueued={acceptJob} />
+              <DemoImport onQueued={acceptNewImport} />
               {queued && <p role={queued.state === 'failed' ? 'alert' : 'status'} className="break-all text-gray-700">
                 {queued.state === 'failed' ? `Import failed: ${queued.error}` : queued.state === 'running'
                   ? queued.recovered ? 'Resuming demo analysis after restart. Large matches may take several minutes.'
