@@ -41,6 +41,11 @@ jobs:
         run: node tests/original-native-smoke.cjs
         env:
           DEMOSTRIKE_SYNTHETIC_RAW_FACTS: ${{ github.workspace }}/rust-candidate/tests/fixtures/combat-raw.json
+          DEMOSTRIKE_SYNTHETIC_PARSE_WAIT_MS: '8000'
+      - name: Recover a user-started import after native process interruption
+        run: node tests/recovered-intent-native-smoke.cjs
+        env:
+          DEMOSTRIKE_SYNTHETIC_RAW_FACTS: ${{ github.workspace }}/rust-candidate/tests/fixtures/combat-raw.json
       - name: Rebuild release host without synthetic parser feature
         run: npm run tauri -- build --config src-tauri/tauri.upstream.smoke.conf.json
       - name: Fetch pinned public CS2 demo for real native UI import
@@ -257,4 +262,3 @@ jobs:
           path: ${{ runner.temp }}/demostrike-editor-runtime/*
           if-no-files-found: warn
           retention-days: 1
-

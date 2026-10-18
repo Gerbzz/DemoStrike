@@ -11,10 +11,69 @@ const { chromium } = require('playwright-core');
 const outputDir = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-original');
 const fixturePath = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-smoke', 'synthetic-library.sqlite');
 const importDemoPath = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-smoke', 'synthetic-combat.dem');
+const cancelDemoPath = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-smoke', 'synthetic-cancel.dem');
 const appPath = path.resolve(__dirname, '../src-tauri/target/release/demostrike-rust-candidate.exe');
 const cdpUrl = 'http://127.0.0.1:19375';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+
+async function emitAppPreview(page, label) {
+  const jpeg = await page.screenshot({ type: 'jpeg', quality: 45, animations: 'disabled' });
+  const encoded = jpeg.toString('base64');
+  console.log(`APP_PREVIEW_BEGIN ${label} ${jpeg.length}`);
+  for (let offset = 0; offset < encoded.length; offset += 4096) {
+    console.log(`APP_PREVIEW_CHUNK ${label} ${offset / 4096} ${encoded.slice(offset, offset + 4096)}`);
+  }
+  console.log(`APP_PREVIEW_END ${label} ${crypto.createHash('sha256').update(jpeg).digest('hex')}`);
+}
+
+// Force a rare, already-tested Rust queue result at the renderer IPC edge.
+// The library behind the receipt remains the real read-only SQLite fixture.
+async function installQueueReply(page, initialJob, cancelResult = null, cancelDelayMs = 0) {
+  await page.evaluate(({ initialJob, cancelResult, cancelDelayMs }) => {
+    // Tauri defines invoke as a non-writable property. Its Windows IPC uses
+    // fetch against the ipc custom protocol, which we can intercept here.
+    const original = window.fetch;
+    let current = initialJob;
+    window.__ciQueueListCalls = 0;
+    window.__ciCancelReplies = 0;
+    const replacement = function (input, init) {
+      const command = new URL(typeof input === 'string' ? input : input.url).pathname.slice(1);
+      if (command === 'csdm_list_import_jobs') {
+        window.__ciQueueListCalls += 1;
+        return Promise.resolve(new Response(JSON.stringify([current]), {
+          headers: { 'Content-Type': 'application/json', 'Tauri-Response': 'ok' },
+        }));
+      }
+      if (command === 'csdm_cancel_import' && cancelResult &&
+          JSON.parse(init?.body || '{}').jobId === current.id) {
+        const reply = () => {
+          current = cancelResult;
+          window.__ciCancelReplies += 1;
+          return new Response(JSON.stringify(current), {
+            headers: { 'Content-Type': 'application/json', 'Tauri-Response': 'ok' },
+          });
+        };
+        return cancelDelayMs > 0
+          ? new Promise((resolve) => window.setTimeout(() => resolve(reply()), cancelDelayMs))
+          : Promise.resolve(reply());
+      }
+      return original.call(window, input, init);
+    };
+    window.fetch = replacement;
+    if (window.fetch !== replacement) throw new Error('Could not install hosted queue reply');
+    window.__restoreQueueInvoke = () => { window.fetch = original; };
+  }, { initialJob, cancelResult, cancelDelayMs });
+}
+
+async function restoreQueueReply(page) {
+  await page.evaluate(() => {
+    window.__restoreQueueInvoke?.();
+    delete window.__restoreQueueInvoke;
+    delete window.__ciQueueListCalls;
+    delete window.__ciCancelReplies;
+  });
+}
 
 async function main() {
   assert.equal(process.platform, 'win32');
@@ -23,6 +82,9 @@ async function main() {
   assert.ok(fs.existsSync(importDemoPath), `Synthetic import source missing: ${importDemoPath}`);
   const fixtureSha256 = sha256(fixturePath);
   const importDemoSha256 = sha256(importDemoPath);
+  fs.mkdirSync(path.dirname(cancelDemoPath), { recursive: true });
+  fs.writeFileSync(cancelDemoPath, Buffer.from('PBDEMS2\0synthetic cancellation fixture'));
+  const cancelDemoSha256 = sha256(cancelDemoPath);
   fs.mkdirSync(outputDir, { recursive: true });
   const app = spawn(appPath, [], { cwd: path.dirname(appPath), windowsHide: false, stdio: 'pipe' });
   let exit = null;
@@ -70,6 +132,45 @@ async function main() {
     const screenshot = path.join(outputDir, 'original-matches-empty.png');
     await page.screenshot({ path: screenshot, animations: 'disabled' });
     assert.ok(fs.statSync(screenshot).size > 10000, 'Native screenshot is unexpectedly small');
+    // The backend can reconcile a committed match before this route mounts.
+    // With no stored library selection, that completed receipt must open it.
+    const startupReceipt = { path: fixturePath, matchId: 101, mapName: 'de_mirage',
+      playerCount: 2, roundCount: 3 };
+    await installQueueReply(page, { id: 900001, demoPath: 'recovered-before-render.dem',
+      state: 'completed', recovered: true, receipt: startupReceipt, error: null,
+      createdAt: '2026-10-18T00:00:00Z' });
+    await page.evaluate(() => { localStorage.removeItem('csdm-port-selected-library'); });
+    await page.locator('a[href="#/demos"]').click();
+    await page.getByRole('heading', { name: 'Demo files' }).waitFor({ timeout: 20000 });
+    await page.locator('a[href="#/matches"]').click();
+    await page.getByText('2 recorded matches').waitFor({ timeout: 20000 });
+    assert.equal(await page.evaluate(() => localStorage.getItem('csdm-port-selected-library')), fixturePath);
+    const recoveredAtStartupShot = path.join(outputDir, 'reconciled-before-render.png');
+    await page.screenshot({ path: recoveredAtStartupShot, animations: 'disabled' });
+    const scansBeforeChange = await page.evaluate(() => window.__ciQueueListCalls);
+    await page.getByRole('button', { name: 'Change library' }).click();
+    await page.getByText('Your local library is empty').waitFor({ timeout: 20000 });
+    await page.waitForFunction((before) => window.__ciQueueListCalls > before,
+      scansBeforeChange, { timeout: 20000 });
+    assert.equal(await page.getByText('2 recorded matches').count(), 0,
+      'Explicit Change library was undone by an old recovered receipt');
+    await restoreQueueReply(page);
+    await page.getByRole('textbox', { name: 'Import a CS2 demo' }).fill(cancelDemoPath);
+    await page.getByRole('button', { name: 'Import demo' }).click();
+    await page.getByText('Analyzing demo in the import queue.', { exact: false }).waitFor({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Cancel import' }).click();
+    await page.getByText('Import cancelled. No match was saved.').waitFor({ timeout: 20000 });
+    const cancelledJob = await page.evaluate(async () => {
+      const jobs = await window.__TAURI_INTERNALS__.invoke('csdm_list_import_jobs');
+      return jobs.find((job) => job.demoPath.endsWith('synthetic-cancel.dem'));
+    });
+    assert.equal(cancelledJob?.state, 'cancelled');
+    assert.equal(cancelledJob?.receipt, null);
+    assert.equal(sha256(cancelDemoPath), cancelDemoSha256, 'Cancellation changed the source demo');
+    await page.getByText('Your local library is empty').waitFor({ timeout: 20000 });
+    const cancelledScreenshot = path.join(outputDir, 'cancelled-synthetic-import.png');
+    await page.screenshot({ path: cancelledScreenshot, animations: 'disabled' });
+    await emitAppPreview(page, 'cancelled-synthetic-import');
     await page.getByRole('textbox', { name: 'Import a CS2 demo' }).fill(importDemoPath);
     await page.getByRole('button', { name: 'Import demo' }).click();
     await page.getByText('1 recorded match').waitFor({ timeout: 30000 });
@@ -78,7 +179,30 @@ async function main() {
     assert.equal(await importedRow.count(), 1, 'Imported synthetic demo missing from Matches');
     const importedScreenshot = path.join(outputDir, 'imported-combat-matches.png');
     await page.screenshot({ path: importedScreenshot, animations: 'disabled' });
-    await importedRow.dblclick();
+    const completedImport = await page.evaluate(async (demoPath) => {
+      const jobs = await window.__TAURI_INTERNALS__.invoke('csdm_list_import_jobs');
+      return jobs.find((job) => job.demoPath === demoPath && job.state === 'completed');
+    }, importDemoPath);
+    assert.ok(completedImport?.receipt, 'Native import has no saved receipt for UI reconciliation test');
+    await page.getByRole('button', { name: 'Change library' }).click();
+    await page.getByText('Your local library is empty').waitFor({ timeout: 20000 });
+    const pendingRecovery = { ...completedImport, id: 900002, state: 'running', recovered: true, receipt: null };
+    const completedRecovery = { ...pendingRecovery, state: 'completed', receipt: completedImport.receipt };
+    await installQueueReply(page, pendingRecovery, completedRecovery);
+    await page.locator('a[href="#/demos"]').click();
+    await page.getByRole('heading', { name: 'Demo files' }).waitFor({ timeout: 20000 });
+    await page.locator('a[href="#/matches"]').click();
+    await page.getByRole('button', { name: 'Cancel import' }).click();
+    await page.getByText('1 recorded match').waitFor({ timeout: 20000 });
+    assert.equal(await page.evaluate(() => localStorage.getItem('csdm-port-selected-library')),
+      completedImport.receipt.path);
+    const recoveredFromCancelShot = path.join(outputDir, 'reconciled-cancel-receipt.png');
+    await page.screenshot({ path: recoveredFromCancelShot, animations: 'disabled' });
+    await emitAppPreview(page, 'reconciled-cancel-receipt');
+    await restoreQueueReply(page);
+    const importedRowAgain = page.getByRole('row').filter({ hasText: 'synthetic-combat.dem' });
+    await importedRowAgain.waitFor({ timeout: 20000 });
+    await importedRowAgain.dblclick();
     await page.getByRole('heading', { name: 'Recorded players' }).waitFor({ timeout: 20000 });
     await page.getByText('Synthetic CI facts bypassed the CS2 decoder', { exact: false }).waitFor({ timeout: 20000 });
     const importedOverviewScreenshot = path.join(outputDir, 'imported-combat-overview.png');
@@ -170,6 +294,31 @@ async function main() {
     await page.screenshot({ path: demoScreenshot, animations: 'disabled' });
     assert.equal(sha256(alphaDemo), alphaHash, 'Read-only browser changed a synthetic demo file');
     assert.equal(sha256(betaDemo), betaHash, 'Read-only browser changed a synthetic demo file');
+    // A late Cancel result must not replace a library the user opened later.
+    await page.locator('a[href="#/matches"]').click();
+    await page.getByRole('button', { name: 'Change library' }).click();
+    await page.getByText('Your local library is empty').waitFor({ timeout: 20000 });
+    const delayedRunning = { ...completedImport, id: 900003, state: 'running',
+      recovered: true, receipt: null };
+    const delayedCompleted = { ...delayedRunning, state: 'completed', receipt: completedImport.receipt };
+    await installQueueReply(page, delayedRunning, delayedCompleted, 3500);
+    await page.locator('a[href="#/demos"]').click();
+    await page.getByRole('heading', { name: 'Demo files' }).waitFor({ timeout: 20000 });
+    await page.locator('a[href="#/matches"]').click();
+    await page.getByRole('button', { name: 'Cancel import' }).click();
+    await page.getByRole('textbox', { name: 'Open an existing DemoStrike SQLite library' }).fill(fixturePath);
+    await page.getByRole('button', { name: 'Open local library' }).click();
+    await page.getByText('2 recorded matches').waitFor({ timeout: 20000 });
+    await page.waitForFunction(() => window.__ciCancelReplies === 1, null, { timeout: 10000 });
+    await sleep(250);
+    assert.equal(await page.evaluate(() => localStorage.getItem('csdm-port-selected-library')),
+      fixturePath, 'Late Cancel reply replaced the later manual library choice');
+    assert.equal(await page.getByText('2 recorded matches').count(), 1,
+      'Late Cancel reply reopened the old library');
+    const supersededCancelShot = path.join(outputDir, 'late-cancel-kept-manual-library.png');
+    await page.screenshot({ path: supersededCancelShot, animations: 'disabled' });
+    await emitAppPreview(page, 'late-cancel-kept-manual-library');
+    await restoreQueueReply(page);
     const proof = {
       source: 'actual hosted Tauri WebView2 window with original CS Demo Manager renderer',
       data: 'synthetic facts imported through the production UI/transaction behind a smoke-only parser feature, plus a separate sanitized read-only library',
@@ -177,6 +326,13 @@ async function main() {
       commit: process.env.GITHUB_SHA || null,
       executableSha256: sha256(appPath),
       screenshotSha256: sha256(screenshot),
+      recoveredAtStartupScreenshotSha256: sha256(recoveredAtStartupShot),
+      recoveredFromCancelScreenshotSha256: sha256(recoveredFromCancelShot),
+      supersededCancelScreenshotSha256: sha256(supersededCancelShot),
+      recoveredReceiptUiTest: 'synthetic queue IPC result with a real saved SQLite library',
+      cancelledImportScreenshotSha256: sha256(cancelledScreenshot),
+      cancelledImportDemoSha256: cancelDemoSha256,
+      cancelledImportJobId: cancelledJob.id,
       importedMatchesScreenshotSha256: sha256(importedScreenshot),
       importedOverviewScreenshotSha256: sha256(importedOverviewScreenshot),
       importedRoundsScreenshotSha256: sha256(importedRoundsScreenshot),
@@ -224,3 +380,4 @@ async function main() {
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; });
+

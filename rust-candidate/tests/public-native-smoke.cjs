@@ -503,7 +503,10 @@ async function main() {
       'Observed incendiary releases did not label the generic Source 2 fire projectile paths');
     const betweenRounds = page.locator('details.native-recorded-events');
     if (!(await betweenRounds.evaluate((element) => element.open))) {
-      await betweenRounds.locator('summary').click({ noWaitAfter: true });
+      await betweenRounds.locator('summary').focus();
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.querySelector('details.native-recorded-events')?.open,
+        null, { timeout: 15000 });
     }
     const outsideReplay = betweenRounds.locator('[data-event-kind="bomb"][data-event-tick="21853"]');
     await outsideReplay.waitFor({ timeout: 15000 });

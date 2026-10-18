@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Status } from 'csdm/common/types/status';
 import { MatchesActionBar } from 'csdm/ui/matches/actionbar/action-bar';
@@ -12,11 +12,12 @@ import { CenteredContent } from 'csdm/ui/components/content';
 import { Table } from 'csdm/ui/components/table/table';
 import { useTable } from 'csdm/ui/components/table/use-table';
 import type { Column } from 'csdm/ui/components/table/table-types';
-import { MatchesTable } from './matches-table';
+import { MatchesTable, intendedImportJobKey, manualLibraryChangeKey } from './matches-table';
 import { describe, durationSeconds, invoke, libraryPathKey, matchRouteKey } from './match-data';
-import { DemoImport } from './demo-import';
+import { DemoImport, cancelImport } from './demo-import';
 import type { ImportJob } from './demo-import';
 import type { LibrarySnapshot, MatchSummary } from './match-data';
+
 
 const columns: readonly Column<MatchSummary>[] = [
   { id: 'fileName', accessor: 'fileName', headerText: 'Demo', headerTooltip: 'Demo file name', width: 210 },
@@ -47,6 +48,7 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
   const [showImport, setShowImport] = useState(false);
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [queueError, setQueueError] = useState('');
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
   const seenCompleted = useRef(new Set<number>());
   const table = useTable<MatchSummary>({
     columns,
@@ -131,11 +133,21 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
       </div>}
       {(jobs.length > 0 || queueError) && <section className="border-b border-gray-300 px-16 py-8" aria-label="Import queue">
         <h2 className="text-body-strong">Import queue</h2>
-        {queueError && <p role="alert" className="mt-4 text-red-500 select-text">Could not read import jobs: {queueError}</p>}
-        {jobs.slice(0, 5).map((job) => <p key={job.id} className="mt-4 break-all text-gray-700" role={job.state === 'failed' ? 'alert' : 'status'}>
-          <span className="text-body-strong">{job.state === 'running' ? 'Analyzing' : job.state === 'completed' ? 'Imported' : job.state === 'failed' ? 'Import failed' : 'Queued'}</span>
-          {' '}{job.demoPath}{job.recovered ? ' · resumed after restart' : ''}{job.error ? `: ${job.error}` : ''}
-        </p>)}
+        {queueError && <p role="alert" className="mt-4 text-red-500 select-text">Import queue error: {queueError}</p>}
+        {jobs.slice(0, 5).map((job) => <div key={job.id} className="mt-4 flex flex-wrap items-center gap-x-8 gap-y-4 text-gray-700">
+          <span className="break-all" role={job.state === 'failed' ? 'alert' : 'status'}>
+            <span className="text-body-strong">{job.state === 'running' ? 'Analyzing' : job.state === 'completed' ? 'Imported' : job.state === 'failed' ? 'Import failed' : job.state === 'cancelled' ? 'Cancelled' : 'Queued'}</span>
+            {' '}{job.demoPath}{job.recovered ? ' · resumed after restart' : ''}{job.error ? `: ${job.error}` : ''}
+          </span>
+          {(job.state === 'queued' || job.state === 'running') && <Button isDisabled={cancellingId === job.id}
+            onClick={() => {
+              setCancellingId(job.id);
+              setQueueError('');
+              void cancelImport(job.id).then((updated) => {
+                setJobs((current) => current.map((item) => item.id === updated.id ? updated : item));
+              }).catch((failure) => setQueueError(describe(failure))).finally(() => setCancellingId(null));
+            }}>Cancel import</Button>}
+        </div>)}
       </section>}
       <div className="border-b border-gray-300 px-16 py-8">
         <span className="text-body-strong">Existing DemoStrike library</span>
@@ -158,14 +170,16 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
   );
 }
 
-function OriginalEmptyMatches({ onOpenLibrary }: { onOpenLibrary: (path: string) => void }) {
+function OriginalEmptyMatches({ onOpenLibrary, autoOpenRecovered }: {
+  onOpenLibrary: (path: string) => void; autoOpenRecovered: boolean;
+}) {
   const fetchMatches = useFetchMatches();
   const status = useMatchesStatus();
   useEffect(() => { if (status === Status.Idle) void fetchMatches(); });
   return (
     <MatchesTableProvider>
       <MatchesActionBar />
-      <MatchesTable onOpenLibrary={onOpenLibrary} />
+      <MatchesTable onOpenLibrary={onOpenLibrary} autoOpenRecovered={autoOpenRecovered} />
       <MatchesTableStatusBar />
     </MatchesTableProvider>
   );
@@ -176,9 +190,18 @@ function OriginalEmptyMatches({ onOpenLibrary }: { onOpenLibrary: (path: string)
 // are not mislabeled as CSDM Team A/B scores or invented combat statistics.
 export function Matches() {
   const [path, setPath] = useState(() => localStorage.getItem(libraryPathKey) ?? '');
-  if (!path) return <OriginalEmptyMatches onOpenLibrary={setPath} />;
-  return <SourceMatches path={path} onOpenLibrary={setPath} onChangeLibrary={() => {
+  const openLibrary = useCallback((selected: string) => {
+    localStorage.removeItem(manualLibraryChangeKey);
+    localStorage.removeItem(intendedImportJobKey);
+    setPath(selected);
+  }, []);
+  if (!path) return <OriginalEmptyMatches onOpenLibrary={openLibrary}
+    autoOpenRecovered={localStorage.getItem(manualLibraryChangeKey) !== '1'} />;
+  return <SourceMatches path={path} onOpenLibrary={openLibrary} onChangeLibrary={() => {
+    localStorage.setItem(manualLibraryChangeKey, '1');
+    localStorage.removeItem(intendedImportJobKey);
     localStorage.removeItem(libraryPathKey);
     setPath('');
   }} />;
 }
+

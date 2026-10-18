@@ -68,6 +68,7 @@ pub fn run() {
             import::csdm_choose_demo,
             import_queue::csdm_enqueue_demo,
             import_queue::csdm_list_import_jobs,
+            import_queue::csdm_cancel_import,
             csdm::csdm_load_settings,
             csdm::csdm_save_settings,
             csdm::csdm_request,
