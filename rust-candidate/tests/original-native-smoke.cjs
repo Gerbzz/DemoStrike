@@ -11,6 +11,7 @@ const { chromium } = require('playwright-core');
 const outputDir = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-original');
 const fixturePath = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-smoke', 'synthetic-library.sqlite');
 const importDemoPath = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-smoke', 'synthetic-combat.dem');
+const cancelDemoPath = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'demostrike-smoke', 'synthetic-cancel.dem');
 const appPath = path.resolve(__dirname, '../src-tauri/target/release/demostrike-rust-candidate.exe');
 const cdpUrl = 'http://127.0.0.1:19375';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -23,6 +24,8 @@ async function main() {
   assert.ok(fs.existsSync(importDemoPath), `Synthetic import source missing: ${importDemoPath}`);
   const fixtureSha256 = sha256(fixturePath);
   const importDemoSha256 = sha256(importDemoPath);
+  fs.writeFileSync(cancelDemoPath, Buffer.from('PBDEMS2\0synthetic cancellation fixture'));
+  const cancelDemoSha256 = sha256(cancelDemoPath);
   fs.mkdirSync(outputDir, { recursive: true });
   const app = spawn(appPath, [], { cwd: path.dirname(appPath), windowsHide: false, stdio: 'pipe' });
   let exit = null;
@@ -70,6 +73,21 @@ async function main() {
     const screenshot = path.join(outputDir, 'original-matches-empty.png');
     await page.screenshot({ path: screenshot, animations: 'disabled' });
     assert.ok(fs.statSync(screenshot).size > 10000, 'Native screenshot is unexpectedly small');
+    await page.getByRole('textbox', { name: 'Import a CS2 demo' }).fill(cancelDemoPath);
+    await page.getByRole('button', { name: 'Import demo' }).click();
+    await page.getByText('Analyzing demo in the import queue.', { exact: false }).waitFor({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Cancel import' }).click();
+    await page.getByText('Import cancelled. No match was saved.').waitFor({ timeout: 20000 });
+    const cancelledJob = await page.evaluate(async () => {
+      const jobs = await window.__TAURI_INTERNALS__.invoke('csdm_list_import_jobs');
+      return jobs.find((job) => job.demoPath.endsWith('synthetic-cancel.dem'));
+    });
+    assert.equal(cancelledJob?.state, 'cancelled');
+    assert.equal(cancelledJob?.receipt, null);
+    assert.equal(sha256(cancelDemoPath), cancelDemoSha256, 'Cancellation changed the source demo');
+    await page.getByText('Your local library is empty').waitFor({ timeout: 20000 });
+    const cancelledScreenshot = path.join(outputDir, 'cancelled-synthetic-import.png');
+    await page.screenshot({ path: cancelledScreenshot, animations: 'disabled' });
     await page.getByRole('textbox', { name: 'Import a CS2 demo' }).fill(importDemoPath);
     await page.getByRole('button', { name: 'Import demo' }).click();
     await page.getByText('1 recorded match').waitFor({ timeout: 30000 });
@@ -177,6 +195,9 @@ async function main() {
       commit: process.env.GITHUB_SHA || null,
       executableSha256: sha256(appPath),
       screenshotSha256: sha256(screenshot),
+      cancelledImportScreenshotSha256: sha256(cancelledScreenshot),
+      cancelledImportDemoSha256: cancelDemoSha256,
+      cancelledImportJobId: cancelledJob.id,
       importedMatchesScreenshotSha256: sha256(importedScreenshot),
       importedOverviewScreenshotSha256: sha256(importedOverviewScreenshot),
       importedRoundsScreenshotSha256: sha256(importedRoundsScreenshot),
