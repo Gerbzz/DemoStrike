@@ -99,22 +99,33 @@ function Wait-Dialog {
 }
 function Open-Dialog-Project([IntPtr]$dialog, [string]$project) {
     $root = [System.Windows.Automation.AutomationElement]::FromHandle($dialog)
-    $editCondition = [System.Windows.Automation.PropertyCondition]::new(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::Edit)
-    $edits = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $editCondition)
+    $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.Condition]::TrueCondition)
     $fileName = $null
-    foreach ($edit in $edits) {
-        $name = $edit.Current.Name
-        $id = $edit.Current.AutomationId
-        Write-Output "LEGACY_DIALOG_EDIT name=$name automation_id=$id"
-        if ($id -eq '1148' -or $name -match '^File name:?$') { $fileName = $edit; break }
+    foreach ($element in $all) {
+        $type = $element.Current.ControlType
+        if ($type -ne [System.Windows.Automation.ControlType]::Edit -and
+            $type -ne [System.Windows.Automation.ControlType]::ComboBox) { continue }
+        $name = $element.Current.Name
+        $id = $element.Current.AutomationId
+        Write-Output "LEGACY_DIALOG_INPUT type=$($type.ProgrammaticName) name=$name automation_id=$id"
+        if ($name -match '^File name:?$' -or $id -eq '1148' -or
+            $id -eq 'FileNameControlHost') { $fileName = $element; break }
     }
-    if (-not $fileName) { throw 'Native file dialog has no verified File name edit control' }
+    if (-not $fileName) { throw 'Native file dialog has no verified File name control' }
     $value = $null
     if (-not $fileName.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$value)) {
-        throw 'Native File name control has no ValuePattern'
+        $fileName.SetFocus()
+        $editCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+            [System.Windows.Automation.ControlType]::Edit)
+        $childEdit = $fileName.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $editCondition)
+        if (-not $childEdit -or
+            -not $childEdit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$value)) {
+            throw 'Verified File name control has no editable ValuePattern'
+        }
     }
+    if ($value.Current.IsReadOnly) { throw 'Verified File name control is read-only' }
     $value.SetValue($project)
     if ($value.Current.Value -ne $project) { throw 'Native File name control did not retain the project path' }
     Write-Output 'LEGACY_DIALOG_FILENAME_SET'
