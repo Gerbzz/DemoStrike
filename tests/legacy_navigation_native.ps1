@@ -22,6 +22,39 @@ public static class LegacySmokeWindow {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr handle);
+    [DllImport("user32.dll")] public static extern int GetDlgCtrlID(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent, ChildWindowCallback callback, IntPtr data);
+    public delegate bool ChildWindowCallback(IntPtr handle, IntPtr data);
+    public static IntPtr FindChildById(IntPtr parent, int id) {
+        IntPtr found = IntPtr.Zero;
+        EnumChildWindows(parent, (handle, data) => {
+            if (GetDlgCtrlID(handle) == id) { found = handle; return false; }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+    public static IntPtr FindChildByClass(IntPtr parent, string wanted) {
+        IntPtr found = IntPtr.Zero;
+        EnumChildWindows(parent, (handle, data) => {
+            var name = new System.Text.StringBuilder(128);
+            GetClassName(handle, name, name.Capacity);
+            if (name.ToString().Equals(wanted, StringComparison.OrdinalIgnoreCase)) {
+                found = handle; return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+    public static string ChildControlSummary(IntPtr parent) {
+        var lines = new System.Collections.Generic.List<string>();
+        EnumChildWindows(parent, (handle, data) => {
+            var name = new System.Text.StringBuilder(128);
+            GetClassName(handle, name, name.Capacity);
+            if (lines.Count < 60) lines.Add(name + ":" + GetDlgCtrlID(handle));
+            return true;
+        }, IntPtr.Zero);
+        return string.Join(",", lines);
+    }
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr handle, System.Text.StringBuilder name, int max);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
@@ -112,18 +145,38 @@ function Open-Dialog-Project([IntPtr]$dialog, [string]$project) {
         if ($name -match '^File name:?$' -or $id -eq '1148' -or
             $id -eq 'FileNameControlHost') { $fileName = $element; break }
     }
-    if (-not $fileName) { throw 'Native file dialog has no verified File name control' }
+    $fileNameHandle = [IntPtr]::Zero
+    if (-not $fileName) {
+        $fileNameHandle = [LegacySmokeWindow]::FindChildById($dialog, 1148)
+        if ($fileNameHandle -eq [IntPtr]::Zero) {
+            Write-Output "LEGACY_DIALOG_CHILD_CONTROLS $([LegacySmokeWindow]::ChildControlSummary($dialog))"
+            throw 'Native file dialog has no verified File name control'
+        }
+        $fileName = [System.Windows.Automation.AutomationElement]::FromHandle($fileNameHandle)
+        Write-Output 'LEGACY_DIALOG_FILENAME_HWND id=1148'
+    }
     $value = $null
     if (-not $fileName.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$value)) {
-        $fileName.SetFocus()
         $editCondition = [System.Windows.Automation.PropertyCondition]::new(
             [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
             [System.Windows.Automation.ControlType]::Edit)
         $childEdit = $fileName.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $editCondition)
-        if (-not $childEdit -or
-            -not $childEdit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$value)) {
-            throw 'Verified File name control has no editable ValuePattern'
+        if ($childEdit) {
+            [void]$childEdit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$value)
         }
+        if (-not $value) {
+            if ($fileNameHandle -eq [IntPtr]::Zero) {
+                $fileNameHandle = [IntPtr]::new($fileName.Current.NativeWindowHandle)
+            }
+            if ($fileNameHandle -ne [IntPtr]::Zero) {
+                $editHandle = [LegacySmokeWindow]::FindChildByClass($fileNameHandle, 'Edit')
+                if ($editHandle -ne [IntPtr]::Zero) {
+                    $childEdit = [System.Windows.Automation.AutomationElement]::FromHandle($editHandle)
+                    [void]$childEdit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$value)
+                }
+            }
+        }
+        if (-not $value) { throw 'Verified File name control has no editable ValuePattern' }
     }
     if ($value.Current.IsReadOnly) { throw 'Verified File name control is read-only' }
     $value.SetValue($project)
