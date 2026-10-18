@@ -198,22 +198,66 @@ function Choose-DialogPath([IntPtr]$dialog, [string]$path, [string]$action) {
     throw "Native $action file dialog did not close after selecting $path"
 }
 
+function Wait-SavedEditorProject([string]$path, [string]$action) {
+    # The common dialog can close before the embedded editor finishes writing.
+    for ($attempt = 0; $attempt -lt 40; $attempt++) {
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            Write-Output "EDITOR_GUI_SAVED $action path=$path attempt=$($attempt + 1)"
+            return
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    $directory = Split-Path -Parent $path
+    $nearby = @(Get-ChildItem -LiteralPath $directory -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'gui-*' } |
+        ForEach-Object { "$($_.Name):$($_.Length)" })
+    Write-Output "EDITOR_GUI_SAVE_NEARBY $action directory=$directory files=$($nearby -join ',')"
+    throw "GUI Save As did not write the $action project"
+}
+
 function Drag-EditorClient([IntPtr]$handle, [int]$fromX, [int]$fromY, [int]$toX, [int]$toY, [string]$action) {
     $origin = [EditorNativeWindow+POINT]::new()
     if (-not [EditorNativeWindow]::ClientToScreen($handle, [ref]$origin)) {
         throw "Could not locate editor client for $action"
     }
-    [void][EditorNativeWindow]::SetForegroundWindow($handle)
+    if (-not [EditorNativeWindow]::SetForegroundWindow($handle)) {
+        throw "Could not focus editor before $action"
+    }
+    $focused = $false
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        if ([EditorNativeWindow]::GetForegroundWindow() -eq $handle) {
+            $focused = $true
+            break
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not $focused) { throw "Editor did not receive focus before $action" }
     [void][EditorNativeWindow]::SetCursorPos($origin.X + $fromX, $origin.Y + $fromY)
     Start-Sleep -Milliseconds 250
-    [EditorNativeWindow]::mouse_event([uint32]2, 0, 0, 0, [UIntPtr]::Zero)
-    for ($step = 1; $step -le 20; $step++) {
-        $x = $origin.X + [int][Math]::Round($fromX + ($toX - $fromX) * $step / 20.0)
-        $y = $origin.Y + [int][Math]::Round($fromY + ($toY - $fromY) * $step / 20.0)
-        [void][EditorNativeWindow]::SetCursorPos($x, $y)
-        Start-Sleep -Milliseconds 40
+    if ($action -eq 'project-bin-to-V1') {
+        # Give the freshly imported media tile a focused selection before
+        # starting its native drag; otherwise the first mouse-down can be lost.
+        [EditorNativeWindow]::mouse_event([uint32]2, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 100
+        [EditorNativeWindow]::mouse_event([uint32]4, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 650
+        Write-Output 'EDITOR_GUI_SOURCE_TILE_SELECTED'
     }
-    [EditorNativeWindow]::mouse_event([uint32]4, 0, 0, 0, [UIntPtr]::Zero)
+    [EditorNativeWindow]::mouse_event([uint32]2, 0, 0, 0, [UIntPtr]::Zero)
+    try {
+        # Give egui a frame to observe mouse-down, the hovered V1 target,
+        # and the final position before releasing the native drag.
+        Start-Sleep -Milliseconds 300
+        for ($step = 1; $step -le 32; $step++) {
+            $x = $origin.X + [int][Math]::Round($fromX + ($toX - $fromX) * $step / 32.0)
+            $y = $origin.Y + [int][Math]::Round($fromY + ($toY - $fromY) * $step / 32.0)
+            [void][EditorNativeWindow]::SetCursorPos($x, $y)
+            Start-Sleep -Milliseconds 55
+        }
+        Start-Sleep -Milliseconds 450
+    } finally {
+        [EditorNativeWindow]::mouse_event([uint32]4, 0, 0, 0, [UIntPtr]::Zero)
+    }
     Start-Sleep -Seconds 2
     Write-Output "EDITOR_GUI_DRAG $action from=$fromX,$fromY to=$toX,$toY"
 }
@@ -290,16 +334,14 @@ try {
     [void][EditorNativeWindow]::SetForegroundWindow($guiHandle)
     Send-Chord ([byte[]]@(0x11, 0x10, 0x53)) # Ctrl+Shift+S, File > Save As
     Choose-DialogPath (Wait-FileDialog 'save-after-drag') $afterDrag 'save-after-drag'
-    if (-not (Test-Path -LiteralPath $afterDrag)) { throw 'GUI Save As did not write the dragged project' }
-    Write-Output "EDITOR_GUI_SAVED after-drag $afterDrag"
+    Wait-SavedEditorProject $afterDrag 'after-drag'
 
     Drag-EditorClient $guiHandle 660 475 730 475 'move-V1-clip'
     Save-EditorWindow $guiProcess 'gui-after-edit'
     [void][EditorNativeWindow]::SetForegroundWindow($guiHandle)
     Send-Chord ([byte[]]@(0x11, 0x10, 0x53)) # Ctrl+Shift+S, File > Save As
     Choose-DialogPath (Wait-FileDialog 'save-after-edit') $afterEdit 'save-after-edit'
-    if (-not (Test-Path -LiteralPath $afterEdit)) { throw 'GUI Save As did not write the edited project' }
-    Write-Output "EDITOR_GUI_SAVED after-edit $afterEdit"
+    Wait-SavedEditorProject $afterEdit 'after-edit'
 
     [void][EditorNativeWindow]::SetForegroundWindow($guiHandle)
     Send-Chord ([byte[]]@(0x11, 0x4F)) # Ctrl+O, File > Open
