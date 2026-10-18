@@ -368,9 +368,12 @@ $start.Environment['LOCALAPPDATA'] = Join-Path $isolated 'local'
 $start.Environment['APPDATA'] = Join-Path $isolated 'roaming'
 $start.Environment['USERPROFILE'] = Join-Path $isolated 'profile'
 $start.Environment['DEMOSTRIKE_EDITOR_CAPTURE_PROOF'] = '1'
-foreach ($path in @($start.Environment['LOCALAPPDATA'], $start.Environment['APPDATA'], $start.Environment['USERPROFILE'])) {
+$desktop = Join-Path $start.Environment['USERPROFILE'] 'Desktop'
+foreach ($path in @($start.Environment['LOCALAPPDATA'], $start.Environment['APPDATA'], $start.Environment['USERPROFILE'], $desktop)) {
     [void](New-Item -ItemType Directory -Path $path -Force)
 }
+if (-not (Test-Path -LiteralPath $desktop -PathType Container)) { throw 'Isolated profile Desktop is unavailable to the native file dialog' }
+Write-Output 'LEGACY_ISOLATED_DESKTOP_READY'
 $process = [Diagnostics.Process]::Start($start)
 if (-not $process) { throw 'Native DemoStrike app did not start' }
 $stderr = $process.StandardError.ReadToEndAsync()
