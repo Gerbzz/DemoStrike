@@ -291,6 +291,29 @@ function Open-Dialog-Project([IntPtr]$dialog, [string]$project) {
         [LegacySmokeWindow]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
         Write-Output 'LEGACY_DIALOG_OPEN_POINTER_CLICK'
     }
+    Start-Sleep -Milliseconds 400
+    $postClickForeground = [LegacySmokeWindow]::GetForegroundWindow()
+    $foregroundClass = [Text.StringBuilder]::new(128)
+    [void][LegacySmokeWindow]::GetClassName($postClickForeground, $foregroundClass, $foregroundClass.Capacity)
+    Write-Output "LEGACY_DIALOG_POST_CLICK foreground_class=$foregroundClass foreground_is_original=$($postClickForeground -eq $dialog)"
+    try {
+        $foregroundElement = [System.Windows.Automation.AutomationElement]::FromHandle($postClickForeground)
+        Write-Output "LEGACY_DIALOG_POST_CLICK_WINDOW name=$($foregroundElement.Current.Name)"
+        $foregroundChildren = $foregroundElement.FindAll(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.Condition]::TrueCondition)
+        $reported = 0
+        foreach ($element in $foregroundChildren) {
+            $name = [string]$element.Current.Name
+            if ([string]::IsNullOrWhiteSpace($name)) { continue }
+            $name = $name.Substring(0, [Math]::Min($name.Length, 120))
+            Write-Output "LEGACY_DIALOG_POST_CLICK_ELEMENT type=$($element.Current.ControlType.ProgrammaticName) name=$name"
+            $reported++
+            if ($reported -ge 20) { break }
+        }
+    } catch { Write-Output "LEGACY_DIALOG_POST_CLICK_UIA_ERROR $($_.Exception.GetType().Name)" }
+    try { Save-Desktop-Diagnostic $postClickForeground 'dialog-post-click' }
+    catch { Write-Output "LEGACY_DESKTOP_DIAGNOSTIC_ERROR dialog-post-click $($_.Exception.GetType().Name)" }
     for ($i = 0; $i -lt 80; $i++) {
         Start-Sleep -Milliseconds 250
         if (-not [LegacySmokeWindow]::IsWindow($dialog)) {
@@ -298,6 +321,13 @@ function Open-Dialog-Project([IntPtr]$dialog, [string]$project) {
             return
         }
     }
+    $failureForeground = [LegacySmokeWindow]::GetForegroundWindow()
+    $failureClass = [Text.StringBuilder]::new(128)
+    [void][LegacySmokeWindow]::GetClassName($failureForeground, $failureClass, $failureClass.Capacity)
+    Write-Output "LEGACY_DIALOG_TIMEOUT foreground_class=$failureClass foreground_is_original=$($failureForeground -eq $dialog)"
+    Write-Output "LEGACY_DIALOG_TIMEOUT_CHILD_CONTROLS $([LegacySmokeWindow]::ChildControlSummary($dialog))"
+    try { Save-Desktop-Diagnostic $failureForeground 'dialog-timeout' }
+    catch { Write-Output "LEGACY_DESKTOP_DIAGNOSTIC_ERROR dialog-timeout $($_.Exception.GetType().Name)" }
     throw 'Native file dialog remained open after invoking Open'
 }
 function Invoke-Return([IntPtr]$handle) {
