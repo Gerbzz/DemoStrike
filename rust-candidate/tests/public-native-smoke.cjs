@@ -110,7 +110,27 @@ async function main() {
       const matchId = Number(location.hash.match(/local-(\d+)/)?.[1]);
       if (!library || !Number.isSafeInteger(matchId)) throw new Error('Local match route not available');
       const detail = await window.__TAURI_INTERNALS__.invoke('get_match_detail', { path: library, matchId });
+      const eventKey = (roundNumber, death) =>
+        [roundNumber, death.sourceIndex, death.tick, death.attackerSteamid, death.victimSteamid].join('|');
+      // Preserve the old React predicate as an independent parity oracle for the real import.
+      const legacyDuels = detail.rounds.flatMap((round) => (round.deaths ?? [])
+        .filter((death) => death.attackerSteamid !== null
+          && death.attackerSteamid !== death.victimSteamid
+          && ((death.attackerSide === 'CT' && death.victimSide === 'T')
+            || (death.attackerSide === 'T' && death.victimSide === 'CT')))
+        .map((death) => eventKey(round.roundNumber, death))).sort();
+      const nativeDuels = (detail.observedDuels ?? []).flatMap((pair) => pair.events
+        .map(({ roundNumber, death }) => {
+          if (death.attackerSteamid !== pair.attackerSteamid
+            || death.victimSteamid !== pair.victimSteamid) {
+            throw new Error('Native duel pair identity differs from its source death');
+          }
+          return eventKey(roundNumber, death);
+        })).sort();
       return {
+        legacyDuels,
+        nativeDuels,
+        duelStreamAvailable: detail.observedDuels !== null,
         capability: detail.summary.parserCapability,
         roundStarts: detail.rounds.map((round) => round.startTick),
         deaths: detail.rounds.reduce((count, round) => count + (round.deaths?.length ?? 0), 0),
@@ -139,6 +159,10 @@ async function main() {
       'Observed pre-halftime Team A/B sides did not reach the native service');
     assert.equal(nativeFacts.effectivePlayers, 10, 'Effective player damage totals did not reach the native service');
     assert.equal(nativeFacts.stablePlayers, 10, 'Observed stable Team A/B assignment did not reach players');
+    assert.ok(nativeFacts.duelStreamAvailable, 'Native observed duels were unavailable for the verified import');
+    assert.ok(nativeFacts.legacyDuels.length > 0, 'Pinned public demo has no opposing-side reference duels');
+    assert.deepEqual(nativeFacts.nativeDuels, nativeFacts.legacyDuels,
+      'Rust observed-duel pair events differ from the previous React source-event predicate');
     const overviewShot = path.join(outputDir, 'real-demo-overview.png');
     await captureAppOnly(page, overviewShot);
     await page.getByRole('link', { name: 'Rounds', exact: true }).click();
