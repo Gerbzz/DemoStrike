@@ -10,11 +10,14 @@ export function cancelImport(jobId: number): Promise<ImportJob> {
   return invoke<ImportJob>('csdm_cancel_import', { jobId });
 }
 
-export function DemoImport({ onQueued }: { onQueued: (job: ImportJob) => void }) {
+export function DemoImport({ onQueued, onStart }: {
+  onQueued: (job: ImportJob) => void; onStart?: () => void;
+}) {
   const [demoPath, setDemoPath] = useState('');
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
   async function importDemo() {
+    onStart?.();
     setWorking(true);
     setError('');
     try {
