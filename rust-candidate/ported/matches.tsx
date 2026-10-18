@@ -14,7 +14,7 @@ import { useTable } from 'csdm/ui/components/table/use-table';
 import type { Column } from 'csdm/ui/components/table/table-types';
 import { MatchesTable } from './matches-table';
 import { describe, durationSeconds, invoke, libraryPathKey, matchRouteKey } from './match-data';
-import { DemoImport } from './demo-import';
+import { DemoImport, cancelImport } from './demo-import';
 import type { ImportJob } from './demo-import';
 import type { LibrarySnapshot, MatchSummary } from './match-data';
 
@@ -47,6 +47,7 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
   const [showImport, setShowImport] = useState(false);
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [queueError, setQueueError] = useState('');
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
   const seenCompleted = useRef(new Set<number>());
   const table = useTable<MatchSummary>({
     columns,
@@ -132,10 +133,20 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
       {(jobs.length > 0 || queueError) && <section className="border-b border-gray-300 px-16 py-8" aria-label="Import queue">
         <h2 className="text-body-strong">Import queue</h2>
         {queueError && <p role="alert" className="mt-4 text-red-500 select-text">Could not read import jobs: {queueError}</p>}
-        {jobs.slice(0, 5).map((job) => <p key={job.id} className="mt-4 break-all text-gray-700" role={job.state === 'failed' ? 'alert' : 'status'}>
-          <span className="text-body-strong">{job.state === 'running' ? 'Analyzing' : job.state === 'completed' ? 'Imported' : job.state === 'failed' ? 'Import failed' : 'Queued'}</span>
-          {' '}{job.demoPath}{job.recovered ? ' · resumed after restart' : ''}{job.error ? `: ${job.error}` : ''}
-        </p>)}
+        {jobs.slice(0, 5).map((job) => <div key={job.id} className="mt-4 flex flex-wrap items-center gap-x-8 gap-y-4 text-gray-700">
+          <span className="break-all" role={job.state === 'failed' ? 'alert' : 'status'}>
+            <span className="text-body-strong">{job.state === 'running' ? 'Analyzing' : job.state === 'completed' ? 'Imported' : job.state === 'failed' ? 'Import failed' : job.state === 'cancelled' ? 'Cancelled' : 'Queued'}</span>
+            {' '}{job.demoPath}{job.recovered ? ' � resumed after restart' : ''}{job.error ? `: ${job.error}` : ''}
+          </span>
+          {(job.state === 'queued' || job.state === 'running') && <Button isDisabled={cancellingId === job.id}
+            onClick={() => {
+              setCancellingId(job.id);
+              setQueueError('');
+              void cancelImport(job.id).then((updated) => {
+                setJobs((current) => current.map((item) => item.id === updated.id ? updated : item));
+              }).catch((failure) => setQueueError(describe(failure))).finally(() => setCancellingId(null));
+            }}>Cancel import</Button>}
+        </div>)}
       </section>}
       <div className="border-b border-gray-300 px-16 py-8">
         <span className="text-body-strong">Existing DemoStrike library</span>
@@ -152,7 +163,7 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
       </CenteredContent>}
       {status === 'ready' && matches.length > 0 && <Table table={table} />}
       <div className="flex justify-end border-t border-gray-300 px-16 py-8 text-gray-700">
-        {status === 'ready' ? `${matches.length} recorded ${matches.length === 1 ? 'match' : 'matches'} · Read only` : 'Read only'}
+        {status === 'ready' ? `${matches.length} recorded ${matches.length === 1 ? 'match' : 'matches'} � Read only` : 'Read only'}
       </div>
     </>
   );
