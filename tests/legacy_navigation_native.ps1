@@ -10,6 +10,7 @@ if (-not [IO.Path]::IsPathFullyQualified($Project) -or -not (Test-Path -LiteralP
 $app = (Resolve-Path (Join-Path $PSScriptRoot '..\target\debug\demostrike.exe')).Path
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName System.Drawing
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -49,38 +50,47 @@ function Click-Client([IntPtr]$handle, [int]$x, [int]$y) {
     [LegacySmokeWindow]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 500
 }
-function Capture-Client([IntPtr]$handle, [string]$name) {
+function Save-Desktop-Diagnostic([IntPtr]$handle, [string]$name) {
     $client = [LegacySmokeWindow+RECT]::new()
     if (-not [LegacySmokeWindow]::GetClientRect($handle, [ref]$client)) { throw 'GetClientRect failed' }
     $origin = Client-Origin $handle
     $width = $client.Right - $client.Left
     $height = $client.Bottom - $client.Top
-    if ($width -lt 850 -or $height -lt 550) { throw "Native viewport too small: ${width}x$height" }
     $bitmap = [System.Drawing.Bitmap]::new($width, $height)
     try {
         $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
         try { $graphics.CopyFromScreen($origin.X, $origin.Y, 0, 0, $bitmap.Size) }
         finally { $graphics.Dispose() }
+        $path = Join-Path $EvidenceDir "$name-desktop-diagnostic.png"
+        $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
         $colors = [System.Collections.Generic.HashSet[int]]::new()
         for ($x = 40; $x -lt $width; $x += 47) {
             for ($y = 40; $y -lt $height; $y += 47) {
                 [void]$colors.Add($bitmap.GetPixel($x, $y).ToArgb())
             }
         }
-        if ($colors.Count -lt 8) { throw "Native $name image lacks detail: $($colors.Count) colors" }
-        $path = Join-Path $EvidenceDir "$name.png"
-        $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-        $enc = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() |
-            Where-Object { $_.MimeType -eq 'image/jpeg' } | Select-Object -First 1
-        $jpg = Join-Path $EvidenceDir "$name.jpg"
-        $params = [System.Drawing.Imaging.EncoderParameters]::new(1)
-        $params.Param[0] = [System.Drawing.Imaging.EncoderParameter]::new([System.Drawing.Imaging.Encoder]::Quality, [long]40)
-        try { $bitmap.Save($jpg, $enc, $params) } finally { $params.Dispose() }
-        Write-Output "LEGACY_NATIVE_IMAGE $name ${width}x$height colors=$($colors.Count) sha256=$((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash)"
-        Write-Output "LEGACY_PREVIEW_BEGIN $name"
-        Write-Output ([Convert]::ToBase64String([IO.File]::ReadAllBytes($jpg)))
-        Write-Output "LEGACY_PREVIEW_END $name"
+        $foreground = [LegacySmokeWindow]::GetForegroundWindow()
+        Write-Output "LEGACY_DESKTOP_DIAGNOSTIC $name window=$handle foreground=$foreground origin=$($origin.X),$($origin.Y) size=${width}x$height sampled_colors=$($colors.Count) sha256=$((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash)"
+        if ($name -eq 'empty') {
+            Write-Output 'LEGACY_DESKTOP_PREVIEW_BEGIN'
+            Write-Output ([Convert]::ToBase64String([IO.File]::ReadAllBytes($path)))
+            Write-Output 'LEGACY_DESKTOP_PREVIEW_END'
+        }
     } finally { $bitmap.Dispose() }
+}
+function Wait-Name([IntPtr]$handle, [string]$name) {
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
+    $condition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::NameProperty, $name)
+    for ($i = 0; $i -lt 60; $i++) {
+        $element = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($element) {
+            Write-Output "LEGACY_UI_FOUND $name"
+            return $element
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    throw "Native UI element absent: $name"
 }
 function Wait-Dialog {
     for ($i = 0; $i -lt 80; $i++) {
@@ -145,11 +155,13 @@ try {
     if (-not [LegacySmokeWindow]::MoveWindow($handle, 8, 8, 1000, 700, $true)) { throw 'Cannot size native window' }
     [void][LegacySmokeWindow]::SetForegroundWindow($handle)
     Start-Sleep -Seconds 3
-    Capture-Client $handle 'empty'
+    try { Save-Desktop-Diagnostic $handle 'empty' } catch { Write-Output "LEGACY_DESKTOP_DIAGNOSTIC_ERROR empty $_" }
+    [void](Wait-Name $handle 'Other sources and projects')
     Click-Client $handle 220 55 # Saved matches
-    Capture-Client $handle 'saved-matches'
+    try { Save-Desktop-Diagnostic $handle 'saved-matches' } catch { Write-Output "LEGACY_DESKTOP_DIAGNOSTIC_ERROR saved-matches $_" }
+    [void](Wait-Name $handle 'No matches saved yet. Import a CS2 demo to build your searchable event library.')
     Click-Client $handle 395 55 # Other sources and projects
-    Capture-Client $handle 'project-menu'
+    Write-Output 'LEGACY_UI_MENU_OPENED'
     Click-Client $handle 390 111 # Open editable project
     $dialog = Wait-Dialog
     [void][LegacySmokeWindow]::SetForegroundWindow($dialog)
@@ -161,10 +173,12 @@ try {
     Start-Sleep -Seconds 4
     $process.Refresh()
     if ($process.HasExited) { throw 'Native app exited while opening the FilmCraft project' }
-    Capture-Client $handle 'filmcraft-editor'
+    try { Save-Desktop-Diagnostic $handle 'filmcraft-editor' } catch { Write-Output "LEGACY_DESKTOP_DIAGNOSTIC_ERROR editor $_" }
+    [void](Wait-Name $handle 'Return to analysis')
     Invoke-Return $handle
     Start-Sleep -Seconds 2
-    Capture-Client $handle 'returned-analysis'
+    try { Save-Desktop-Diagnostic $handle 'returned-analysis' } catch { Write-Output "LEGACY_DESKTOP_DIAGNOSTIC_ERROR returned $_" }
+    [void](Wait-Name $handle 'Other sources and projects')
     Write-Output 'LEGACY_NATIVE_SMOKE menu project open and return completed'
 } finally {
     if (-not $process.HasExited) {

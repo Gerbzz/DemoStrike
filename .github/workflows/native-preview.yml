@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [feature/native-screenshot-2026-10-15, codex/demostrike-legacy-gate-20261018]
+    branches: [feature/native-screenshot-2026-10-15]
 
 permissions:
   contents: read
@@ -71,6 +71,46 @@ jobs:
         with:
           name: demostrike-workspace-${{ github.sha }}
           path: ${{ runner.temp }}/demostrike-empty-workspace.png
+          retention-days: 1
+          if-no-files-found: warn
+      - name: Capture synthetic FilmCraft project in native renderer
+        shell: pwsh
+        run: |
+          $project = Join-Path (Join-Path $env:RUNNER_TEMP 'demostrike-native-smoke') 'synthetic.fcproj'
+          $folder = Join-Path $env:RUNNER_TEMP 'demostrike-filmcraft-evidence'
+          New-Item -ItemType Directory -Path $folder -Force | Out-Null
+          $env:LOCALAPPDATA = Join-Path $folder 'app-data'
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          $env:DEMOSTRIKE_EDITOR_CAPTURE_PROOF = '1'
+          $output = Join-Path $folder 'filmcraft-native.png'
+          $log = Join-Path $folder 'native-output.txt'
+          & target/debug/demostrike.exe --project $project --capture $output 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output)) { throw 'Native FilmCraft screenshot unavailable' }
+          if (-not ((Get-Content -LiteralPath $log -Raw) -match 'EDITOR_FRAME show_embedded_editor_done')) { throw 'Actual FilmCraft editor frame was not observed' }
+          $bytes = [IO.File]::ReadAllBytes($output)
+          if ($bytes.Length -lt 10000 -or $bytes.Length -gt 5MB) { throw 'Native FilmCraft PNG has unexpected size' }
+          if ([Convert]::ToHexString($bytes[0..7]) -ne '89504E470D0A1A0A') { throw 'Native FilmCraft output is not PNG' }
+          Add-Type -AssemblyName System.Drawing
+          $bitmap = [System.Drawing.Bitmap]::FromFile($output)
+          try {
+            if ($bitmap.Width -lt 1000 -or $bitmap.Height -lt 700) { throw 'Native FilmCraft image dimensions too small' }
+            $colors = [System.Collections.Generic.HashSet[int]]::new()
+            for ($x = 40; $x -lt $bitmap.Width; $x += 47) {
+              for ($y = 40; $y -lt $bitmap.Height; $y += 47) {
+                [void]$colors.Add($bitmap.GetPixel($x, $y).ToArgb())
+              }
+            }
+            if ($colors.Count -lt 8) { throw "Native FilmCraft image lacks rendered detail: $($colors.Count) colors" }
+            "Native FilmCraft $($bitmap.Width)x$($bitmap.Height), $($colors.Count) sampled colors, commit $env:GITHUB_SHA"
+          } finally { $bitmap.Dispose() }
+          'PNG_BASE64_BEGIN'
+          [Convert]::ToBase64String($bytes)
+          'PNG_BASE64_END'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: demostrike-filmcraft-${{ github.sha }}
+          path: ${{ runner.temp }}/demostrike-filmcraft-evidence/
           retention-days: 1
           if-no-files-found: warn
       - name: Exercise native saved matches, project menu, and return
