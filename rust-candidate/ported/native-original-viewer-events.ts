@@ -119,18 +119,18 @@ type BombTimeline = {
   observedCount: number;
 };
 
-// Source 2 site IDs are retained but not mapped to A/B without a verified
-// bombsite contract. The original timeline displays '?' rather than a guess.
+// Rust selects unique observed events from the ordered native stream.
+// Source 2 site IDs are not mapped to A/B without a verified bombsite contract;
+// the original timeline displays '?' rather than a guess.
 export function observedBombTimeline(meta: ViewerRoundMeta, checksum: string): BombTimeline {
   const result: BombTimeline = {
     bombPlanted: null, bombExploded: null, bombDefused: null,
     observedCount: meta.bombEvents.length,
   };
-  const plants = meta.bombEvents.filter((event) => event.kind === 'bomb_planted');
-  if (plants.length !== 1) return result;
-  const plant = plants[0];
-  if (plant.x === null || plant.y === null || plant.z === null
-    || ![plant.x, plant.y, plant.z].every(Number.isFinite)) return result;
+  const selection = meta.observedBombSelection;
+  if (selection === null || selection.plantIndex === null) return result;
+  const plant = meta.bombEvents[selection.plantIndex];
+  if (!plant || plant.x === null || plant.y === null || plant.z === null) return result;
   const base = {
     matchChecksum: checksum, roundNumber: meta.roundNumber, frame: Number.NaN,
     site: '?', planterSteamId: plant.actorSteamid ?? '',
@@ -139,19 +139,17 @@ export function observedBombTimeline(meta: ViewerRoundMeta, checksum: string): B
     x: plant.x, y: plant.y, z: plant.z,
   };
   result.bombPlanted = { ...base, id: `native-bomb-${plant.sourceIndex}`, tick: plant.tick };
-  const explosions = meta.bombEvents.filter((event) =>
-    event.kind === 'bomb_exploded' && event.tick >= plant.tick);
-  if (explosions.length === 1) {
-    const explosion = explosions[0];
+  const explosion = selection.explosionIndex === null
+    ? undefined : meta.bombEvents[selection.explosionIndex];
+  if (explosion) {
     result.bombExploded = {
       ...base, id: `native-bomb-${explosion.sourceIndex}`, tick: explosion.tick,
       x: explosion.x ?? plant.x, y: explosion.y ?? plant.y, z: explosion.z ?? plant.z,
     };
   }
-  const defusals = meta.bombEvents.filter((event) =>
-    event.kind === 'bomb_defused' && event.tick >= plant.tick);
-  if (defusals.length === 1) {
-    const defusal = defusals[0];
+  const defusal = selection.defusalIndex === null
+    ? undefined : meta.bombEvents[selection.defusalIndex];
+  if (defusal) {
     result.bombDefused = {
       ...base, id: `native-bomb-${defusal.sourceIndex}`, tick: defusal.tick,
       defuserSteamId: defusal.actorSteamid ?? '', defuserName: defusal.actorName ?? 'unknown player',
