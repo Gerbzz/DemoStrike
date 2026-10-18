@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Status } from 'csdm/common/types/status';
 import { Button } from 'csdm/ui/components/buttons/button';
 import { CenteredContent } from 'csdm/ui/components/content';
@@ -14,7 +14,9 @@ import { describe, invoke } from './match-data';
 
 // Keep the original action bar, table, status bar, and route. This replaces
 // only the messages that would otherwise claim an unported demo import works.
-export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) => void }) {
+export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
+  onOpenLibrary: (path: string) => void; autoOpenRecovered: boolean;
+}) {
   const [path, setPath] = useState('');
   const [pickerError, setPickerError] = useState('');
   const [queued, setQueued] = useState<ImportJob | null>(null);
@@ -25,14 +27,23 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
   const fetchMatches = useFetchMatches();
   const { hasActiveFilter } = useActiveMatchesFilters();
   const search = useFuzzySearchText();
+  const acceptJob = useCallback((job: ImportJob) => {
+    setQueued(job);
+    if (job.state === 'completed' && job.receipt) onOpenLibrary(job.receipt.path);
+  }, [onOpenLibrary]);
 
   useEffect(() => {
     let active = true;
     void invoke<ImportJob[]>('csdm_list_import_jobs').then((jobs) => {
-      if (active) setQueued(jobs.find((job) => job.state === 'queued' || job.state === 'running') ?? null);
+      if (!active) return;
+      const recovered = autoOpenRecovered ? jobs.find((job) =>
+        job.recovered && job.state === 'completed' && job.receipt) : null;
+      const pending = jobs.find((job) => job.state === 'queued' || job.state === 'running');
+      const selected = recovered ?? pending;
+      if (selected) acceptJob(selected);
     }).catch((failure) => { if (active) setPickerError(describe(failure)); });
     return () => { active = false; };
-  }, []);
+  }, [acceptJob, autoOpenRecovered]);
 
   useEffect(() => {
     if (!queued || queued.state === 'completed' || queued.state === 'failed' || queued.state === 'cancelled') return;
@@ -42,8 +53,7 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
         const jobs = await invoke<ImportJob[]>('csdm_list_import_jobs');
         const latest = jobs.find((job) => job.id === queued?.id);
         if (!active || !latest) return;
-        setQueued(latest);
-        if (latest.state === 'completed' && latest.receipt) onOpenLibrary(latest.receipt.path);
+        acceptJob(latest);
       } catch (failure) {
         if (active) setPickerError(describe(failure));
       }
@@ -51,7 +61,7 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
     void poll();
     const timer = window.setInterval(() => void poll(), 1200);
     return () => { active = false; window.clearInterval(timer); };
-  }, [queued?.id, queued?.state, onOpenLibrary]);
+  }, [queued?.id, queued?.state, acceptJob]);
 
   if (status === Status.Idle || status === Status.Loading || !table.isReady()) {
     return <CenteredContent><p className="text-subtitle">Loading matches.</p></CenteredContent>;
@@ -81,19 +91,21 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
           </p>
           {!hasActiveFilter && !search && (
             <div className="flex w-full flex-col gap-y-16 text-left">
-              <DemoImport onQueued={setQueued} />
+              <DemoImport onQueued={acceptJob} />
               {queued && <p role={queued.state === 'failed' ? 'alert' : 'status'} className="break-all text-gray-700">
                 {queued.state === 'failed' ? `Import failed: ${queued.error}` : queued.state === 'running'
                   ? queued.recovered ? 'Resuming demo analysis after restart. Large matches may take several minutes.'
                     : 'Analyzing demo in the import queue. Large matches may take several minutes.'
                   : queued.state === 'cancelled' ? 'Import cancelled. No match was saved.'
+                    : queued.state === 'completed' ? queued.receipt
+                      ? 'Import complete. Opening the saved library.' : 'Import complete, but its library receipt is unavailable.'
                     : queued.recovered ? 'Demo queued again after restart.' : 'Demo queued for import.'}
               </p>}
               {queued && (queued.state === 'queued' || queued.state === 'running') && <Button isDisabled={cancelling}
                 onClick={() => {
                   setCancelling(true);
                   setCancelError('');
-                  void cancelImport(queued.id).then(setQueued)
+                  void cancelImport(queued.id).then(acceptJob)
                     .catch((failure) => setCancelError(describe(failure)))
                     .finally(() => setCancelling(false));
                 }}>Cancel import</Button>}
@@ -125,3 +137,4 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
 
   return <Table table={table} />;
 }
+
