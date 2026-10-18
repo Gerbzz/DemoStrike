@@ -27,53 +27,67 @@ public static class EditorNativeWindow {
     public struct RECT { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT bounds);
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
 }
 '@
 
-function Save-WindowProbe([System.Diagnostics.Process]$process, [string]$name) {
-    Start-Sleep -Seconds 4
-    try {
-        $process.Refresh()
-        $handle = $process.MainWindowHandle
-        Write-Output "EDITOR_WINDOW_HANDLE $name $handle"
-        if ($handle -eq [IntPtr]::Zero) { return }
-        $bounds = [EditorNativeWindow+RECT]::new()
-        if (-not [EditorNativeWindow]::GetWindowRect($handle, [ref]$bounds)) { return }
-        $width = $bounds.Right - $bounds.Left
-        $height = $bounds.Bottom - $bounds.Top
-        $screenWidth = [EditorNativeWindow]::GetSystemMetrics(0)
-        $screenHeight = [EditorNativeWindow]::GetSystemMetrics(1)
-        Write-Output "EDITOR_WINDOW_BOUNDS $name x=$($bounds.Left) y=$($bounds.Top) size=$($width)x$height screen=$($screenWidth)x$screenHeight"
-        if ($width -lt 900 -or $height -lt 560 -or $width -gt 3000 -or $height -gt 2000) { return }
-        $bitmap = [System.Drawing.Bitmap]::new($width, $height)
-        try {
-            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-            try {
-                $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bitmap.Size)
-            } finally { $graphics.Dispose() }
-            $probe = Join-Path $EvidenceDir ($name + '-window-probe.png')
-            $bitmap.Save($probe, [System.Drawing.Imaging.ImageFormat]::Png)
-            $preview = Join-Path $EvidenceDir ($name + '-window-probe.jpg')
-            $parameters = [System.Drawing.Imaging.EncoderParameters]::new(1)
-            $parameters.Param[0] = [System.Drawing.Imaging.EncoderParameter]::new([System.Drawing.Imaging.Encoder]::Quality, [long]35)
-            try { $bitmap.Save($preview, $jpeg, $parameters) } finally { $parameters.Dispose() }
-            $bytes = [System.IO.File]::ReadAllBytes($preview)
-            $encoded = [Convert]::ToBase64String($bytes)
-            Write-Output "EDITOR_WINDOW_PREVIEW_BEGIN $name $($bytes.Length)"
-            for ($offset = 0; $offset -lt $encoded.Length; $offset += 4096) {
-                Write-Output $encoded.Substring($offset, [Math]::Min(4096, $encoded.Length - $offset))
-            }
-            Write-Output "EDITOR_WINDOW_PREVIEW_END $name"
-        } finally { $bitmap.Dispose() }
-    } catch {
-        Write-Output "EDITOR_WINDOW_PROBE_ERROR $name $($_.Exception.Message)"
+function Save-EditorWindow([System.Diagnostics.Process]$process, [string]$name) {
+    Start-Sleep -Seconds 3
+    $process.Refresh()
+    if ($process.HasExited) { throw "Native editor exited before window capture: $name" }
+    $handle = $process.MainWindowHandle
+    Write-Output "EDITOR_WINDOW_HANDLE $name $handle"
+    if ($handle -eq [IntPtr]::Zero) { throw "Native editor has no window handle: $name" }
+
+    $screenWidth = [EditorNativeWindow]::GetSystemMetrics(0)
+    $screenHeight = [EditorNativeWindow]::GetSystemMetrics(1)
+    $targetWidth = [Math]::Min(1000, $screenWidth - 16)
+    $targetHeight = [Math]::Min(700, $screenHeight - 64)
+    if ($targetWidth -lt 900 -or $targetHeight -lt 560) { throw "Hosted desktop is too small for editor capture" }
+    if (-not [EditorNativeWindow]::MoveWindow($handle, 8, 8, $targetWidth, $targetHeight, $true)) {
+        throw "Could not fit native editor window inside hosted desktop: $name"
     }
+    Start-Sleep -Seconds 2
+    $process.Refresh()
+    Write-Output "EDITOR_WINDOW_RESPONDING $name $($process.Responding)"
+    $bounds = [EditorNativeWindow+RECT]::new()
+    if (-not [EditorNativeWindow]::GetWindowRect($handle, [ref]$bounds)) {
+        throw "Could not read native editor bounds: $name"
+    }
+    $width = $bounds.Right - $bounds.Left
+    $height = $bounds.Bottom - $bounds.Top
+    Write-Output "EDITOR_WINDOW_BOUNDS $name x=$($bounds.Left) y=$($bounds.Top) size=$($width)x$height screen=$($screenWidth)x$screenHeight"
+    if ($width -lt 900 -or $height -lt 560 -or $bounds.Left -lt 0 -or $bounds.Top -lt 0 -or
+        $bounds.Right -gt $screenWidth -or $bounds.Bottom -gt ($screenHeight - 48)) {
+        throw "Native editor extends beyond the hosted desktop work area: $name"
+    }
+
+    $bitmap = [System.Drawing.Bitmap]::new($width, $height)
+    try {
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bitmap.Size)
+        } finally { $graphics.Dispose() }
+        $png = Join-Path $EvidenceDir ($name + '.png')
+        $bitmap.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
+        $jpg = Join-Path $EvidenceDir ($name + '.jpg')
+        $parameters = [System.Drawing.Imaging.EncoderParameters]::new(1)
+        $parameters.Param[0] = [System.Drawing.Imaging.EncoderParameter]::new([System.Drawing.Imaging.Encoder]::Quality, [long]45)
+        try { $bitmap.Save($jpg, $jpeg, $parameters) } finally { $parameters.Dispose() }
+        $bytes = [System.IO.File]::ReadAllBytes($jpg)
+        $encoded = [Convert]::ToBase64String($bytes)
+        Write-Output "EDITOR_PREVIEW_BEGIN $name $($bytes.Length)"
+        for ($offset = 0; $offset -lt $encoded.Length; $offset += 4096) {
+            Write-Output $encoded.Substring($offset, [Math]::Min(4096, $encoded.Length - $offset))
+        }
+        Write-Output "EDITOR_PREVIEW_END $name"
+        Write-Output "EDITOR_CAPTURE $name $($bitmap.Width)x$($bitmap.Height) SHA256=$((Get-FileHash -Algorithm SHA256 -LiteralPath $png).Hash.ToLowerInvariant())"
+    } finally { $bitmap.Dispose() }
 }
 
 foreach ($case in $cases) {
     $project = $case.Project
     if (-not (Test-Path -LiteralPath $project)) { throw "Editor project is missing: $project" }
-    $png = Join-Path $EvidenceDir ($case.Name + '.png')
     Write-Output "EDITOR_CAPTURE_LAUNCH $($case.Name)"
     $start = [System.Diagnostics.ProcessStartInfo]::new($app)
     $start.UseShellExecute = $false
@@ -81,20 +95,19 @@ foreach ($case in $cases) {
     $start.Environment['DEMOSTRIKE_EDITOR_CAPTURE_PROOF'] = '1'
     [void]$start.ArgumentList.Add('--project')
     [void]$start.ArgumentList.Add($project)
-    [void]$start.ArgumentList.Add('--capture')
-    [void]$start.ArgumentList.Add($png)
     $process = [System.Diagnostics.Process]::Start($start)
     if (-not $process) { throw "Native editor process did not start for $($case.Name)" }
     $stderrTask = $process.StandardError.ReadToEndAsync()
-    Save-WindowProbe $process $case.Name
     try {
-        if (-not $process.WaitForExit(90000)) {
-            $process.Kill($true)
-            [void]$process.WaitForExit(10000)
-            throw "Native editor capture exceeded 90 seconds for $($case.Name)"
-        }
-        $exitCode = $process.ExitCode
+        Save-EditorWindow $process $case.Name
     } finally {
+        if (-not $process.HasExited) {
+            [void]$process.CloseMainWindow()
+            if (-not $process.WaitForExit(3000)) {
+                $process.Kill($true)
+                [void]$process.WaitForExit(10000)
+            }
+        }
         if ($stderrTask.Wait(10000)) {
             Write-Output "EDITOR_NATIVE_STDERR $($case.Name)"
             Write-Output $stderrTask.Result
@@ -103,25 +116,4 @@ foreach ($case in $cases) {
         }
         $process.Dispose()
     }
-    if ($exitCode -ne 0 -or -not (Test-Path -LiteralPath $png)) {
-        throw "Actual native editor failed to open and capture $project (exit $exitCode)"
-    }
-    $bitmap = [System.Drawing.Bitmap]::FromFile($png)
-    try {
-        if ($bitmap.Width -lt 900 -or $bitmap.Height -lt 560) {
-            throw "Native editor screenshot dimensions are too small: $($bitmap.Width)x$($bitmap.Height)"
-        }
-        $jpg = Join-Path $EvidenceDir ($case.Name + '.jpg')
-        $parameters = New-Object System.Drawing.Imaging.EncoderParameters(1)
-        $parameters.Param[0] = [System.Drawing.Imaging.EncoderParameter]::new([System.Drawing.Imaging.Encoder]::Quality, [long]45)
-        try { $bitmap.Save($jpg, $jpeg, $parameters) } finally { $parameters.Dispose() }
-        $bytes = [System.IO.File]::ReadAllBytes($jpg)
-        $encoded = [Convert]::ToBase64String($bytes)
-        Write-Output "EDITOR_PREVIEW_BEGIN $($case.Name) $($bytes.Length)"
-        for ($offset = 0; $offset -lt $encoded.Length; $offset += 4096) {
-            Write-Output $encoded.Substring($offset, [Math]::Min(4096, $encoded.Length - $offset))
-        }
-        Write-Output "EDITOR_PREVIEW_END $($case.Name)"
-        Write-Output "EDITOR_CAPTURE $($case.Name) $($bitmap.Width)x$($bitmap.Height) SHA256=$((Get-FileHash -Algorithm SHA256 -LiteralPath $png).Hash.ToLowerInvariant())"
-    } finally { $bitmap.Dispose() }
 }
