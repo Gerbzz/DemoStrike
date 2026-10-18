@@ -262,6 +262,8 @@ pub struct ViewerUtilityEvent {
     pub detonate_y: Option<f64>,
     pub detonate_z: Option<f64>,
     pub projectile_entity_id: Option<i64>,
+    /// Native match for the original viewer projectileId. None is unmatched or ambiguous.
+    pub observed_trajectory_index: Option<i64>,
     pub thrower_steamid: String,
     pub thrower_name: String,
     pub thrower_side: String,
@@ -705,10 +707,62 @@ fn select_observed_bomb_events(events: &[ViewerBombEvent]) -> ObservedBombSelect
     selected
 }
 
+#[derive(Debug)]
+struct ProjectileSample {
+    tick: i64,
+    trajectory_index: i64,
+    entity_id: i64,
+    thrower_steamid: Option<String>,
+}
+
+/// Match the previous viewer adapter's nearest sample rule. A tied nearest
+/// tick across different trajectories stays unknown instead of inventing a
+/// projectile identity. Samples arrive in the same tick/trajectory SQL order
+/// as get_viewer_frames.
+fn select_projectile_trajectory(
+    event: &ViewerUtilityEvent,
+    samples: &[ProjectileSample],
+) -> Option<i64> {
+    let entity_id = event.projectile_entity_id?;
+    let detonate_tick = event.detonate_tick?;
+    let lower = event.throw_tick.saturating_sub(2);
+    let upper = detonate_tick.saturating_add(2);
+    let candidates = samples.iter().filter(|sample| {
+        sample.entity_id == entity_id
+            && sample.tick >= lower
+            && sample.tick <= upper
+            && (sample.thrower_steamid.is_none()
+                || sample.thrower_steamid.as_deref() == Some(event.thrower_steamid.as_str()))
+    });
+    let nearest = candidates.min_by_key(|sample| sample.tick.abs_diff(event.throw_tick))?;
+    let distance = nearest.tick.abs_diff(event.throw_tick);
+    if samples.iter().any(|sample| {
+        sample.entity_id == entity_id
+            && sample.tick >= lower
+            && sample.tick <= upper
+            && (sample.thrower_steamid.is_none()
+                || sample.thrower_steamid.as_deref() == Some(event.thrower_steamid.as_str()))
+            && sample.trajectory_index != nearest.trajectory_index
+            && sample.tick.abs_diff(event.throw_tick) == distance
+    }) {
+        return None;
+    }
+    Some(nearest.trajectory_index)
+}
+
 pub fn get_viewer_round(
     path: &str,
     match_id: i64,
     round_number: i64,
+) -> Result<ViewerRoundMeta, LibraryError> {
+    get_viewer_round_inner(path, match_id, round_number, true)
+}
+
+fn get_viewer_round_inner(
+    path: &str,
+    match_id: i64,
+    round_number: i64,
+    include_utility_links: bool,
 ) -> Result<ViewerRoundMeta, LibraryError> {
     let connection = open_library(path)?;
     let summary = read_matches(&connection)?
@@ -766,12 +820,35 @@ pub fn get_viewer_round(
                             detonate_y: row.get(5)?,
                             detonate_z: row.get(6)?,
                             projectile_entity_id: row.get(7)?,
+                            observed_trajectory_index: None,
                             thrower_steamid: row.get(8)?,
                             thrower_name: row.get(9)?,
                             thrower_side: row.get(10)?,
                         })
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
+            }
+            // get_viewer_frames uses this metadata only for bounds and coverage;
+            // avoid rescanning the entire round for every 512-tick chunk.
+            if include_utility_links && !utility_events.is_empty() && grenade_sample_count > 0 {
+                let mut query = connection.prepare(
+                    "SELECT tick,trajectory_index,entity_id,thrower_steamid
+                     FROM viewer_grenade_positions
+                     WHERE match_id=?1 AND round_number=?2 ORDER BY tick,trajectory_index",
+                )?;
+                let samples = query
+                    .query_map(params![match_id, round_number], |row| {
+                        Ok(ProjectileSample {
+                            tick: row.get(0)?,
+                            trajectory_index: row.get(1)?,
+                            entity_id: row.get(2)?,
+                            thrower_steamid: row.get(3)?,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                for event in &mut utility_events {
+                    event.observed_trajectory_index = select_projectile_trajectory(event, &samples);
+                }
             }
             if schema_version >= 11
                 && has_column(&connection, "matches", "viewer_bomb_version")?
@@ -839,7 +916,7 @@ pub fn get_viewer_frames(
     start_tick: i64,
     end_tick: i64,
 ) -> Result<ViewerFrameChunk, LibraryError> {
-    let meta = get_viewer_round(path, match_id, round_number)?;
+    let meta = get_viewer_round_inner(path, match_id, round_number, false)?;
     if !meta.positions_available {
         return Err(LibraryError::InvalidRequest(
             "this round has no verified native position stream".into(),
@@ -1380,6 +1457,73 @@ mod observed_duel_tests {
             vec![(700, 11), (700, 10)]
         );
     }
+    #[test]
+    fn sqlite_tied_tick_order_reaches_observed_duel_events() {
+        let directory = tempfile::tempdir().expect("temporary SQLite directory");
+        let path = directory.path().join("duels.sqlite");
+        let connection = Connection::open(&path).expect("SQLite fixture");
+        connection
+            .execute_batch(
+                r#"
+            PRAGMA user_version = 11;
+            CREATE TABLE matches (
+                id INTEGER PRIMARY KEY, file_name TEXT, map_name TEXT,
+                score_ct INTEGER, score_t INTEGER, imported_at TEXT, parser_capability TEXT
+            );
+            CREATE TABLE players (match_id INTEGER, steamid TEXT, name TEXT);
+            CREATE TABLE rounds (
+                match_id INTEGER, round_number INTEGER, winner TEXT,
+                start_tick INTEGER, end_tick INTEGER
+            );
+            CREATE TABLE utility_events (
+                id INTEGER, match_id INTEGER, round_number INTEGER,
+                utility_type TEXT, thrower_name TEXT, thrower_team TEXT,
+                throw_tick INTEGER
+            );
+            CREATE TABLE player_round_combat (
+                match_id INTEGER, round_number INTEGER, steamid TEXT, side TEXT,
+                enemy_kills INTEGER, deaths INTEGER, enemy_assists INTEGER,
+                enemy_health_damage INTEGER
+            );
+            CREATE TABLE raw_combat_deaths (
+                match_id INTEGER, source_index INTEGER, event_order INTEGER,
+                tick INTEGER, round_number INTEGER, weapon TEXT,
+                attacker_steamid TEXT, attacker_side TEXT,
+                victim_steamid TEXT, victim_side TEXT, assister_steamid TEXT
+            );
+            INSERT INTO matches VALUES
+                (1, 'tie.dem', 'de_mirage', 1, 0, '2026-01-01', 'native-combat-full-v2');
+            INSERT INTO players VALUES (1, 'a', 'Alice'), (1, 'b', 'Bob');
+            INSERT INTO rounds VALUES (1, 1, 'CT', 100, 200);
+            -- Insert source index 20 first, but event order 1 belongs to 21.
+            INSERT INTO raw_combat_deaths VALUES
+                (1, 20, 2, 150, 1, 'ak47', 'a', 'CT', 'b', 'T', NULL),
+                (1, 21, 1, 150, 1, 'ak47', 'a', 'CT', 'b', 'T', NULL);
+        "#,
+            )
+            .expect("schema and tied deaths");
+        drop(connection);
+        let detail =
+            get_match_detail(path.to_str().expect("UTF-8 path"), 1).expect("ordered SQLite match");
+        let deaths = detail.rounds[0].deaths.as_ref().expect("verified deaths");
+        assert_eq!(
+            deaths
+                .iter()
+                .map(|event| event.source_index)
+                .collect::<Vec<_>>(),
+            vec![21, 20]
+        );
+        let duel = &detail.observed_duels.as_ref().expect("observed duels")[0];
+        assert_eq!(duel.attacker_steamid, "a");
+        assert_eq!(duel.victim_steamid, "b");
+        assert_eq!(
+            duel.events
+                .iter()
+                .map(|event| event.death.source_index)
+                .collect::<Vec<_>>(),
+            vec![21, 20]
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1456,6 +1600,42 @@ mod observed_bomb_tests {
                 plant_index: Some(0),
                 explosion_index: None,
                 defusal_index: Some(3),
+            }
+        );
+    }
+
+    #[test]
+    fn equal_plant_tick_is_eligible_and_partial_coordinates_are_not() {
+        let events = vec![
+            event(1, "bomb_planted", 100, Some([1.0, 2.0, 3.0])),
+            event(2, "bomb_exploded", 100, None),
+            event(3, "bomb_defused", 100, None),
+        ];
+        assert_eq!(
+            select_observed_bomb_events(&events),
+            ObservedBombSelection {
+                plant_index: Some(0),
+                explosion_index: Some(1),
+                defusal_index: Some(2),
+            }
+        );
+        let mut partial = event(1, "bomb_planted", 100, Some([1.0, 2.0, 3.0]));
+        partial.y = None;
+        assert_eq!(
+            select_observed_bomb_events(&[partial, event(2, "bomb_exploded", 100, None)]),
+            ObservedBombSelection::default()
+        );
+        let mut partial_outcome = event(2, "bomb_exploded", 100, None);
+        partial_outcome.x = Some(9.0);
+        assert_eq!(
+            select_observed_bomb_events(&[
+                event(1, "bomb_planted", 100, Some([1.0, 2.0, 3.0])),
+                partial_outcome
+            ]),
+            ObservedBombSelection {
+                plant_index: Some(0),
+                explosion_index: Some(1),
+                defusal_index: None,
             }
         );
     }
@@ -1555,3 +1735,163 @@ mod observed_bomb_tests {
         assert!(wire["observedBombSelection"].is_null());
     }
 }
+
+#[cfg(test)]
+mod observed_projectile_tests {
+    use super::*;
+
+    fn event(entity: Option<i64>, detonate: Option<i64>) -> ViewerUtilityEvent {
+        ViewerUtilityEvent {
+            id: 1,
+            utility_type: "smoke".into(),
+            throw_tick: 100,
+            detonate_tick: detonate,
+            detonate_x: Some(1.0),
+            detonate_y: Some(2.0),
+            detonate_z: Some(3.0),
+            projectile_entity_id: entity,
+            observed_trajectory_index: None,
+            thrower_steamid: "a".into(),
+            thrower_name: "Alice".into(),
+            thrower_side: "CT".into(),
+        }
+    }
+
+    fn sample(tick: i64, trajectory: i64, entity: i64, thrower: Option<&str>) -> ProjectileSample {
+        ProjectileSample {
+            tick,
+            trajectory_index: trajectory,
+            entity_id: entity,
+            thrower_steamid: thrower.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn nearest_observed_sample_preserves_unknown_and_tie_rules() {
+        let observed = event(Some(7), Some(130));
+        assert_eq!(
+            select_projectile_trajectory(&event(None, Some(130)), &[]),
+            None
+        );
+        assert_eq!(
+            select_projectile_trajectory(&event(Some(7), None), &[]),
+            None
+        );
+        assert_eq!(select_projectile_trajectory(&observed, &[]), None);
+        assert_eq!(
+            select_projectile_trajectory(
+                &observed,
+                &[sample(99, 11, 7, Some("a")), sample(101, 12, 7, Some("a")),],
+            ),
+            None,
+            "equidistant different trajectories are ambiguous"
+        );
+        assert_eq!(
+            select_projectile_trajectory(
+                &observed,
+                &[
+                    sample(99, 11, 7, Some("a")),
+                    sample(101, 11, 7, Some("a")),
+                    sample(102, 12, 7, Some("a")),
+                ],
+            ),
+            Some(11),
+            "same-trajectory nearest ties stay linked"
+        );
+        assert_eq!(
+            select_projectile_trajectory(
+                &observed,
+                &[
+                    sample(100, 1, 8, Some("a")),
+                    sample(100, 2, 7, Some("b")),
+                    sample(101, 3, 7, None),
+                    sample(134, 4, 7, Some("a")),
+                ],
+            ),
+            Some(3),
+            "entity, thrower, and detonation windows constrain the link"
+        );
+    }
+
+    #[test]
+    fn sqlite_round_returns_links_without_changing_bounded_frame_rows() {
+        let directory = tempfile::tempdir().expect("temporary SQLite directory");
+        let path = directory.path().join("projectiles.sqlite");
+        let connection = Connection::open(&path).expect("SQLite fixture");
+        connection
+            .execute_batch(
+                r#"
+            PRAGMA user_version = 11;
+            CREATE TABLE matches (
+                id INTEGER PRIMARY KEY, file_name TEXT, map_name TEXT,
+                score_ct INTEGER, score_t INTEGER, imported_at TEXT,
+                parser_capability TEXT, viewer_position_version INTEGER
+            );
+            CREATE TABLE players (match_id INTEGER, steamid TEXT, name TEXT);
+            CREATE TABLE rounds (
+                match_id INTEGER, round_number INTEGER, winner TEXT,
+                start_tick INTEGER, end_tick INTEGER
+            );
+            CREATE TABLE utility_events (
+                id INTEGER, match_id INTEGER, round_number INTEGER,
+                utility_type TEXT, thrower_name TEXT, thrower_team TEXT,
+                throw_tick INTEGER, detonate_tick INTEGER,
+                detonate_x REAL, detonate_y REAL, detonate_z REAL,
+                projectile_entity_id INTEGER, thrower_steamid TEXT
+            );
+            CREATE TABLE viewer_player_positions (
+                match_id INTEGER, round_number INTEGER, tick INTEGER,
+                steamid TEXT, name TEXT, side TEXT, x REAL, y REAL, z REAL,
+                is_alive INTEGER, health INTEGER, yaw REAL
+            );
+            CREATE TABLE viewer_grenade_positions (
+                match_id INTEGER, round_number INTEGER, tick INTEGER,
+                trajectory_index INTEGER, entity_id INTEGER, grenade_type TEXT,
+                thrower_steamid TEXT, x REAL, y REAL, z REAL
+            );
+            INSERT INTO matches VALUES
+                (1, 'links.dem', 'de_mirage', 1, 0, '2026-01-01',
+                 'native-combat-full-v2', 1);
+            INSERT INTO rounds VALUES (1, 1, 'CT', 90, 200);
+            INSERT INTO utility_events VALUES
+                (1, 1, 1, 'smoke', 'Alice', 'CT', 100, 130, 1, 2, 3, 7, 'a'),
+                (2, 1, 1, 'flash', 'Alice', 'CT', 100, 130, 1, 2, 3, 8, 'a'),
+                (3, 1, 1, 'he', 'Alice', 'CT', 100, 130, 1, 2, 3, NULL, 'a');
+            INSERT INTO viewer_player_positions VALUES
+                (1, 1, 100, 'a', 'Alice', 'CT', 1, 2, 3, 1, 100, 0);
+            INSERT INTO viewer_grenade_positions VALUES
+                (1, 1, 101, 41, 7, 'SmokeProjectile', 'a', 1, 2, 3),
+                (1, 1, 102, 42, 7, 'SmokeProjectile', 'a', 1, 2, 3),
+                (1, 1, 99, 51, 8, 'FlashProjectile', 'a', 1, 2, 3),
+                (1, 1, 101, 52, 8, 'FlashProjectile', 'a', 1, 2, 3);
+        "#,
+            )
+            .expect("schema and projectile rows");
+        drop(connection);
+
+        let path = path.to_str().expect("UTF-8 path");
+        let meta = get_viewer_round(path, 1, 1).expect("recorded round");
+        assert!(meta.positions_available);
+        assert_eq!(
+            meta.utility_events
+                .iter()
+                .map(|event| event.observed_trajectory_index)
+                .collect::<Vec<_>>(),
+            vec![Some(41), None, None]
+        );
+        let wire = serde_json::to_value(&meta).expect("IPC serialization");
+        assert_eq!(wire["utilityEvents"][0]["observedTrajectoryIndex"], 41);
+        assert!(wire["utilityEvents"][1]["observedTrajectoryIndex"].is_null());
+        let chunk = get_viewer_frames(path, 1, 1, 90, 200).expect("bounded frames");
+        assert_eq!(chunk.grenades.len(), 4);
+        assert_eq!(
+            chunk
+                .grenades
+                .iter()
+                .map(|frame| frame.trajectory_index)
+                .collect::<Vec<_>>(),
+            vec![51, 41, 52, 42]
+        );
+    }
+}
+
