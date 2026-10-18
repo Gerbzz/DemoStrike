@@ -220,9 +220,29 @@ function Drag-EditorClient([IntPtr]$handle, [int]$fromX, [int]$fromY, [int]$toX,
     if (-not [EditorNativeWindow]::ClientToScreen($handle, [ref]$origin)) {
         throw "Could not locate editor client for $action"
     }
-    [void][EditorNativeWindow]::SetForegroundWindow($handle)
+    if (-not [EditorNativeWindow]::SetForegroundWindow($handle)) {
+        throw "Could not focus editor before $action"
+    }
+    $focused = $false
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        if ([EditorNativeWindow]::GetForegroundWindow() -eq $handle) {
+            $focused = $true
+            break
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not $focused) { throw "Editor did not receive focus before $action" }
     [void][EditorNativeWindow]::SetCursorPos($origin.X + $fromX, $origin.Y + $fromY)
     Start-Sleep -Milliseconds 250
+    if ($action -eq 'project-bin-to-V1') {
+        # Give the freshly imported media tile a focused selection before
+        # starting its native drag; otherwise the first mouse-down can be lost.
+        [EditorNativeWindow]::mouse_event([uint32]2, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 100
+        [EditorNativeWindow]::mouse_event([uint32]4, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 650
+        Write-Output 'EDITOR_GUI_SOURCE_TILE_SELECTED'
+    }
     [EditorNativeWindow]::mouse_event([uint32]2, 0, 0, 0, [UIntPtr]::Zero)
     for ($step = 1; $step -le 20; $step++) {
         $x = $origin.X + [int][Math]::Round($fromX + ($toX - $fromX) * $step / 20.0)
