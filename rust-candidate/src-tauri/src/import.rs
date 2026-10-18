@@ -22,9 +22,9 @@ fn import_with_parser(
     demo: &Path,
     library: &Path,
     parser: &dyn DemoFactsParser,
+    control: &ImportControl,
 ) -> Result<ImportReceipt, String> {
-    let control = ImportControl::new();
-    let imported = demostrike::demo_import::import_demo(demo, library, parser, &control, |_| {})?;
+    let imported = demostrike::demo_import::import_demo(demo, library, parser, control, |_| {})?;
     Ok(ImportReceipt {
         path: library.to_string_lossy().into_owned(),
         match_id: imported.match_id,
@@ -44,8 +44,26 @@ impl DemoFactsParser for SyntheticFactsParser {
     fn parse(
         &self,
         _path: &Path,
-        _control: &ImportControl,
+        control: &ImportControl,
     ) -> Result<demostrike::parser::raw::RawDemo, String> {
+        // Hosted GUI smoke can hold a synthetic parser in its cancellable
+        // phase. This seam is absent from feature-free native builds.
+        #[cfg(feature = "synthetic-import-smoke")]
+        if let Some(wait_ms) = std::env::var("DEMOSTRIKE_SYNTHETIC_PARSE_WAIT_MS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value <= 15_000)
+        {
+            let start = std::time::Instant::now();
+            while start.elapsed() < std::time::Duration::from_millis(wait_ms) {
+                if control.is_cancelled() {
+                    return Err("demo import cancelled".into());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+        #[cfg(not(feature = "synthetic-import-smoke"))]
+        let _ = control;
         let bytes = std::fs::read(&self.facts).map_err(|error| error.to_string())?;
         serde_json::from_slice(&bytes)
             .map_err(|error| format!("Invalid synthetic smoke facts: {error}"))
@@ -74,6 +92,14 @@ pub async fn csdm_import_demo(
 }
 
 pub(crate) fn import_native(demo: &Path, library: &Path) -> Result<ImportReceipt, String> {
+    import_native_with_control(demo, library, &ImportControl::new())
+}
+
+pub(crate) fn import_native_with_control(
+    demo: &Path,
+    library: &Path,
+    control: &ImportControl,
+) -> Result<ImportReceipt, String> {
     #[cfg(feature = "synthetic-import-smoke")]
     if let Some(facts) = std::env::var_os("DEMOSTRIKE_SYNTHETIC_RAW_FACTS") {
         return import_with_parser(
@@ -82,9 +108,10 @@ pub(crate) fn import_native(demo: &Path, library: &Path) -> Result<ImportReceipt
             &SyntheticFactsParser {
                 facts: facts.into(),
             },
+            control,
         );
     }
-    import_with_parser(demo, library, &NativeGrenadeParser)
+    import_with_parser(demo, library, &NativeGrenadeParser, control)
 }
 
 #[tauri::command]
@@ -123,7 +150,8 @@ mod tests {
             facts: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../tests/fixtures/combat-raw.json"),
         };
-        let imported = import_with_parser(&demo, &database, &parser).unwrap();
+        let imported =
+            import_with_parser(&demo, &database, &parser, &ImportControl::new()).unwrap();
         assert_eq!(imported.player_count, 3);
         assert_eq!(imported.round_count, 2);
         let detail = get_match_detail(&imported.path, imported.match_id).unwrap();
@@ -138,7 +166,8 @@ mod tests {
         assert_eq!(ada.combat.as_ref().unwrap().deaths, 1);
         assert_eq!(detail.rounds[0].combat.as_ref().unwrap().ct_players, 2);
         assert_eq!(std::fs::read(&demo).unwrap(), source_before);
-        let duplicate = import_with_parser(&demo, &database, &parser).unwrap_err();
+        let duplicate =
+            import_with_parser(&demo, &database, &parser, &ImportControl::new()).unwrap_err();
         assert!(duplicate.contains("already imported"));
         assert_eq!(
             get_match_detail(&imported.path, imported.match_id)
