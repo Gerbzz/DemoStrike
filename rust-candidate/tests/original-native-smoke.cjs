@@ -27,6 +27,39 @@ async function emitAppPreview(page, label) {
   console.log(`APP_PREVIEW_END ${label} ${crypto.createHash('sha256').update(jpeg).digest('hex')}`);
 }
 
+// Force a rare, already-tested Rust queue result at the renderer IPC edge.
+// The library behind the receipt remains the real read-only SQLite fixture.
+async function installQueueReply(page, initialJob, cancelResult = null) {
+  await page.evaluate(({ initialJob, cancelResult }) => {
+    const native = window.__TAURI_INTERNALS__;
+    const original = native.invoke;
+    let current = initialJob;
+    window.__ciQueueListCalls = 0;
+    const replacement = function (command, args) {
+      if (command === 'csdm_list_import_jobs') {
+        window.__ciQueueListCalls += 1;
+        return Promise.resolve([current]);
+      }
+      if (command === 'csdm_cancel_import' && cancelResult && args?.jobId === current.id) {
+        current = cancelResult;
+        return Promise.resolve(current);
+      }
+      return original.call(native, command, args);
+    };
+    native.invoke = replacement;
+    if (native.invoke !== replacement) throw new Error('Could not install hosted queue reply');
+    window.__restoreQueueInvoke = () => { native.invoke = original; };
+  }, { initialJob, cancelResult });
+}
+
+async function restoreQueueReply(page) {
+  await page.evaluate(() => {
+    window.__restoreQueueInvoke?.();
+    delete window.__restoreQueueInvoke;
+    delete window.__ciQueueListCalls;
+  });
+}
+
 async function main() {
   assert.equal(process.platform, 'win32');
   assert.ok(fs.existsSync(appPath), `Native app missing: ${appPath}`);
@@ -84,6 +117,29 @@ async function main() {
     const screenshot = path.join(outputDir, 'original-matches-empty.png');
     await page.screenshot({ path: screenshot, animations: 'disabled' });
     assert.ok(fs.statSync(screenshot).size > 10000, 'Native screenshot is unexpectedly small');
+    // The backend can reconcile a committed match before this route mounts.
+    // With no stored library selection, that completed receipt must open it.
+    const startupReceipt = { path: fixturePath, matchId: 101, mapName: 'de_mirage',
+      playerCount: 2, roundCount: 3 };
+    await installQueueReply(page, { id: 900001, demoPath: 'recovered-before-render.dem',
+      state: 'completed', recovered: true, receipt: startupReceipt, error: null,
+      createdAt: '2026-10-18T00:00:00Z' });
+    await page.evaluate(() => { localStorage.removeItem('csdm-port-selected-library'); });
+    await page.locator('a[href="#/demos"]').click();
+    await page.getByRole('heading', { name: 'Demo files' }).waitFor({ timeout: 20000 });
+    await page.locator('a[href="#/matches"]').click();
+    await page.getByText('2 recorded matches').waitFor({ timeout: 20000 });
+    assert.equal(await page.evaluate(() => localStorage.getItem('csdm-port-selected-library')), fixturePath);
+    const recoveredAtStartupShot = path.join(outputDir, 'reconciled-before-render.png');
+    await page.screenshot({ path: recoveredAtStartupShot, animations: 'disabled' });
+    const scansBeforeChange = await page.evaluate(() => window.__ciQueueListCalls);
+    await page.getByRole('button', { name: 'Change library' }).click();
+    await page.getByText('Your local library is empty').waitFor({ timeout: 20000 });
+    await page.waitForFunction((before) => window.__ciQueueListCalls > before,
+      scansBeforeChange, { timeout: 20000 });
+    assert.equal(await page.getByText('2 recorded matches').count(), 0,
+      'Explicit Change library was undone by an old recovered receipt');
+    await restoreQueueReply(page);
     await page.getByRole('textbox', { name: 'Import a CS2 demo' }).fill(cancelDemoPath);
     await page.getByRole('button', { name: 'Import demo' }).click();
     await page.getByText('Analyzing demo in the import queue.', { exact: false }).waitFor({ timeout: 20000 });
@@ -108,7 +164,30 @@ async function main() {
     assert.equal(await importedRow.count(), 1, 'Imported synthetic demo missing from Matches');
     const importedScreenshot = path.join(outputDir, 'imported-combat-matches.png');
     await page.screenshot({ path: importedScreenshot, animations: 'disabled' });
-    await importedRow.dblclick();
+    const completedImport = await page.evaluate(async (demoPath) => {
+      const jobs = await window.__TAURI_INTERNALS__.invoke('csdm_list_import_jobs');
+      return jobs.find((job) => job.demoPath === demoPath && job.state === 'completed');
+    }, importDemoPath);
+    assert.ok(completedImport?.receipt, 'Native import has no saved receipt for UI reconciliation test');
+    await page.getByRole('button', { name: 'Change library' }).click();
+    await page.getByText('Your local library is empty').waitFor({ timeout: 20000 });
+    const pendingRecovery = { ...completedImport, id: 900002, state: 'running', recovered: true, receipt: null };
+    const completedRecovery = { ...pendingRecovery, state: 'completed', receipt: completedImport.receipt };
+    await installQueueReply(page, pendingRecovery, completedRecovery);
+    await page.locator('a[href="#/demos"]').click();
+    await page.getByRole('heading', { name: 'Demo files' }).waitFor({ timeout: 20000 });
+    await page.locator('a[href="#/matches"]').click();
+    await page.getByRole('button', { name: 'Cancel import' }).click();
+    await page.getByText('1 recorded match').waitFor({ timeout: 20000 });
+    assert.equal(await page.evaluate(() => localStorage.getItem('csdm-port-selected-library')),
+      completedImport.receipt.path);
+    const recoveredFromCancelShot = path.join(outputDir, 'reconciled-cancel-receipt.png');
+    await page.screenshot({ path: recoveredFromCancelShot, animations: 'disabled' });
+    await emitAppPreview(page, 'reconciled-cancel-receipt');
+    await restoreQueueReply(page);
+    const importedRowAgain = page.getByRole('row').filter({ hasText: 'synthetic-combat.dem' });
+    await importedRowAgain.waitFor({ timeout: 20000 });
+    await importedRowAgain.dblclick();
     await page.getByRole('heading', { name: 'Recorded players' }).waitFor({ timeout: 20000 });
     await page.getByText('Synthetic CI facts bypassed the CS2 decoder', { exact: false }).waitFor({ timeout: 20000 });
     const importedOverviewScreenshot = path.join(outputDir, 'imported-combat-overview.png');
@@ -207,6 +286,9 @@ async function main() {
       commit: process.env.GITHUB_SHA || null,
       executableSha256: sha256(appPath),
       screenshotSha256: sha256(screenshot),
+      recoveredAtStartupScreenshotSha256: sha256(recoveredAtStartupShot),
+      recoveredFromCancelScreenshotSha256: sha256(recoveredFromCancelShot),
+      recoveredReceiptUiTest: 'synthetic queue IPC result with a real saved SQLite library',
       cancelledImportScreenshotSha256: sha256(cancelledScreenshot),
       cancelledImportDemoSha256: cancelDemoSha256,
       cancelledImportJobId: cancelledJob.id,
@@ -257,3 +339,4 @@ async function main() {
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; });
+
