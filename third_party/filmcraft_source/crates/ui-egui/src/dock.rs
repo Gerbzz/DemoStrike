@@ -294,10 +294,10 @@ pub fn workspace(name: &str) -> DockNode {
             ),
             hsplit(Ratio(0.26), tabs(&[Project, MediaBrowser, Libraries, Info, Effects, Markers, History], 0), bottom_editing()),
         ),
-        // Editing (default), Learning, Review — Premiere 26 factory layout:
-        // top: Source group | Program | Properties; bottom: Project group | Tools | Timeline | Meters.
+        // Editing (default), Learning, Review: preserve room for all video tracks
+        // on compact editor windows while keeping Source, Program, and Properties usable.
         _ => vsplit(
-            Ratio(0.57),
+            Ratio(0.43),
             hsplit(
                 FixedB(450.0),
                 hsplit(Ratio(0.5), tabs(&[Source, EffectControls, AudioClipMixer, Metadata], 0), tabs(&[Program], 0)),
