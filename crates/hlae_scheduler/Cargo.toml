@@ -1,0 +1,8 @@
+[package]
+name = "demostrike_hlae_scheduler"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Pure Rust port of the pinned advancedfx CommandSystem scheduling core"
+
+[dependencies]

@@ -1,0 +1,3 @@
+# Copy this crate into the DemoStrike repository before applying this manifest.
+# In the worker crate's Cargo.toml [dependencies] section:
+demostrike_hlae_scheduler = { path = "../demostrike_hlae_scheduler" }

@@ -18,9 +18,17 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
+
+fn trace_editor_once(seen: &AtomicBool, step: &str) {
+    if std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some()
+        && !seen.swap(true, Ordering::Relaxed)
+    {
+        eprintln!("EDITOR_FRAME {step}");
+    }
+}
 
 // Public FilmCraft app-host modules adapted from the pinned source commit.
 // See ATTRIBUTION.md and third_party/filmcraft for license and provenance.
@@ -214,6 +222,8 @@ impl DemoStrikeApp {
     }
 
     fn capture_after_frame(&mut self, ctx: &egui::Context) {
+        static ENTER: AtomicBool = AtomicBool::new(false);
+        trace_editor_once(&ENTER, "capture_after_frame_enter");
         let Some(capture) = self.capture.as_ref() else { return; };
         if capture.started.elapsed() > Duration::from_secs(15) {
             self.finish_capture(ctx, Err("Timed out waiting for a native screenshot".into()));
@@ -330,25 +340,51 @@ impl DemoStrikeApp {
     }
 
     pub fn with_saved_project(cc: &eframe::CreationContext<'_>, path: &Path) -> Result<Self, String> {
+        let trace = std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some();
+        if trace {
+            eprintln!("EDITOR_BOOT before_native_context");
+        }
         let mut app = Self::with_native_context(cc)?;
+        if trace {
+            eprintln!("EDITOR_BOOT before_open_saved_project");
+        }
         app.open_saved_project(path)?;
+        if trace {
+            eprintln!("EDITOR_BOOT after_open_saved_project");
+        }
         Ok(app)
     }
 
     fn open_saved_project(&mut self, path: &Path) -> Result<(), String> {
         if self.embedded_editor.is_some() { return Err("return from the current edit before opening another project".into()); }
         if self.pilot_messages.is_some() { return Err("finish or cancel the capture operation before opening the editor".into()); }
+        if std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some() {
+            eprintln!("EDITOR_BOOT before_load_editor_session");
+        }
         let (session, legacy) = load_editor_session(path)?;
+        if std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some() {
+            eprintln!("EDITOR_BOOT after_load_editor_session");
+        }
         self.install_editor(session, legacy, true)
     }
 
     fn install_editor(&mut self, mut session: Session, legacy: bool,
         recovery: bool) -> Result<(), String> {
+        let trace = std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some();
+        if trace {
+            eprintln!("EDITOR_BOOT before_autosave");
+        }
         if recovery { if let Some(root) = std::env::var_os("LOCALAPPDATA") {
             session.start_autosave(AutosaveConfig::new(PathBuf::from(root).join("DemoStrike/FilmCraftEditor")))
                 .map_err(|error| format!("could not start editor recovery: {error}"))?;
         }}
+        if trace {
+            eprintln!("EDITOR_BOOT before_filmcraft_new");
+        }
         let mut editor = FilmcraftApp::new(session);
+        if trace {
+            eprintln!("EDITOR_BOOT after_filmcraft_new");
+        }
         editor.host_brand = filmcraft_ui_egui::brand::HostBrand {
             product_name: "DemoStrike", wordmark: "DEMOSTRIKE",
         };
@@ -356,8 +392,17 @@ impl DemoStrikeApp {
         if legacy {
             editor.ui.status = "Capture project converted in memory. Save As a new .fcproj; the original .cstrike remains unchanged.".into();
         }
+        if trace {
+            eprintln!("EDITOR_BOOT before_set_wgpu");
+        }
         if let Some(state) = self.editor_render_state.clone() { editor.set_wgpu(state); }
+        if trace {
+            eprintln!("EDITOR_BOOT before_audio_init");
+        }
         editor.audio = Some(Box::new(filmcraft_audio::CpalOut::new()));
+        if trace {
+            eprintln!("EDITOR_BOOT after_audio_init");
+        }
         editor.hooks.pick_files = Some(Box::new(|exts| rfd::FileDialog::new()
             .add_filter("Media", exts).pick_files().unwrap_or_default()
             .into_iter().map(|p| p.to_string_lossy().into_owned()).collect()));
@@ -414,6 +459,10 @@ impl DemoStrikeApp {
     }
 
     fn show_embedded_editor(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        static ENTER: AtomicBool = AtomicBool::new(false);
+        static FILMCRAFT_ENTER: AtomicBool = AtomicBool::new(false);
+        static FILMCRAFT_DONE: AtomicBool = AtomicBool::new(false);
+        trace_editor_once(&ENTER, "show_embedded_editor_enter");
         let ctx = ui.ctx().clone();
         let mut return_requested = false;
         let mut discard_editor_changes = false;
@@ -430,7 +479,9 @@ impl DemoStrikeApp {
                     if let Some(error) = &self.error { ui.colored_label(egui::Color32::RED, error); }
                 });
             });
+            trace_editor_once(&FILMCRAFT_ENTER, "filmcraft_ui_enter");
             eframe::App::ui(editor, ui, frame);
+            trace_editor_once(&FILMCRAFT_DONE, "filmcraft_ui_done");
             if self.confirm_discard_editor && editor_return_state(editor, false) == EditorReturnGate::Busy {
                 self.confirm_discard_editor = false;
                 self.error = Some("Finish or cancel the active editor export before returning to analysis".into());
@@ -1086,7 +1137,8 @@ impl DemoStrikeApp {
                     e.throw_pos.x, e.throw_pos.y, e.throw_pos.z, detail.trajectory.len(), detail.nearby_players.len()));
                 if e.parser_capability == ParserCapabilities::GrenadeAnalysisOnlyV1 {
                     ui.small("Combat, flash effects, kills, assists, and economy unavailable. POV slot has not been capture-verified.");
-                } else if e.parser_capability == ParserCapabilities::NativeCombatFlashV1 {
+                } else if matches!(e.parser_capability,
+                    ParserCapabilities::NativeCombatFlashV1 | ParserCapabilities::NativeCombatFullV2) {
                     ui.small("Native grenade, combat, and flash events. Economy unavailable; POV slot has not been capture-verified.");
                     if e.effect_attribution_status != "complete" {
                         ui.colored_label(egui::Color32::YELLOW, format!("Effect attribution: {}. Raw facts are preserved; unavailable totals are not zero.", e.effect_attribution_status));
@@ -1218,22 +1270,43 @@ impl DemoStrikeApp {
 
 impl eframe::App for DemoStrikeApp {
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        static ENTER: AtomicBool = AtomicBool::new(false);
+        static DONE: AtomicBool = AtomicBool::new(false);
+        trace_editor_once(&ENTER, "raw_input_hook_enter");
         if let Some(editor) = self.embedded_editor.as_mut() {
             eframe::App::raw_input_hook(editor, ctx, input);
         }
+        trace_editor_once(&DONE, "raw_input_hook_done");
     }
 
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        static ENTER: AtomicBool = AtomicBool::new(false);
+        static DONE: AtomicBool = AtomicBool::new(false);
+        trace_editor_once(&ENTER, "logic_enter");
         if let Some(editor) = self.embedded_editor.as_mut() {
             eframe::App::logic(editor, ctx, frame);
         }
+        trace_editor_once(&DONE, "logic_done");
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        static ENTER: AtomicBool = AtomicBool::new(false);
+        static CAPTURE_DONE: AtomicBool = AtomicBool::new(false);
+        static EDITOR_DONE: AtomicBool = AtomicBool::new(false);
+        static FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
+        trace_editor_once(&ENTER, "ui_enter");
+        if std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some() {
+            let count = FRAME_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+            if count <= 4 || count % 60 == 0 {
+                eprintln!("EDITOR_FRAME ui_count={count}");
+            }
+        }
         let ctx = ui.ctx().clone();
         self.capture_after_frame(&ctx);
+        trace_editor_once(&CAPTURE_DONE, "capture_after_frame_done");
         if self.embedded_editor.is_some() {
             self.show_embedded_editor(ui, frame);
+            trace_editor_once(&EDITOR_DONE, "show_embedded_editor_done");
             return;
         }
         self.poll_demo_import();
@@ -1626,7 +1699,8 @@ impl eframe::App for DemoStrikeApp {
             }
             if self.capabilities == Some(ParserCapabilities::GrenadeAnalysisOnlyV1) {
                 ui.colored_label(egui::Color32::YELLOW, "Grenade analysis only: combat damage, blinds, kills, assists, and economy are unavailable. These metrics are not zero-valued results.");
-            } else if self.capabilities == Some(ParserCapabilities::NativeCombatFlashV1) {
+            } else if matches!(self.capabilities,
+                Some(ParserCapabilities::NativeCombatFlashV1 | ParserCapabilities::NativeCombatFullV2)) {
                 ui.colored_label(egui::Color32::YELLOW, "Native grenade, combat, and flash facts: economy and verified POV capture remain unavailable.");
             }
             let ambiguous = analyzed.effect_facts.iter().filter(|fact| fact.resolution == "ambiguous").count();

@@ -1,0 +1,7 @@
+/target/
+/reference_trace_cpp
+/reference_trace_cpp.txt
+/reference_trace_rust.txt
+/reference/pinned/
+/reference/generated_original.cpp
+/reference/generated_manifest.json
