@@ -103,9 +103,6 @@ jobs:
             if ($colors.Count -lt 8) { throw "Native FilmCraft image lacks rendered detail: $($colors.Count) colors" }
             "Native FilmCraft $($bitmap.Width)x$($bitmap.Height), $($colors.Count) sampled colors, commit $env:GITHUB_SHA"
           } finally { $bitmap.Dispose() }
-          'PNG_BASE64_BEGIN'
-          [Convert]::ToBase64String($bytes)
-          'PNG_BASE64_END'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
