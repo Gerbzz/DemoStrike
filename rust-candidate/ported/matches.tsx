@@ -132,7 +132,7 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
       </div>}
       {(jobs.length > 0 || queueError) && <section className="border-b border-gray-300 px-16 py-8" aria-label="Import queue">
         <h2 className="text-body-strong">Import queue</h2>
-        {queueError && <p role="alert" className="mt-4 text-red-500 select-text">Could not read import jobs: {queueError}</p>}
+        {queueError && <p role="alert" className="mt-4 text-red-500 select-text">Import queue error: {queueError}</p>}
         {jobs.slice(0, 5).map((job) => <div key={job.id} className="mt-4 flex flex-wrap items-center gap-x-8 gap-y-4 text-gray-700">
           <span className="break-all" role={job.state === 'failed' ? 'alert' : 'status'}>
             <span className="text-body-strong">{job.state === 'running' ? 'Analyzing' : job.state === 'completed' ? 'Imported' : job.state === 'failed' ? 'Import failed' : job.state === 'cancelled' ? 'Cancelled' : 'Queued'}</span>
