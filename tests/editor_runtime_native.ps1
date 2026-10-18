@@ -32,6 +32,9 @@ public static class EditorNativeWindow {
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr handle, ref POINT point);
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
 }
 '@
 
@@ -129,6 +132,22 @@ function Save-EditorWindow([System.Diagnostics.Process]$process, [string]$name) 
         Write-Output "EDITOR_PREVIEW_END $name"
         Write-Output "EDITOR_CAPTURE $name $($bitmap.Width)x$($bitmap.Height) SHA256=$((Get-FileHash -Algorithm SHA256 -LiteralPath $png).Hash.ToLowerInvariant())"
     } finally { $bitmap.Dispose() }
+    if ($name -like 'edited-*' -and $name -notlike '*-timeline') {
+        # Exercise FilmCraft's real ` Maximize Frame Under Cursor shortcut with
+        # the pointer over the timeline, then capture all saved tracks at once.
+        if (-not [EditorNativeWindow]::SetForegroundWindow($handle)) {
+            throw "Could not focus native editor to expand its timeline: $name"
+        }
+        if (-not [EditorNativeWindow]::SetCursorPos($clientOrigin.X + 600, $clientOrigin.Y + 450)) {
+            throw "Could not target native timeline panel: $name"
+        }
+        Start-Sleep -Milliseconds 250
+        [EditorNativeWindow]::keybd_event([byte]0xC0, [byte]0, [uint32]0, [UIntPtr]::Zero)
+        [EditorNativeWindow]::keybd_event([byte]0xC0, [byte]0, [uint32]2, [UIntPtr]::Zero)
+        Write-Output "EDITOR_TIMELINE_MAXIMIZE_SENT $name"
+        Start-Sleep -Seconds 3
+        Save-EditorWindow $process ($name + '-timeline')
+    }
 }
 
 foreach ($case in $cases) {
