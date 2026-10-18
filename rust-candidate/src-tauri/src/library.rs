@@ -1,6 +1,6 @@
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::path::Path;
 
@@ -203,6 +203,21 @@ pub struct UtilityCount {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ObservedDuelEvent {
+    pub round_number: i64,
+    pub death: RoundDeath,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservedDuelPair {
+    pub attacker_steamid: String,
+    pub victim_steamid: String,
+    pub events: Vec<ObservedDuelEvent>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MatchDetail {
     pub summary: MatchSummary,
     pub rounds: Vec<RoundSummary>,
@@ -210,6 +225,8 @@ pub struct MatchDetail {
     pub utility_events: Vec<UtilityEvent>,
     pub utility_breakdown: Vec<UtilityCount>,
     pub full_combat_coverage: bool,
+    /// None means the ordered death stream was unavailable for this import.
+    pub observed_duels: Option<Vec<ObservedDuelPair>>,
 }
 
 /// The viewer keeps the demo's absolute tick domain. Older imports report
@@ -855,6 +872,49 @@ fn has_column(connection: &Connection, table: &str, column: &str) -> Result<bool
     Ok(columns.iter().any(|name| name == column))
 }
 
+fn aggregate_observed_duels(rounds: &[RoundSummary]) -> Option<Vec<ObservedDuelPair>> {
+    if !rounds.iter().any(|round| round.deaths.is_some()) {
+        return None;
+    }
+
+    let mut pairs: BTreeMap<(String, String), Vec<ObservedDuelEvent>> = BTreeMap::new();
+    for round in rounds {
+        for death in round.deaths.iter().flatten() {
+            let Some(attacker) = death.attacker_steamid.as_deref() else {
+                continue;
+            };
+            if attacker == death.victim_steamid.as_str() {
+                continue;
+            }
+            let opposing_sides = matches!(
+                (death.attacker_side.as_deref(), death.victim_side.as_deref()),
+                (Some("CT"), Some("T")) | (Some("T"), Some("CT"))
+            );
+            if !opposing_sides {
+                continue;
+            }
+            pairs
+                .entry((attacker.to_owned(), death.victim_steamid.clone()))
+                .or_default()
+                .push(ObservedDuelEvent {
+                    round_number: round.round_number,
+                    death: death.clone(),
+                });
+        }
+    }
+
+    Some(
+        pairs
+            .into_iter()
+            .map(|((attacker_steamid, victim_steamid), events)| ObservedDuelPair {
+                attacker_steamid,
+                victim_steamid,
+                events,
+            })
+            .collect(),
+    )
+}
+
 pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, LibraryError> {
     let connection = open_library(path)?;
     let summary = read_matches(&connection)?
@@ -1147,6 +1207,7 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
+    let observed_duels = aggregate_observed_duels(&rounds);
     Ok(MatchDetail {
         summary,
         rounds,
@@ -1154,5 +1215,87 @@ pub fn get_match_detail(path: &str, match_id: i64) -> Result<MatchDetail, Librar
         utility_events,
         utility_breakdown,
         full_combat_coverage,
+        observed_duels,
     })
+}
+
+#[cfg(test)]
+mod observed_duel_tests {
+    use super::*;
+
+    fn round(number: i64, deaths: Option<Vec<RoundDeath>>) -> RoundSummary {
+        RoundSummary {
+            round_number: number,
+            winner: None,
+            start_tick: None,
+            freeze_end_tick: None,
+            end_tick: None,
+            end_reason: None,
+            team_a_side: None,
+            team_b_side: None,
+            ct_equip_value: None,
+            t_equip_value: None,
+            combat: None,
+            deaths,
+            hurts: None,
+        }
+    }
+
+    fn death(
+        index: i64,
+        attacker: Option<&str>,
+        attacker_side: Option<&str>,
+        victim: &str,
+        victim_side: Option<&str>,
+    ) -> RoundDeath {
+        RoundDeath {
+            source_index: index,
+            event_order: Some(index),
+            tick: index * 10,
+            weapon: None,
+            attacker_steamid: attacker.map(str::to_owned),
+            attacker_side: attacker_side.map(str::to_owned),
+            victim_steamid: victim.to_owned(),
+            victim_side: victim_side.map(str::to_owned),
+            assister_steamid: None,
+        }
+    }
+
+    #[test]
+    fn unavailable_and_verified_empty_streams_are_distinct() {
+        assert!(aggregate_observed_duels(&[round(1, None)]).is_none());
+        assert!(aggregate_observed_duels(&[round(1, Some(vec![]))])
+            .expect("verified stream")
+            .is_empty());
+    }
+
+    #[test]
+    fn groups_only_observed_opposing_sides_and_keeps_event_order() {
+        let rounds = [
+            round(1, Some(vec![
+                death(1, Some("a"), Some("CT"), "b", Some("T")),
+                death(2, Some("a"), Some("CT"), "a", Some("T")),
+                death(3, Some("a"), Some("CT"), "c", Some("CT")),
+                death(4, None, None, "b", Some("T")),
+                death(5, Some("a"), None, "b", Some("T")),
+                death(6, Some("b"), Some("T"), "a", Some("CT")),
+            ])),
+            round(2, Some(vec![death(7, Some("a"), Some("T"), "b", Some("CT"))])),
+        ];
+        let pairs = aggregate_observed_duels(&rounds).expect("verified stream");
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(pairs[0].attacker_steamid, "a");
+        assert_eq!(pairs[0].victim_steamid, "b");
+        assert_eq!(
+            pairs[0]
+                .events
+                .iter()
+                .map(|event| (event.round_number, event.death.source_index))
+                .collect::<Vec<_>>(),
+            vec![(1, 1), (2, 7)]
+        );
+        assert_eq!(pairs[1].attacker_steamid, "b");
+        assert_eq!(pairs[1].victim_steamid, "a");
+        assert_eq!(pairs[1].events[0].death.source_index, 6);
+    }
 }

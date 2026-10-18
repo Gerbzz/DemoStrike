@@ -58,7 +58,18 @@ export type RecordedRound = {
   hurts: RoundHurt[] | null;
 };
 
+export type ObservedDuelEvent = {
+  roundNumber: number;
+  death: RoundDeath;
+};
+export type ObservedDuelPair = {
+  attackerSteamid: string;
+  victimSteamid: string;
+  events: ObservedDuelEvent[];
+};
+
 export type MatchDetail = {
+  observedDuels: ObservedDuelPair[] | null;
   summary: MatchSummary;
   fullCombatCoverage: boolean;
   rounds: RecordedRound[];

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router';
 import { Content } from 'csdm/ui/components/content';
 import { useSourceMatch } from './match-loader';
+import type { ObservedDuelEvent } from './match-data';
 
 // The original MatchDuels TabLinks and nested route remain in place. This
 // adapter reads only event identities verified by the native demo import.
@@ -9,21 +10,15 @@ export function PlayersDuelsMatrix() {
   const detail = useSourceMatch();
   const [roundFilter, setRoundFilter] = useState('all');
   const [selectedPair, setSelectedPair] = useState<string | null>(null);
-  const available = detail.rounds.some((round) => round.deaths !== null);
-  const selectedRounds = roundFilter === 'all'
-    ? detail.rounds : detail.rounds.filter((round) => String(round.roundNumber) === roundFilter);
-  const observed = selectedRounds.flatMap((round) =>
-    (round.deaths ?? []).map((death) => ({ death, roundNumber: round.roundNumber })));
-  const duels = observed.filter(({ death }) =>
-    death.attackerSteamid !== null &&
-    death.attackerSteamid !== death.victimSteamid &&
-    (death.attackerSide === 'CT' && death.victimSide === 'T' ||
-      death.attackerSide === 'T' && death.victimSide === 'CT'));
+  const available = detail.observedDuels !== null;
+  const filteredEvents = (events: ObservedDuelEvent[]) =>
+    roundFilter === 'all' ? events : events.filter((event) => String(event.roundNumber) === roundFilter);
   const players = detail.players;
   const name = (steamid: string) => players.find((player) => player.steamid === steamid)?.name ?? steamid;
   const pairKey = (attacker: string, victim: string) => `${attacker}:${victim}`;
-  const pairEvents = selectedPair === null ? [] : duels.filter(({ death }) =>
-    pairKey(death.attackerSteamid!, death.victimSteamid) === selectedPair);
+  const pairByKey = new Map((detail.observedDuels ?? []).map((pair) =>
+    [pairKey(pair.attackerSteamid, pair.victimSteamid), pair]));
+  const pairEvents = selectedPair === null ? [] : filteredEvents(pairByKey.get(selectedPair)?.events ?? []);
   const selectedNames = selectedPair === null ? null : (() => {
     const event = pairEvents[0]?.death;
     return event ? `${name(event.attackerSteamid!)} → ${name(event.victimSteamid)}` : 'Selected duel';
@@ -60,8 +55,7 @@ export function PlayersDuelsMatrix() {
                 <span className="block truncate">{attacker.name}</span></th>
               {players.map((victim) => {
                 const pair = pairKey(attacker.steamid, victim.steamid);
-                const count = duels.filter(({ death }) =>
-                  death.attackerSteamid === attacker.steamid && death.victimSteamid === victim.steamid).length;
+                const count = filteredEvents(pairByKey.get(pair)?.events ?? []).length;
                 return <td key={victim.steamid} className="min-w-[72px] px-4 py-4 text-center tabular-nums">
                   <button type="button" disabled={count === 0} onClick={() => setSelectedPair(pair)}
                     aria-label={`${attacker.name} eliminated ${victim.name}: ${count}`}
