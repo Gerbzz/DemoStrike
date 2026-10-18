@@ -127,9 +127,58 @@ async function main() {
           }
           return eventKey(roundNumber, death);
         })).sort();
+      const pairKey = (attacker, victim) => JSON.stringify([attacker, victim]);
+      const legacyPairOrder = {};
+      for (const round of detail.rounds) {
+        for (const death of round.deaths ?? []) {
+          if (death.attackerSteamid === null || death.attackerSteamid === death.victimSteamid
+            || !((death.attackerSide === 'CT' && death.victimSide === 'T')
+              || (death.attackerSide === 'T' && death.victimSide === 'CT'))) continue;
+          const key = pairKey(death.attackerSteamid, death.victimSteamid);
+          (legacyPairOrder[key] ??= []).push(eventKey(round.roundNumber, death));
+        }
+      }
+      const nativePairOrder = Object.fromEntries((detail.observedDuels ?? []).map((pair) =>
+        [pairKey(pair.attackerSteamid, pair.victimSteamid),
+          pair.events.map(({ roundNumber, death }) => eventKey(roundNumber, death))]));
+      // Freeze the TypeScript adapter's pre-migration selection rules as the
+      // independent reference for each persisted round's ordered bomb rows.
+      const priorBombSelection = (meta) => {
+        const selected = { plantIndex: null, explosionIndex: null, defusalIndex: null };
+        const plants = meta.bombEvents.map((event, index) => ({ event, index }))
+          .filter(({ event }) => event.kind === 'bomb_planted');
+        if (plants.length !== 1) return selected;
+        const { event: plant, index } = plants[0];
+        if (plant.x === null || plant.y === null || plant.z === null
+          || ![plant.x, plant.y, plant.z].every(Number.isFinite)) return selected;
+        selected.plantIndex = index;
+        const explosions = meta.bombEvents.map((event, index) => ({ event, index }))
+          .filter(({ event }) => event.kind === 'bomb_exploded' && event.tick >= plant.tick);
+        if (explosions.length === 1) selected.explosionIndex = explosions[0].index;
+        const defusals = meta.bombEvents.map((event, index) => ({ event, index }))
+          .filter(({ event }) => event.kind === 'bomb_defused' && event.tick >= plant.tick);
+        if (defusals.length === 1) selected.defusalIndex = defusals[0].index;
+        return selected;
+      };
+      const bombSelectionParity = [];
+      for (const round of detail.rounds) {
+        const meta = await window.__TAURI_INTERNALS__.invoke('get_viewer_round', {
+          path: library, matchId, roundNumber: round.roundNumber,
+        });
+        bombSelectionParity.push({
+          roundNumber: round.roundNumber,
+          available: meta.bombEventsAvailable,
+          reference: priorBombSelection(meta),
+          native: meta.observedBombSelection,
+          eventOrder: meta.bombEvents.map((event) => [event.tick, event.sourceIndex]),
+        });
+      }
       return {
         legacyDuels,
         nativeDuels,
+        legacyPairOrder,
+        nativePairOrder,
+        bombSelectionParity,
         duelStreamAvailable: detail.observedDuels !== null,
         capability: detail.summary.parserCapability,
         roundStarts: detail.rounds.map((round) => round.startTick),
@@ -163,6 +212,23 @@ async function main() {
     assert.ok(nativeFacts.legacyDuels.length > 0, 'Pinned public demo has no opposing-side reference duels');
     assert.deepEqual(nativeFacts.nativeDuels, nativeFacts.legacyDuels,
       'Rust observed-duel pair events differ from the previous React source-event predicate');
+    assert.deepEqual(nativeFacts.nativePairOrder, nativeFacts.legacyPairOrder,
+      'Rust same-pair duel order differs from the previous round/death stream');
+    assert.ok(Object.values(nativeFacts.nativePairOrder).some((events) => events.length > 1),
+      'Real-demo pair-order parity was vacuous');
+    assert.ok(nativeFacts.bombSelectionParity.some((round) => typeof round.native?.plantIndex === 'number'),
+      'Pinned public demo has no uniquely selected bomb plant');
+    for (const round of nativeFacts.bombSelectionParity) {
+      assert.deepEqual(round.eventOrder, [...round.eventOrder].sort((a, b) => a[0] - b[0] || a[1] - b[1]),
+        `Bomb rows lost persisted tick/source order in round ${round.roundNumber}`);
+      if (round.available) {
+        assert.deepEqual(round.native, round.reference,
+          `Rust bomb selection differs from the previous TypeScript adapter in round ${round.roundNumber}`);
+      } else {
+        assert.equal(round.native, null, `Unverified bomb stream became measured in round ${round.roundNumber}`);
+        assert.deepEqual(round.reference, { plantIndex: null, explosionIndex: null, defusalIndex: null });
+      }
+    }
     const overviewShot = path.join(outputDir, 'real-demo-overview.png');
     await captureAppOnly(page, overviewShot);
     await page.getByRole('link', { name: 'Rounds', exact: true }).click();

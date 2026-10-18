@@ -245,6 +245,8 @@ pub struct ViewerRoundMeta {
     pub utility_events: Vec<ViewerUtilityEvent>,
     pub bomb_events: Vec<ViewerBombEvent>,
     pub bomb_events_available: bool,
+    /// None means this import has no verified bomb event stream.
+    pub observed_bomb_selection: Option<ObservedBombSelection>,
 }
 
 /// Detonation facts persist with the imported demo. Missing coordinates and
@@ -347,6 +349,16 @@ pub struct ViewerBombEvent {
     pub x: Option<f64>,
     pub y: Option<f64>,
     pub z: Option<f64>,
+}
+
+/// Indexes refer to the ordered bomb_events array returned in the same IPC
+/// response. A verified stream can have no uniquely usable plant.
+#[derive(Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservedBombSelection {
+    pub plant_index: Option<usize>,
+    pub explosion_index: Option<usize>,
+    pub defusal_index: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -657,6 +669,42 @@ pub fn list_matches(path: &str) -> Result<LibrarySnapshot, LibraryError> {
     })
 }
 
+fn unique_bomb_event_index(
+    events: &[ViewerBombEvent],
+    kind: &str,
+    earliest_tick: i64,
+) -> Option<usize> {
+    let mut matches = events
+        .iter()
+        .enumerate()
+        .filter(|(_, event)| event.kind == kind && event.tick >= earliest_tick);
+    let (index, _) = matches.next()?;
+    matches.next().is_none().then_some(index)
+}
+
+fn select_observed_bomb_events(events: &[ViewerBombEvent]) -> ObservedBombSelection {
+    let mut selected = ObservedBombSelection::default();
+    let mut plants = events
+        .iter()
+        .enumerate()
+        .filter(|(_, event)| event.kind == "bomb_planted");
+    let Some((plant_index, plant)) = plants.next() else {
+        return selected;
+    };
+    if plants.next().is_some()
+        || ![plant.x, plant.y, plant.z]
+            .into_iter()
+            .all(|coordinate| coordinate.is_some_and(|value| value.is_finite()))
+    {
+        return selected;
+    }
+
+    selected.plant_index = Some(plant_index);
+    selected.explosion_index = unique_bomb_event_index(events, "bomb_exploded", plant.tick);
+    selected.defusal_index = unique_bomb_event_index(events, "bomb_defused", plant.tick);
+    selected
+}
+
 pub fn get_viewer_round(
     path: &str,
     match_id: i64,
@@ -759,6 +807,8 @@ pub fn get_viewer_round(
             }
         }
     }
+    let observed_bomb_selection =
+        bomb_events_available.then(|| select_observed_bomb_events(&bomb_events));
     Ok(ViewerRoundMeta {
         round_number,
         start_tick,
@@ -775,6 +825,7 @@ pub fn get_viewer_round(
         utility_events,
         bomb_events,
         bomb_events_available,
+        observed_bomb_selection,
     })
 }
 
@@ -1307,5 +1358,196 @@ mod observed_duel_tests {
         assert_eq!(pairs[1].attacker_steamid, "b");
         assert_eq!(pairs[1].victim_steamid, "a");
         assert_eq!(pairs[1].events[0].death.source_index, 6);
+    }
+
+    #[test]
+    fn same_pair_tied_tick_keeps_input_event_order() {
+        let mut first = death(11, Some("a"), Some("CT"), "b", Some("T"));
+        let mut second = death(10, Some("a"), Some("CT"), "b", Some("T"));
+        first.tick = 700;
+        second.tick = 700;
+        first.event_order = Some(1);
+        second.event_order = Some(2);
+        let rounds = [round(1, Some(vec![first, second]))];
+        let pairs = aggregate_observed_duels(&rounds).expect("verified stream");
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(
+            pairs[0]
+                .events
+                .iter()
+                .map(|event| (event.death.tick, event.death.source_index))
+                .collect::<Vec<_>>(),
+            vec![(700, 11), (700, 10)]
+        );
+    }
+}
+
+#[cfg(test)]
+mod observed_bomb_tests {
+    use super::*;
+
+    fn event(index: i64, kind: &str, tick: i64, coordinates: Option<[f64; 3]>) -> ViewerBombEvent {
+        ViewerBombEvent {
+            source_index: index,
+            kind: kind.to_owned(),
+            tick,
+            actor_steamid: None,
+            actor_name: None,
+            site_id: None,
+            x: coordinates.map(|value| value[0]),
+            y: coordinates.map(|value| value[1]),
+            z: coordinates.map(|value| value[2]),
+        }
+    }
+
+    #[test]
+    fn selects_only_one_grounded_plant_and_unique_later_outcomes() {
+        let events = vec![
+            event(1, "bomb_exploded", 90, None),
+            event(2, "bomb_planted", 100, Some([1.0, 2.0, 3.0])),
+            event(4, "bomb_defused", 110, None),
+            event(3, "bomb_exploded", 110, None),
+        ];
+        assert_eq!(
+            select_observed_bomb_events(&events),
+            ObservedBombSelection {
+                plant_index: Some(1),
+                explosion_index: Some(3),
+                defusal_index: Some(2),
+            }
+        );
+        assert_eq!(
+            select_observed_bomb_events(&[]),
+            ObservedBombSelection::default()
+        );
+        assert_eq!(
+            select_observed_bomb_events(&[
+                event(2, "bomb_planted", 100, Some([1.0, 2.0, 3.0])),
+                event(3, "bomb_planted", 101, Some([1.0, 2.0, 3.0])),
+            ]),
+            ObservedBombSelection::default()
+        );
+        assert_eq!(
+            select_observed_bomb_events(&[event(
+                2,
+                "bomb_planted",
+                100,
+                Some([f64::INFINITY, 2.0, 3.0]),
+            )]),
+            ObservedBombSelection::default()
+        );
+    }
+
+    #[test]
+    fn ambiguous_outcome_does_not_hide_an_independent_unique_outcome() {
+        let events = vec![
+            event(1, "bomb_planted", 100, Some([1.0, 2.0, 3.0])),
+            event(2, "bomb_exploded", 110, None),
+            event(3, "bomb_exploded", 110, None),
+            event(4, "bomb_defused", 111, None),
+        ];
+        assert_eq!(
+            select_observed_bomb_events(&events),
+            ObservedBombSelection {
+                plant_index: Some(0),
+                explosion_index: None,
+                defusal_index: Some(3),
+            }
+        );
+    }
+
+    #[test]
+    fn sqlite_viewer_contract_preserves_order_empty_and_unavailable() {
+        let directory = tempfile::tempdir().expect("temporary SQLite directory");
+        let path = directory.path().join("library.sqlite");
+        let connection = Connection::open(&path).expect("SQLite fixture");
+        connection
+            .execute_batch(
+                r#"
+                PRAGMA user_version = 11;
+                CREATE TABLE matches (
+                    id INTEGER PRIMARY KEY, file_name TEXT, map_name TEXT,
+                    score_ct INTEGER, score_t INTEGER, imported_at TEXT,
+                    parser_capability TEXT, viewer_position_version INTEGER,
+                    viewer_bomb_version INTEGER
+                );
+                CREATE TABLE players (match_id INTEGER, steamid TEXT, name TEXT);
+                CREATE TABLE rounds (
+                    match_id INTEGER, round_number INTEGER, winner TEXT,
+                    start_tick INTEGER, end_tick INTEGER
+                );
+                CREATE TABLE utility_events (
+                    id INTEGER, match_id INTEGER, round_number INTEGER,
+                    utility_type TEXT, thrower_name TEXT, thrower_team TEXT,
+                    throw_tick INTEGER
+                );
+                CREATE TABLE viewer_player_positions (match_id INTEGER, round_number INTEGER);
+                CREATE TABLE viewer_grenade_positions (match_id INTEGER, round_number INTEGER);
+                CREATE TABLE viewer_bomb_events (
+                    match_id INTEGER, round_number INTEGER, source_index INTEGER,
+                    kind TEXT, tick INTEGER, actor_steamid TEXT, actor_name TEXT,
+                    site_id INTEGER, x REAL, y REAL, z REAL
+                );
+                INSERT INTO matches VALUES
+                    (1, 'recorded.dem', 'de_mirage', 1, 0, '2026-01-01',
+                     'native-combat-full-v2', 1, 1),
+                    (2, 'older.dem', 'de_mirage', 1, 0, '2026-01-01',
+                     'native-combat-full-v2', 1, NULL);
+                INSERT INTO rounds VALUES
+                    (1, 1, 'CT', 100, 200),
+                    (1, 2, 'T', 201, 300),
+                    (2, 1, 'CT', 100, 200);
+                INSERT INTO viewer_bomb_events VALUES
+                    (1, 1, 12, 'bomb_exploded', 130, NULL, NULL, NULL, NULL, NULL, NULL),
+                    (1, 1, 10, 'bomb_planted', 120, 'a', 'Alice', NULL, 1, 2, 3),
+                    (1, 1, 11, 'bomb_defused', 130, 'b', 'Bob', NULL, NULL, NULL, NULL),
+                    (1, 1, 9, 'bomb_exploded', 110, NULL, NULL, NULL, NULL, NULL, NULL),
+                    (2, 1, 50, 'bomb_planted', 120, 'a', 'Alice', NULL, 1, 2, 3);
+                "#,
+            )
+            .expect("schema and observed events");
+        drop(connection);
+
+        let path = path.to_str().expect("UTF-8 path");
+        let recorded = get_viewer_round(path, 1, 1).expect("recorded round");
+        assert_eq!(
+            recorded
+                .bomb_events
+                .iter()
+                .map(|event| event.source_index)
+                .collect::<Vec<_>>(),
+            vec![9, 10, 11, 12]
+        );
+        assert!(recorded.bomb_events_available);
+        assert_eq!(
+            recorded.observed_bomb_selection,
+            Some(ObservedBombSelection {
+                plant_index: Some(1),
+                explosion_index: Some(3),
+                defusal_index: Some(2),
+            })
+        );
+        let wire = serde_json::to_value(&recorded).expect("IPC serialization");
+        assert_eq!(
+            wire["observedBombSelection"],
+            serde_json::json!({
+                "plantIndex": 1,
+                "explosionIndex": 3,
+                "defusalIndex": 2,
+            })
+        );
+
+        let empty = get_viewer_round(path, 1, 2).expect("verified empty round");
+        assert!(empty.bomb_events_available);
+        assert_eq!(
+            empty.observed_bomb_selection,
+            Some(ObservedBombSelection::default())
+        );
+        let unavailable = get_viewer_round(path, 2, 1).expect("older import");
+        assert!(!unavailable.bomb_events_available);
+        assert!(unavailable.bomb_events.is_empty());
+        assert_eq!(unavailable.observed_bomb_selection, None);
+        let wire = serde_json::to_value(&unavailable).expect("IPC serialization");
+        assert!(wire["observedBombSelection"].is_null());
     }
 }

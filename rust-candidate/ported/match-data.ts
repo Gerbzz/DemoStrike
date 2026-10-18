@@ -88,7 +88,13 @@ export type MatchDetail = {
   }[];
 };
 
+export type ObservedBombSelection = {
+  plantIndex: number | null;
+  explosionIndex: number | null;
+  defusalIndex: number | null;
+};
 export type ViewerRoundMeta = {
+  observedBombSelection: ObservedBombSelection | null;
   roundNumber: number; startTick: number | null; endTick: number | null;
   tickRate: number | null; mapName: string; positionsAvailable: boolean;
   playerSampleCount: number; grenadeSampleCount: number;
