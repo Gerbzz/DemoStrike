@@ -798,23 +798,49 @@ pub fn external_commands() -> Vec<filmcraft_engine::shortcuts::CommandInfo> {
 
 /// Draw the in-window menu bar.
 pub fn menu_bar(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
+    menu_bar_impl(app, ui, false);
+}
+
+/// Keep the complete menu hierarchy reachable when the editor window is narrow.
+pub fn menu_bar_compact(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
+    menu_bar_impl(app, ui, true);
+}
+
+fn menu_bar_impl(app: &mut FilmcraftApp, ui: &mut egui::Ui, compact: bool) {
     ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("interface-language"), app.ui.language));
     let items = menu_items(app);
-    // Draw Edit ▸ Label with the user's live palette, not the baked-in label colours.
     let labels = app.session.prefs.labels.clone();
     let ctx = ui.ctx().clone();
     let mut clicked: Option<String> = None;
     egui::MenuBar::new().config(egui::containers::menu::MenuConfig::new().style(crate::theme::menu_style)).ui(ui, |ui| {
-        for top in MENUS {
-            let mine: Vec<&MenuItem> = items.iter().filter(|i| i.path.first().map(String::as_str) == Some(top)).collect();
-            let r = ui.menu_button(app.ui.language.tr(top), |ui| {
+        if compact {
+            let root = ui.menu_button(tl!("Menu"), |ui| {
                 ui.set_min_width(260.0);
-                if mine.is_empty() {
-                    ui.add_enabled(false, egui::Button::new(tl!("(empty)")));
+                for top in MENUS {
+                    let mine: Vec<&MenuItem> = items.iter().filter(|i| i.path.first().map(String::as_str) == Some(top)).collect();
+                    let r = ui.menu_button(app.ui.language.tr(top), |ui| {
+                        ui.set_min_width(260.0);
+                        if mine.is_empty() {
+                            ui.add_enabled(false, egui::Button::new(tl!("(empty)")));
+                        }
+                        menu_level(ui, &mine, 1, &mut clicked, &mut app.auto, &labels);
+                    });
+                    app.auto.add(&format!("menu.{top}"), r.response.rect, top);
                 }
-                menu_level(ui, &mine, 1, &mut clicked, &mut app.auto, &labels);
             });
-            app.auto.add(&format!("menu.{top}"), r.response.rect, top);
+            app.auto.add("menu.all", root.response.rect, "Menu");
+        } else {
+            for top in MENUS {
+                let mine: Vec<&MenuItem> = items.iter().filter(|i| i.path.first().map(String::as_str) == Some(top)).collect();
+                let r = ui.menu_button(app.ui.language.tr(top), |ui| {
+                    ui.set_min_width(260.0);
+                    if mine.is_empty() {
+                        ui.add_enabled(false, egui::Button::new(tl!("(empty)")));
+                    }
+                    menu_level(ui, &mine, 1, &mut clicked, &mut app.auto, &labels);
+                });
+                app.auto.add(&format!("menu.{top}"), r.response.rect, top);
+            }
         }
     });
     if let Some(id) = clicked {

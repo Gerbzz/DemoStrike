@@ -51,6 +51,8 @@ function Save-EditorWindow([System.Diagnostics.Process]$process, [string]$name) 
     if (-not [EditorNativeWindow]::MoveWindow($handle, 8, 8, $targetWidth, $targetHeight, $true)) {
         throw "Could not fit native editor window inside hosted desktop: $name"
     }
+    Start-Sleep -Seconds 5
+    [void][EditorNativeWindow]::MoveWindow($handle, 8, 8, $targetWidth, $targetHeight, $true)
     Start-Sleep -Seconds 2
     $process.Refresh()
     Write-Output "EDITOR_WINDOW_RESPONDING $name $($process.Responding)"
@@ -74,6 +76,9 @@ function Save-EditorWindow([System.Diagnostics.Process]$process, [string]$name) 
     }
     $clientWidth = $client.Right - $client.Left
     $clientHeight = $client.Bottom - $client.Top
+    if ($clientWidth -ge $width -or $clientHeight -ge $height) {
+        throw "Native editor window frame did not settle before capture: $name"
+    }
     Write-Output "EDITOR_CLIENT_BOUNDS $name x=$($clientOrigin.X) y=$($clientOrigin.Y) size=$($clientWidth)x$clientHeight"
     if ($clientWidth -lt 850 -or $clientHeight -lt 500 -or $clientOrigin.X -lt 0 -or
         $clientOrigin.Y -lt 0 -or ($clientOrigin.X + $clientWidth) -gt $screenWidth -or

@@ -57,12 +57,19 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let mut left_end = x;
     // In-window menus when there is no native menu bar.
     if app.ui.show_menu_bar {
-        let menu_rect = Rect::from_min_max(pos2(x + 6.0, rect.min.y + 7.0), pos2(x + 520.0, rect.max.y - 7.0));
+        // A single expandable menu keeps every command reachable on narrower editor windows.
+        let compact = rect.width() < 1280.0;
+        let menu_width = if compact { 86.0 } else { 520.0 };
+        let menu_rect = Rect::from_min_max(pos2(x + 6.0, rect.min.y + 7.0), pos2(x + menu_width, rect.max.y - 7.0));
         let mut mu = ui.new_child(egui::UiBuilder::new().max_rect(menu_rect).layout(egui::Layout::left_to_right(egui::Align::Center)));
         mu.style_mut().visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
         mu.style_mut().visuals.widgets.inactive.bg_stroke = Stroke::NONE;
         mu.style_mut().visuals.override_text_color = Some(t.text_dim);
-        crate::menus::menu_bar(app, &mut mu);
+        if compact {
+            crate::menus::menu_bar_compact(app, &mut mu);
+        } else {
+            crate::menus::menu_bar(app, &mut mu);
+        }
         left_end = mu.min_rect().max.x;
     }
     // Document title, centred
