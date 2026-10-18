@@ -470,7 +470,6 @@ impl DemoStrikeApp {
             static LAYOUT_TRACED: AtomicBool = AtomicBool::new(false);
             let trace_layout = std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some()
                 && !LAYOUT_TRACED.swap(true, Ordering::Relaxed);
-            let before_available = if trace_layout { Some(ui.available_rect_before_wrap()) } else { None };
             egui::Panel::top("demostrike-editor-return").show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.strong("DemoStrike");
@@ -483,12 +482,20 @@ impl DemoStrikeApp {
                     if let Some(error) = &self.error { ui.colored_label(egui::Color32::RED, error); }
                 });
             });
-            if let Some(before) = before_available {
-                eprintln!("EDITOR_LAYOUT parent_full={:?} before_available={before:?} after_available={:?}",
-                    ui.max_rect(), ui.available_rect_before_wrap());
+            // FilmCraft paints its entire Ui::max_rect; keep that rectangle below the host bar.
+            let editor_rect = ui.available_rect_before_wrap();
+            if trace_layout {
+                eprintln!("EDITOR_LAYOUT parent_full={:?} editor_content={editor_rect:?}",
+                    ui.max_rect());
             }
             trace_editor_once(&FILMCRAFT_ENTER, "filmcraft_ui_enter");
-            eframe::App::ui(editor, ui, frame);
+            ui.scope_builder(
+                egui::UiBuilder::new().max_rect(editor_rect).id_salt("filmcraft-embedded"),
+                |editor_ui| {
+                    editor_ui.set_clip_rect(editor_rect);
+                    eframe::App::ui(editor, editor_ui, frame);
+                },
+            );
             trace_editor_once(&FILMCRAFT_DONE, "filmcraft_ui_done");
             if self.confirm_discard_editor && editor_return_state(editor, false) == EditorReturnGate::Busy {
                 self.confirm_discard_editor = false;

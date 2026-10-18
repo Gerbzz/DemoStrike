@@ -17,6 +17,7 @@ public static class LegacySmokeWindow {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr handle, out RECT bounds);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT bounds);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr handle, ref POINT point);
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
@@ -176,12 +177,43 @@ function Open-Dialog-Project([IntPtr]$dialog, [string]$project) {
                 }
             }
         }
-        if (-not $value) { throw 'Verified File name control has no editable ValuePattern' }
     }
-    if ($value.Current.IsReadOnly) { throw 'Verified File name control is read-only' }
-    $value.SetValue($project)
-    if ($value.Current.Value -ne $project) { throw 'Native File name control did not retain the project path' }
-    Write-Output 'LEGACY_DIALOG_FILENAME_SET'
+    if ($value) {
+        if ($value.Current.IsReadOnly) { throw 'Verified File name control is read-only' }
+        $value.SetValue($project)
+        if ($value.Current.Value -ne $project) { throw 'Native File name control did not retain the project path' }
+        Write-Output 'LEGACY_DIALOG_FILENAME_SET'
+    } else {
+        if ($fileNameHandle -eq [IntPtr]::Zero) { throw 'Verified File name control has no native handle' }
+        $inputBounds = [LegacySmokeWindow+RECT]::new()
+        $dialogBounds = [LegacySmokeWindow+RECT]::new()
+        if (-not [LegacySmokeWindow]::GetWindowRect($fileNameHandle, [ref]$inputBounds) -or
+            -not [LegacySmokeWindow]::GetWindowRect($dialog, [ref]$dialogBounds)) {
+            throw 'Could not locate the verified File name control on screen'
+        }
+        if ($inputBounds.Right - $inputBounds.Left -lt 60 -or
+            $inputBounds.Bottom - $inputBounds.Top -lt 12 -or
+            $inputBounds.Left -lt $dialogBounds.Left -or
+            $inputBounds.Right -gt $dialogBounds.Right -or
+            $inputBounds.Top -lt $dialogBounds.Top -or
+            $inputBounds.Bottom -gt $dialogBounds.Bottom) {
+            throw 'Verified File name control has invalid screen bounds'
+        }
+        $className = [Text.StringBuilder]::new(128)
+        [void][LegacySmokeWindow]::GetClassName($fileNameHandle, $className, $className.Capacity)
+        Write-Output "LEGACY_DIALOG_FILENAME_TARGET class=$className bounds=$($inputBounds.Left),$($inputBounds.Top),$($inputBounds.Right),$($inputBounds.Bottom)"
+        [void][LegacySmokeWindow]::SetForegroundWindow($dialog)
+        [void][LegacySmokeWindow]::SetCursorPos($inputBounds.Left + 40,
+            [int][Math]::Round(($inputBounds.Top + $inputBounds.Bottom) / 2))
+        Start-Sleep -Milliseconds 200
+        [LegacySmokeWindow]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+        [LegacySmokeWindow]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 200
+        Set-Clipboard -Value $project
+        Send-Chord ([byte[]](0x11, 0x41)) # Ctrl+A in the verified File name control.
+        Send-Chord ([byte[]](0x11, 0x56)) # Ctrl+V.
+        Write-Output 'LEGACY_DIALOG_FILENAME_INPUT_SENT'
+    }
     $buttonCondition = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
         [System.Windows.Automation.ControlType]::Button)
@@ -215,18 +247,22 @@ function Invoke-Return([IntPtr]$handle) {
     for ($i = 0; $i -lt 60; $i++) {
         $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
         if ($button) {
-            $pattern = $null
-            if ($button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
-                $pattern.Invoke()
-                return
-            }
             $bounds = $button.Current.BoundingRectangle
+            $windowBounds = [LegacySmokeWindow+RECT]::new()
+            if (-not [LegacySmokeWindow]::GetWindowRect($handle, [ref]$windowBounds) -or
+                $bounds.Width -lt 20 -or $bounds.Height -lt 10 -or
+                $bounds.X -lt $windowBounds.Left -or $bounds.Y -lt $windowBounds.Top -or
+                $bounds.Right -gt $windowBounds.Right -or $bounds.Bottom -gt $windowBounds.Bottom) {
+                throw 'Return to analysis has no visible window bounds'
+            }
             [void][LegacySmokeWindow]::SetForegroundWindow($handle)
             [void][LegacySmokeWindow]::SetCursorPos(
                 [int][Math]::Round($bounds.X + $bounds.Width / 2),
                 [int][Math]::Round($bounds.Y + $bounds.Height / 2))
+            Start-Sleep -Milliseconds 200
             [LegacySmokeWindow]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
             [LegacySmokeWindow]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+            Write-Output 'LEGACY_RETURN_POINTER_CLICK'
             return
         }
         Start-Sleep -Milliseconds 250
