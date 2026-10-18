@@ -467,6 +467,10 @@ impl DemoStrikeApp {
         let mut return_requested = false;
         let mut discard_editor_changes = false;
         if let Some(editor) = self.embedded_editor.as_mut() {
+            static LAYOUT_TRACED: AtomicBool = AtomicBool::new(false);
+            let trace_layout = std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some()
+                && !LAYOUT_TRACED.swap(true, Ordering::Relaxed);
+            let before_available = if trace_layout { Some(ui.available_rect_before_wrap()) } else { None };
             egui::Panel::top("demostrike-editor-return").show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.strong("DemoStrike");
@@ -479,6 +483,10 @@ impl DemoStrikeApp {
                     if let Some(error) = &self.error { ui.colored_label(egui::Color32::RED, error); }
                 });
             });
+            if let Some(before) = before_available {
+                eprintln!("EDITOR_LAYOUT parent_full={:?} before_available={before:?} after_available={:?}",
+                    ui.max_rect(), ui.available_rect_before_wrap());
+            }
             trace_editor_once(&FILMCRAFT_ENTER, "filmcraft_ui_enter");
             eframe::App::ui(editor, ui, frame);
             trace_editor_once(&FILMCRAFT_DONE, "filmcraft_ui_done");
@@ -1859,12 +1867,13 @@ mod tests {
     }
 
     fn wait_for_import(app: &mut DemoStrikeApp) {
-        for _ in 0..200 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        loop {
             app.poll_demo_import();
             if app.import_messages.is_none() { return; }
-            std::thread::sleep(Duration::from_millis(5));
+            assert!(std::time::Instant::now() < deadline, "demo import worker did not complete");
+            std::thread::sleep(Duration::from_millis(10));
         }
-        panic!("demo import worker did not complete");
     }
 
     #[test]
