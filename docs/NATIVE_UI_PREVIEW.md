@@ -21,3 +21,9 @@ The [earlier baseline image](../assets/screenshots/demostrike-empty-native-curre
 - Published PNG SHA-256: `BA4F746464BD3FEAACA83705C827D9263F33C962D475D7921E70EADE37A288E2` (85,178 bytes).
 
 No CS2 demo, HLAE session, capture package, match database, user recording, or external media was loaded. This image verifies the initial native window rendered on that draft executable. It does not verify demo import, event analysis, capture quality, editor export, or release readiness. The executable and isolated runtime data are not part of this repository.
+
+## Historical Windows audio diagnostic
+
+The full serial native library suite still ends with Windows access violation `0xc0000005` as `ui::filmcraft_audio::tests::stale_ready_generation_cannot_activate_or_become_the_clock` starts. [Hosted comparison run 38992294811](https://github.com/Gerbzz/DemoStrike/actions/runs/38992294811) reproduced it on the historical base and the unchanged PR #2 audio source; the isolated test passed on both. The root native call is unknown.
+
+The [manual historical audio workflow](../.github/workflows/historical-audio-diagnostic.yml) retains the isolated and full serial tests on both the pinned historical base and the selected ref. The main native-preview workflow still gates the isolated audio invariant, import and FilmCraft navigation tests, CLI and binary tests, native build, and native screenshot. A new failure in those focused gates remains blocking.
