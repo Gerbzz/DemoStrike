@@ -7,7 +7,7 @@ use demostrike::edit_handoff::{EditSpan, OfflineEditPlan};
 use filmcraft_engine::Session;
 use filmcraft_project::ClipId;
 use filmcraft_time::{FrameRate, Tick};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
@@ -88,8 +88,8 @@ fn assert_cues(session: &Session, plan: &OfflineEditPlan) -> Result<(), String> 
     let detonate = ((plan.capture_request.detonate_tick - plan.timeline_origin_tick) as f64
         * 1_000.0
         / plan.capture_request.tick_rate)
-        .round() as i64
-        + plan.lineup_hold_ms;
+        .round() as i64;
+    let detonate_frame = frame_at_ms(detonate) + plan.lineup_hold_frames;
     let expected = [
         (
             hold.timeline_start_frame,
@@ -97,7 +97,7 @@ fn assert_cues(session: &Session, plan: &OfflineEditPlan) -> Result<(), String> 
         ),
         (hold.timeline_end_frame, "Lineup pause ends - both cameras"),
         (plan.throw_timeline_frame, "Grenade release - synchronized"),
-        (frame_at_ms(detonate), "Detonation"),
+        (detonate_frame, "Detonation"),
     ];
     for (cue, (frame, name)) in seq.markers.iter().zip(expected) {
         if cue.start != frame_tick(frame) || cue.name != name {

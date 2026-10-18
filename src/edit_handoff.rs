@@ -297,14 +297,17 @@ pub fn clipstrike_project(plan: &OfflineEditPlan) -> Project {
         .find(|span| span.camera_role == "player_pov" && span.kind == "hold")
         .unwrap();
     let hold_start = hold.timeline_start_ms;
-    let detonate_ms = source_ms(
-        plan.timeline_origin_tick,
-        request.detonate_tick,
-        request.tick_rate,
+    let detonate_frame = frame_at_ms(
+        source_ms(
+            plan.timeline_origin_tick,
+            request.detonate_tick,
+            request.tick_rate,
+        )
+        .unwrap(),
     )
     .unwrap()
-        + plan.lineup_hold_ms;
-    let detonate_ms = ms_at_frame(frame_at_ms(detonate_ms).unwrap()).unwrap();
+        + plan.lineup_hold_frames;
+    let detonate_ms = ms_at_frame(detonate_frame).unwrap();
     let cues = [
         (hold_start, "Lineup pause begins - both cameras"),
         (hold.timeline_end_ms, "Lineup pause ends - both cameras"),
@@ -370,13 +373,14 @@ pub fn filmcraft_project_bytes(plan: &OfflineEditPlan) -> Result<Vec<u8>, String
         .iter()
         .find(|span| span.camera_role == "player_pov" && span.kind == "hold")
         .ok_or("editor plan has no shared lineup hold")?;
-    let detonate_ms = source_ms(
+    let detonate_frame = frame_at_ms(source_ms(
         plan.timeline_origin_tick,
         request.detonate_tick,
         request.tick_rate,
-    )?
-    .checked_add(plan.lineup_hold_ms)
+    )?)?
+    .checked_add(plan.lineup_hold_frames)
     .ok_or("detonation timeline overflow")?;
+    let detonate_ms = ms_at_frame(detonate_frame)?;
     for ((frame, name), marker_id) in [
         (
             hold.timeline_start_frame,
@@ -384,7 +388,7 @@ pub fn filmcraft_project_bytes(plan: &OfflineEditPlan) -> Result<Vec<u8>, String
         ),
         (hold.timeline_end_frame, "Lineup pause ends - both cameras"),
         (plan.throw_timeline_frame, "Grenade release - synchronized"),
-        (frame_at_ms(detonate_ms)?, "Detonation"),
+        (detonate_frame, "Detonation"),
     ]
     .into_iter()
     .zip(marker_ids)
@@ -627,6 +631,34 @@ mod tests {
         assert_eq!(projectile.timeline_start_frame, plan.throw_timeline_frame);
         assert_eq!(projectile.timeline_start_ms, plan.throw_timeline_ms);
         assert!((i64::from(plan.lineup_hold_frames) * 1_000 - 259 * 60).abs() <= 500);
+        let detonate_frame = frame_at_ms(
+            source_ms(
+                plan.timeline_origin_tick,
+                plan.capture_request.detonate_tick,
+                64.0,
+            )
+            .unwrap(),
+        )
+        .unwrap()
+            + plan.lineup_hold_frames;
+        let clipstrike = clipstrike_project(&plan);
+        assert_eq!(
+            clipstrike.markers[3].time_ms,
+            ms_at_frame(detonate_frame).unwrap()
+        );
+        #[cfg(feature = "offline-filmcraft")]
+        {
+            let filmcraft = filmcraft_project_bytes(&plan).unwrap();
+            let loaded = filmcraft_format::decode(&filmcraft).unwrap();
+            let sequence = loaded.project.items.values().next().unwrap();
+            let filmcraft_project::ItemKind::Sequence(sequence) = &sequence.kind else {
+                panic!("FilmCraft handoff is not a sequence");
+            };
+            assert_eq!(
+                sequence.markers[3].start,
+                filmcraft_time::FrameRate::FPS_60.tick_of(detonate_frame)
+            );
+        }
     }
 
     #[test]
