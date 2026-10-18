@@ -198,6 +198,23 @@ function Choose-DialogPath([IntPtr]$dialog, [string]$path, [string]$action) {
     throw "Native $action file dialog did not close after selecting $path"
 }
 
+function Wait-SavedEditorProject([string]$path, [string]$action) {
+    # The common dialog can close before the embedded editor finishes writing.
+    for ($attempt = 0; $attempt -lt 40; $attempt++) {
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            Write-Output "EDITOR_GUI_SAVED $action path=$path attempt=$($attempt + 1)"
+            return
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    $directory = Split-Path -Parent $path
+    $nearby = @(Get-ChildItem -LiteralPath $directory -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'gui-*' } |
+        ForEach-Object { "$($_.Name):$($_.Length)" })
+    Write-Output "EDITOR_GUI_SAVE_NEARBY $action directory=$directory files=$($nearby -join ',')"
+    throw "GUI Save As did not write the $action project"
+}
+
 function Drag-EditorClient([IntPtr]$handle, [int]$fromX, [int]$fromY, [int]$toX, [int]$toY, [string]$action) {
     $origin = [EditorNativeWindow+POINT]::new()
     if (-not [EditorNativeWindow]::ClientToScreen($handle, [ref]$origin)) {
@@ -290,16 +307,14 @@ try {
     [void][EditorNativeWindow]::SetForegroundWindow($guiHandle)
     Send-Chord ([byte[]]@(0x11, 0x10, 0x53)) # Ctrl+Shift+S, File > Save As
     Choose-DialogPath (Wait-FileDialog 'save-after-drag') $afterDrag 'save-after-drag'
-    if (-not (Test-Path -LiteralPath $afterDrag)) { throw 'GUI Save As did not write the dragged project' }
-    Write-Output "EDITOR_GUI_SAVED after-drag $afterDrag"
+    Wait-SavedEditorProject $afterDrag 'after-drag'
 
     Drag-EditorClient $guiHandle 660 475 730 475 'move-V1-clip'
     Save-EditorWindow $guiProcess 'gui-after-edit'
     [void][EditorNativeWindow]::SetForegroundWindow($guiHandle)
     Send-Chord ([byte[]]@(0x11, 0x10, 0x53)) # Ctrl+Shift+S, File > Save As
     Choose-DialogPath (Wait-FileDialog 'save-after-edit') $afterEdit 'save-after-edit'
-    if (-not (Test-Path -LiteralPath $afterEdit)) { throw 'GUI Save As did not write the edited project' }
-    Write-Output "EDITOR_GUI_SAVED after-edit $afterEdit"
+    Wait-SavedEditorProject $afterEdit 'after-edit'
 
     [void][EditorNativeWindow]::SetForegroundWindow($guiHandle)
     Send-Chord ([byte[]]@(0x11, 0x4F)) # Ctrl+O, File > Open
