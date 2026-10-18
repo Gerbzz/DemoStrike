@@ -22,6 +22,10 @@ reported as completed, never as cancelled. Cancellation and worker completion
 hold one queue transition lock, so an accepted active cancellation cannot be
 persisted as a failure by the worker. A library that exists but cannot be
 read stops reconciliation with an error instead of claiming a false outcome.
+The empty Matches view opens the saved library whether a completed receipt
+arrives from queue polling, a Cancel request that discovered a committed
+match, or the initial scan after restart. An explicit Change library action
+suppresses that startup auto-open until another library is selected.
 
 Hosted unit tests cover old-schema migration, queued cancellation, active
 cancellation, a coordinated finish/cancel race, a crash between library commit
@@ -29,7 +33,10 @@ and queue receipt, restart persistence, and the importer's existing rollback
 and too-late boundary. The hosted synthetic WebView2 smoke holds only the
 smoke-feature parser long enough to click Cancel in the real CSDM window,
 then checks that no match was saved and a later import still works. The
-feature-free build has no parser delay. A live CS2 cancellation click and
+same native window also exercises synthetic completed-receipt IPC replies
+against a real saved SQLite library for both early startup and Cancel races.
+Those injected replies test UI behavior, not a second live CS2 cancellation.
+The feature-free build has no parser delay. A live CS2 cancellation click and
 the original upstream multi-demo Analyses route remain unverified.
 
 This is a bounded Rust behavior port. React/TypeScript still mounts the
