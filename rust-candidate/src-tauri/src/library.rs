@@ -1421,6 +1421,10 @@ mod observed_bomb_tests {
             ObservedBombSelection::default()
         );
         assert_eq!(
+            select_observed_bomb_events(&[event(5, "bomb_planted", 100, None)]),
+            ObservedBombSelection::default()
+        );
+        assert_eq!(
             select_observed_bomb_events(&[
                 event(2, "bomb_planted", 100, Some([1.0, 2.0, 3.0])),
                 event(3, "bomb_planted", 101, Some([1.0, 2.0, 3.0])),
