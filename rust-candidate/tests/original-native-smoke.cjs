@@ -29,13 +29,14 @@ async function emitAppPreview(page, label) {
 
 // Force a rare, already-tested Rust queue result at the renderer IPC edge.
 // The library behind the receipt remains the real read-only SQLite fixture.
-async function installQueueReply(page, initialJob, cancelResult = null) {
-  await page.evaluate(({ initialJob, cancelResult }) => {
+async function installQueueReply(page, initialJob, cancelResult = null, cancelDelayMs = 0) {
+  await page.evaluate(({ initialJob, cancelResult, cancelDelayMs }) => {
     // Tauri defines invoke as a non-writable property. Its Windows IPC uses
     // fetch against the ipc custom protocol, which we can intercept here.
     const original = window.fetch;
     let current = initialJob;
     window.__ciQueueListCalls = 0;
+    window.__ciCancelReplies = 0;
     const replacement = function (input, init) {
       const command = new URL(typeof input === 'string' ? input : input.url).pathname.slice(1);
       if (command === 'csdm_list_import_jobs') {
@@ -46,17 +47,23 @@ async function installQueueReply(page, initialJob, cancelResult = null) {
       }
       if (command === 'csdm_cancel_import' && cancelResult &&
           JSON.parse(init?.body || '{}').jobId === current.id) {
-        current = cancelResult;
-        return Promise.resolve(new Response(JSON.stringify(current), {
-          headers: { 'Content-Type': 'application/json', 'Tauri-Response': 'ok' },
-        }));
+        const reply = () => {
+          current = cancelResult;
+          window.__ciCancelReplies += 1;
+          return new Response(JSON.stringify(current), {
+            headers: { 'Content-Type': 'application/json', 'Tauri-Response': 'ok' },
+          });
+        };
+        return cancelDelayMs > 0
+          ? new Promise((resolve) => window.setTimeout(() => resolve(reply()), cancelDelayMs))
+          : Promise.resolve(reply());
       }
       return original.call(window, input, init);
     };
     window.fetch = replacement;
     if (window.fetch !== replacement) throw new Error('Could not install hosted queue reply');
     window.__restoreQueueInvoke = () => { window.fetch = original; };
-  }, { initialJob, cancelResult });
+  }, { initialJob, cancelResult, cancelDelayMs });
 }
 
 async function restoreQueueReply(page) {
@@ -64,6 +71,7 @@ async function restoreQueueReply(page) {
     window.__restoreQueueInvoke?.();
     delete window.__restoreQueueInvoke;
     delete window.__ciQueueListCalls;
+    delete window.__ciCancelReplies;
   });
 }
 
@@ -286,6 +294,31 @@ async function main() {
     await page.screenshot({ path: demoScreenshot, animations: 'disabled' });
     assert.equal(sha256(alphaDemo), alphaHash, 'Read-only browser changed a synthetic demo file');
     assert.equal(sha256(betaDemo), betaHash, 'Read-only browser changed a synthetic demo file');
+    // A late Cancel result must not replace a library the user opened later.
+    await page.locator('a[href="#/matches"]').click();
+    await page.getByRole('button', { name: 'Change library' }).click();
+    await page.getByText('Your local library is empty').waitFor({ timeout: 20000 });
+    const delayedRunning = { ...completedImport, id: 900003, state: 'running',
+      recovered: true, receipt: null };
+    const delayedCompleted = { ...delayedRunning, state: 'completed', receipt: completedImport.receipt };
+    await installQueueReply(page, delayedRunning, delayedCompleted, 3500);
+    await page.locator('a[href="#/demos"]').click();
+    await page.getByRole('heading', { name: 'Demo files' }).waitFor({ timeout: 20000 });
+    await page.locator('a[href="#/matches"]').click();
+    await page.getByRole('button', { name: 'Cancel import' }).click();
+    await page.getByRole('textbox', { name: 'Open an existing DemoStrike SQLite library' }).fill(fixturePath);
+    await page.getByRole('button', { name: 'Open local library' }).click();
+    await page.getByText('2 recorded matches').waitFor({ timeout: 20000 });
+    await page.waitForFunction(() => window.__ciCancelReplies === 1, null, { timeout: 10000 });
+    await sleep(250);
+    assert.equal(await page.evaluate(() => localStorage.getItem('csdm-port-selected-library')),
+      fixturePath, 'Late Cancel reply replaced the later manual library choice');
+    assert.equal(await page.getByText('2 recorded matches').count(), 1,
+      'Late Cancel reply reopened the old library');
+    const supersededCancelShot = path.join(outputDir, 'late-cancel-kept-manual-library.png');
+    await page.screenshot({ path: supersededCancelShot, animations: 'disabled' });
+    await emitAppPreview(page, 'late-cancel-kept-manual-library');
+    await restoreQueueReply(page);
     const proof = {
       source: 'actual hosted Tauri WebView2 window with original CS Demo Manager renderer',
       data: 'synthetic facts imported through the production UI/transaction behind a smoke-only parser feature, plus a separate sanitized read-only library',
@@ -295,6 +328,7 @@ async function main() {
       screenshotSha256: sha256(screenshot),
       recoveredAtStartupScreenshotSha256: sha256(recoveredAtStartupShot),
       recoveredFromCancelScreenshotSha256: sha256(recoveredFromCancelShot),
+      supersededCancelScreenshotSha256: sha256(supersededCancelShot),
       recoveredReceiptUiTest: 'synthetic queue IPC result with a real saved SQLite library',
       cancelledImportScreenshotSha256: sha256(cancelledScreenshot),
       cancelledImportDemoSha256: cancelDemoSha256,
