@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Status } from 'csdm/common/types/status';
 import { MatchesActionBar } from 'csdm/ui/matches/actionbar/action-bar';
@@ -17,6 +17,8 @@ import { describe, durationSeconds, invoke, libraryPathKey, matchRouteKey } from
 import { DemoImport, cancelImport } from './demo-import';
 import type { ImportJob } from './demo-import';
 import type { LibrarySnapshot, MatchSummary } from './match-data';
+
+const manualLibraryChangeKey = 'csdm-port-manual-library-change';
 
 const columns: readonly Column<MatchSummary>[] = [
   { id: 'fileName', accessor: 'fileName', headerText: 'Demo', headerTooltip: 'Demo file name', width: 210 },
@@ -169,14 +171,16 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
   );
 }
 
-function OriginalEmptyMatches({ onOpenLibrary }: { onOpenLibrary: (path: string) => void }) {
+function OriginalEmptyMatches({ onOpenLibrary, autoOpenRecovered }: {
+  onOpenLibrary: (path: string) => void; autoOpenRecovered: boolean;
+}) {
   const fetchMatches = useFetchMatches();
   const status = useMatchesStatus();
   useEffect(() => { if (status === Status.Idle) void fetchMatches(); });
   return (
     <MatchesTableProvider>
       <MatchesActionBar />
-      <MatchesTable onOpenLibrary={onOpenLibrary} />
+      <MatchesTable onOpenLibrary={onOpenLibrary} autoOpenRecovered={autoOpenRecovered} />
       <MatchesTableStatusBar />
     </MatchesTableProvider>
   );
@@ -187,9 +191,16 @@ function OriginalEmptyMatches({ onOpenLibrary }: { onOpenLibrary: (path: string)
 // are not mislabeled as CSDM Team A/B scores or invented combat statistics.
 export function Matches() {
   const [path, setPath] = useState(() => localStorage.getItem(libraryPathKey) ?? '');
-  if (!path) return <OriginalEmptyMatches onOpenLibrary={setPath} />;
-  return <SourceMatches path={path} onOpenLibrary={setPath} onChangeLibrary={() => {
+  const openLibrary = useCallback((selected: string) => {
+    localStorage.removeItem(manualLibraryChangeKey);
+    setPath(selected);
+  }, []);
+  if (!path) return <OriginalEmptyMatches onOpenLibrary={openLibrary}
+    autoOpenRecovered={localStorage.getItem(manualLibraryChangeKey) !== '1'} />;
+  return <SourceMatches path={path} onOpenLibrary={openLibrary} onChangeLibrary={() => {
+    localStorage.setItem(manualLibraryChangeKey, '1');
     localStorage.removeItem(libraryPathKey);
     setPath('');
   }} />;
 }
+
