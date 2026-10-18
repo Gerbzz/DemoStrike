@@ -3,14 +3,21 @@ import { Button } from 'csdm/ui/components/buttons/button';
 import { describe, invoke } from './match-data';
 
 export type ImportReceipt = { path: string; matchId: number; mapName: string; playerCount: number; roundCount: number };
-export type ImportJob = { id: number; demoPath: string; state: 'queued' | 'running' | 'completed' | 'failed';
+export type ImportJob = { id: number; demoPath: string; state: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   recovered: boolean; receipt: ImportReceipt | null; error: string | null; createdAt: string };
 
-export function DemoImport({ onQueued }: { onQueued: (job: ImportJob) => void }) {
+export function cancelImport(jobId: number): Promise<ImportJob> {
+  return invoke<ImportJob>('csdm_cancel_import', { jobId });
+}
+
+export function DemoImport({ onQueued, onStart }: {
+  onQueued: (job: ImportJob) => void; onStart?: () => void;
+}) {
   const [demoPath, setDemoPath] = useState('');
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
   async function importDemo() {
+    onStart?.();
     setWorking(true);
     setError('');
     try {
