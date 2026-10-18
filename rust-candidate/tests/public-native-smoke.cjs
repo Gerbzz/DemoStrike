@@ -475,16 +475,37 @@ async function main() {
       const meta = await invoke('get_viewer_round', { path: library, matchId, roundNumber: 1 });
       if (!meta.positionsAvailable) throw new Error('Native frame stream was not persisted');
       let candidate = null;
+      const grenadeFrames = [];
       for (let start = meta.startTick; start <= meta.endTick; start += 512) {
         const chunk = await invoke('get_viewer_frames', {
           path: library, matchId, roundNumber: 1,
           startTick: start, endTick: Math.min(start + 511, meta.endTick),
         });
+        grenadeFrames.push(...chunk.grenades);
         const grenade = chunk.grenades.find((frame) => chunk.players.some((player) => player.tick === frame.tick));
-        if (grenade) { candidate = { tick: grenade.tick, players: chunk.players.filter((player) => player.tick === grenade.tick).length,
-          grenades: chunk.grenades.filter((frame) => frame.tick === grenade.tick).length }; break; }
+        if (grenade && candidate === null) candidate = { tick: grenade.tick,
+          players: chunk.players.filter((player) => player.tick === grenade.tick).length,
+          grenades: chunk.grenades.filter((frame) => frame.tick === grenade.tick).length };
       }
-      return { meta, candidate };
+      // Freeze the prior TypeScript projectileId choice over the same bounded
+      // frame stream. Rust now returns this choice in each utility event.
+      const priorTrajectory = (event) => {
+        if (event.projectileEntityId === null || event.detonateTick === null) return null;
+        const candidates = grenadeFrames.filter((frame) =>
+          frame.entityId === event.projectileEntityId
+          && frame.tick >= event.throwTick - 2 && frame.tick <= event.detonateTick + 2
+          && (frame.throwerSteamid === null || frame.throwerSteamid === event.throwerSteamid));
+        if (!candidates.length) return null;
+        candidates.sort((a, b) => Math.abs(a.tick - event.throwTick) - Math.abs(b.tick - event.throwTick));
+        const nearest = candidates[0];
+        if (candidates.some((frame) => frame.trajectoryIndex !== nearest.trajectoryIndex
+          && Math.abs(frame.tick - event.throwTick) === Math.abs(nearest.tick - event.throwTick))) return null;
+        return nearest.trajectoryIndex;
+      };
+      const projectileLinkParity = meta.utilityEvents.map((event) => ({
+        id: event.id, reference: priorTrajectory(event), native: event.observedTrajectoryIndex,
+      }));
+      return { meta, candidate, projectileLinkParity };
     });
     assert.ok(viewerFacts.meta.playerSampleCount > 1000, 'Native player frame stream is unexpectedly sparse');
     assert.ok(viewerFacts.meta.grenadeSampleCount > 0, 'Native projectile frame stream is absent');
@@ -492,6 +513,13 @@ async function main() {
       'No grounded grenade lifecycle events reached the viewer');
     assert.equal(viewerFacts.meta.bombEventsAvailable, true, 'New native import lost bomb event provenance');
     assert.ok(viewerFacts.candidate, 'No synchronized player and projectile frame was found');
+    assert.ok(viewerFacts.projectileLinkParity.length > 0, 'No recorded utility events to compare');
+    assert.ok(viewerFacts.projectileLinkParity.some((event) => event.native !== null),
+      'Real viewer fixture has no grounded projectile link');
+    for (const event of viewerFacts.projectileLinkParity) {
+      assert.equal(event.native, event.reference,
+        `Rust projectile link differs from prior TypeScript for utility ${event.id}`);
+    }
     const eventList = page.locator('details.native-recorded-events');
     await eventList.locator('summary').click({ noWaitAfter: true });
     const damageEvent = eventList.locator('[data-event-kind="damage"]').first();

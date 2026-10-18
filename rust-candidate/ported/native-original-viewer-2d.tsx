@@ -164,7 +164,7 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap, ini
   const grenadePositions = useMemo(() => frames.grenades.map((frame) =>
     grenadePosition(frame, checksum!, recorded.roundNumber, fireSubtypes.get(frame.trajectoryIndex)))
     .filter((row): row is GrenadePosition => row !== null), [frames.grenades, checksum, recorded.roundNumber, fireSubtypes]);
-  const lifecycle = useMemo(() => observedGrenadeEvents(meta, frames.grenades, checksum!), [meta, frames.grenades, checksum]);
+  const lifecycle = useMemo(() => observedGrenadeEvents(meta, checksum!), [meta, checksum]);
   const bombs = useMemo(() => observedBombTimeline(meta, checksum!), [meta, checksum]);
   const kills = useMemo(() => observedKills(detail, recorded, frames, checksum!, start, end), [detail, recorded, frames, checksum, start, end]);
   const tickrate = meta.tickRate && meta.tickRate > 0 ? meta.tickRate : 64;

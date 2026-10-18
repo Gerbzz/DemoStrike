@@ -52,29 +52,15 @@ export function observedFireSubtypes(
     .map(([index, types]) => [index, types[0]!]));
 }
 
-// The imported utility table stores observed detonation ticks and positions.
-// Match a projectile only when its recorded entity, thrower and tick window
-// identify a trajectory. A missing match never creates a synthetic path.
-function projectileId(event: ViewerUtilityEvent, frames: ViewerGrenadeFrame[]): string {
-  if (event.projectileEntityId === null || event.detonateTick === null) return `unmatched-${event.id}`;
-  const candidates = frames.filter((frame) =>
-    frame.entityId === event.projectileEntityId
-    && frame.tick >= event.throwTick - 2
-    && frame.tick <= event.detonateTick! + 2
-    && (frame.throwerSteamid === null || frame.throwerSteamid === event.throwerSteamid));
-  if (!candidates.length) return `unmatched-${event.id}`;
-  candidates.sort((a, b) => Math.abs(a.tick - event.throwTick) - Math.abs(b.tick - event.throwTick));
-  const nearest = candidates[0];
-  // Entity reuse or overlapping trajectories would make a link ambiguous.
-  if (candidates.some((row) => row.trajectoryIndex !== nearest.trajectoryIndex
-      && Math.abs(row.tick - event.throwTick) === Math.abs(nearest.tick - event.throwTick))) {
-    return `unmatched-${event.id}`;
-  }
-  return String(nearest.trajectoryIndex);
+// Rust now selects the observed trajectory. The original event still needs a
+// string projectileId; preserve the previous unmatched-id convention.
+function projectileId(event: ViewerUtilityEvent): string {
+  return event.observedTrajectoryIndex === null
+    ? `unmatched-${event.id}` : String(event.observedTrajectoryIndex);
 }
 
 export function observedGrenadeEvents(
-  meta: ViewerRoundMeta, frames: ViewerGrenadeFrame[], checksum: string,
+  meta: ViewerRoundMeta, checksum: string,
 ): Lifecycle {
   const result: Lifecycle = {
     smokesStart: [], decoysStart: [], heGrenadesExplode: [], flashbangsExplode: [], recorded: [],
@@ -92,7 +78,7 @@ export function observedGrenadeEvents(
       id: `native-utility-${event.id}`, matchChecksum: checksum,
       roundNumber: meta.roundNumber, tick, frame: Number.NaN,
       grenadeId: String(event.projectileEntityId ?? event.id),
-      projectileId: projectileId(event, frames),
+      projectileId: projectileId(event),
       x: event.detonateX, y: event.detonateY, z: event.detonateZ,
       throwerSteamId: event.throwerSteamid, throwerName: event.throwerName,
       throwerTeamName: '', throwerSide: nativeSide(event.throwerSide),

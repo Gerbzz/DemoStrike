@@ -107,6 +107,7 @@ export type ViewerUtilityEvent = {
   detonateTick: number | null;
   detonateX: number | null; detonateY: number | null; detonateZ: number | null;
   projectileEntityId: number | null;
+  observedTrajectoryIndex: number | null;
   throwerSteamid: string; throwerName: string; throwerSide: string;
 };
 export type ViewerBombEvent = {
