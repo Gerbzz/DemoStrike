@@ -1078,9 +1078,16 @@ impl DemoStrikeApp {
         let mut add_tag = None;
         let mut remove_tag = None;
         let mut prepare_capture = None;
+        let mut import_from_empty_library = false;
         ui.group(|ui| {
             ui.heading("Saved matches");
-            if self.library_matches.is_empty() { ui.label("No imported matches in this database."); return; }
+            if self.library_matches.is_empty() {
+                ui.label("No matches saved yet. Import a CS2 demo to build your searchable event library.");
+                if ui.add_enabled(self.import_messages.is_none(), egui::Button::new("Import CS2 demo…")).clicked() {
+                    import_from_empty_library = true;
+                }
+                return;
+            }
             egui::ComboBox::from_id_salt("saved_match").selected_text(
                 self.library_matches.iter().find(|m| Some(m.id) == self.library_match_id)
                     .map(|m| format!("{} · {} · {} events", m.file_name, m.map_name, m.event_count))
@@ -1118,6 +1125,9 @@ impl DemoStrikeApp {
                 }
             });
             egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                if self.library_events.is_empty() {
+                    ui.label("No events match this view. Try another match, search, or favorite filter.");
+                }
                 for event in &self.library_events {
                     let label = format!("{} Round {} · {} {} · tick {}{}",
                         if event.favorite { "★" } else { "☆" }, event.round_number,
@@ -1167,6 +1177,11 @@ impl DemoStrikeApp {
                 }
             }
         });
+        if import_from_empty_library {
+            if let Some(path) = rfd::FileDialog::new().add_filter("CS2 demo", &["dem"]).pick_file() {
+                let _ = self.start_demo_import(&path);
+            }
+        }
         if let Some(id) = choose_match { self.library_match_id = Some(id); self.library_page = 0; refresh_events = true; }
         if refresh_events { if let Err(error) = self.refresh_library_events() { self.error = Some(error); } }
         if let Some(id) = choose_event { if let Err(error) = self.select_saved_event(id) { self.error = Some(error); } }
@@ -1313,23 +1328,40 @@ impl eframe::App for DemoStrikeApp {
         self.poll_capture_request();
         self.poll_pilot();
         self.poll_package_import();
-        ctx.set_visuals(egui::Visuals::dark());
+        let mut style = (*ctx.style_of(egui::Theme::Dark)).clone();
+        style.visuals = egui::Visuals::dark();
+        style.visuals.panel_fill = egui::Color32::from_rgb(24, 28, 34);
+        style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(48, 55, 64);
+        style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(67, 77, 88);
+        style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(110, 77, 62);
+        style.spacing.item_spacing = egui::vec2(10.0, 9.0);
+        style.spacing.button_padding = egui::vec2(12.0, 7.0);
+        style.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(15.0));
+        style.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
+        style.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
+        ctx.set_style_of(egui::Theme::Light, style.clone());
+        ctx.set_style_of(egui::Theme::Dark, style);
         egui::Panel::top("header").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("DemoStrike");
-                ui.label("Utility event analysis");
-                if ui.add_enabled(self.import_messages.is_none(), egui::Button::new("Import CS2 demo (Rust analysis)" )).clicked() {
+                ui.separator();
+                ui.label("Match events and capture");
+            });
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                if ui.add_enabled(self.import_messages.is_none(), egui::Button::new("Import CS2 demo")).on_hover_text("Analyze grenade, combat, and flash events locally").clicked() {
                     if let Some(path) = rfd::FileDialog::new().add_filter("CS2 demo", &["dem"]).pick_file() {
                         let _ = self.start_demo_import(&path);
                     }
                 }
+                if ui.button("Saved matches").clicked() {
+                    if let Err(error) = self.refresh_library() { self.error = Some(error); }
+                }
+                ui.menu_button("Other sources and projects", |ui| {
                 if ui.add_enabled(self.import_messages.is_none(), egui::Button::new("Import with reference extractor")).clicked() {
                     if let Some(path) = rfd::FileDialog::new().add_filter("CS2 demo", &["dem"]).pick_file() {
                         let _ = self.start_reference_demo_import(&path);
                     }
-                }
-                if ui.button("Open saved matches").clicked() {
-                    if let Err(error) = self.refresh_library() { self.error = Some(error); }
                 }
                 if ui.button("Open editable project").clicked() {
                     if let Some(path) = rfd::FileDialog::new()
@@ -1365,6 +1397,7 @@ impl eframe::App for DemoStrikeApp {
                         let _ = self.load_raw_json(&path);
                     }
                 }
+                });
             });
         });
 
@@ -1660,7 +1693,7 @@ impl eframe::App for DemoStrikeApp {
             }
             if let Some(result) = &self.package_result {
                 ui.colored_label(egui::Color32::LIGHT_GREEN, result);
-            } else {
+            } else if self.analyzed.is_some() || self.draft.is_some() {
                 ui.colored_label(egui::Color32::YELLOW, "No capture media verified in this view.");
             }
             if let Some(error) = &self.error {
@@ -1690,8 +1723,24 @@ impl eframe::App for DemoStrikeApp {
             }
             if build_requested { let _ = self.build_capture_package(); }
             let Some(analyzed) = &self.analyzed else {
-                ui.heading("Import a CS2 demo or open raw facts");
-                ui.label("Open a CS2 demo for local grenade, combat, and flash event analysis. Unsupported schemas fail before saving; economy and game capture are separate.");
+                if !self.library_opened && self.draft.is_none() {
+                    ui.add_space(52.0);
+                    ui.vertical_centered(|ui| {
+                        ui.heading(egui::RichText::new("Find the moments worth clipping").size(24.0).strong());
+                        ui.add_space(10.0);
+                        ui.label("Import a CS2 demo to review grenade, combat, and flash events.");
+                        ui.label("Your saved matches and editable capture projects are available above.");
+                        ui.add_space(22.0);
+                        let primary = egui::Button::new(egui::RichText::new("Import CS2 demo…").strong().color(egui::Color32::WHITE))
+                            .fill(egui::Color32::from_rgb(157, 72, 39))
+                            .min_size(egui::vec2(188.0, 36.0));
+                        if ui.add_enabled(self.import_messages.is_none(), primary).clicked() {
+                            if let Some(path) = rfd::FileDialog::new().add_filter("CS2 demo", &["dem"]).pick_file() {
+                                let _ = self.start_demo_import(&path);
+                            }
+                        }
+                    });
+                }
                 return;
             };
             if let Some(path) = &self.source_label {
@@ -1769,6 +1818,8 @@ mod tests {
     use std::sync::Arc;
     use crate::demo_import::ImportControl;
     use std::time::Duration;
+    use filmcraft_engine::Session;
+    use serde_json::json;
 
     #[test]
     fn stale_discard_confirmation_cannot_close_an_exporting_editor() {
@@ -1829,6 +1880,11 @@ mod tests {
         assert!(app.error.is_none());
         let saved = crate::db::queries::list_matches(&crate::db::open(Path::new(&app.database_path)).unwrap()).unwrap();
         assert_eq!(saved.len(), 1);
+        app.refresh_library().unwrap();
+        assert!(app.library_opened);
+        assert_eq!(app.library_matches.len(), 1);
+        assert_eq!(app.library_match_id, Some(saved[0].id));
+        assert_eq!(app.library_matches[0].file_name, "fixture.dem");
 
         app.start_demo_import_with_parser(&demo, Arc::new(UiFixtureParser { wait_for_cancel: true })).unwrap();
         app.import_cancel.request_cancel();
@@ -1842,6 +1898,22 @@ mod tests {
         let cancel_signal = Arc::clone(&app.import_cancel);
         drop(app);
         assert!(cancel_signal.is_cancelled());
+    }
+
+    #[test]
+    fn synthetic_filmcraft_project_opens_through_demo_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("synthetic.fcproj");
+        let mut source = Session::default();
+        source.execute("file.openDemoProject", json!({})).unwrap();
+        source.execute("file.saveAs", json!({"path": project.to_string_lossy()})).unwrap();
+
+        let (_, legacy) = load_editor_session(&project).unwrap();
+        assert!(!legacy);
+        let mut app = DemoStrikeApp::default();
+        app.open_saved_project(&project).unwrap();
+        assert!(app.embedded_editor.is_some());
+        assert!(app.open_saved_project(&project).unwrap_err().contains("return from the current edit"));
     }
 
     #[test]
