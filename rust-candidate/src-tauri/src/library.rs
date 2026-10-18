@@ -906,11 +906,13 @@ fn aggregate_observed_duels(rounds: &[RoundSummary]) -> Option<Vec<ObservedDuelP
     Some(
         pairs
             .into_iter()
-            .map(|((attacker_steamid, victim_steamid), events)| ObservedDuelPair {
-                attacker_steamid,
-                victim_steamid,
-                events,
-            })
+            .map(
+                |((attacker_steamid, victim_steamid), events)| ObservedDuelPair {
+                    attacker_steamid,
+                    victim_steamid,
+                    events,
+                },
+            )
             .collect(),
     )
 }
@@ -1264,23 +1266,31 @@ mod observed_duel_tests {
     #[test]
     fn unavailable_and_verified_empty_streams_are_distinct() {
         assert!(aggregate_observed_duels(&[round(1, None)]).is_none());
-        assert!(aggregate_observed_duels(&[round(1, Some(vec![]))])
-            .expect("verified stream")
-            .is_empty());
+        assert!(
+            aggregate_observed_duels(&[round(1, Some(vec![]))])
+                .expect("verified stream")
+                .is_empty()
+        );
     }
 
     #[test]
     fn groups_only_observed_opposing_sides_and_keeps_event_order() {
         let rounds = [
-            round(1, Some(vec![
-                death(1, Some("a"), Some("CT"), "b", Some("T")),
-                death(2, Some("a"), Some("CT"), "a", Some("T")),
-                death(3, Some("a"), Some("CT"), "c", Some("CT")),
-                death(4, None, None, "b", Some("T")),
-                death(5, Some("a"), None, "b", Some("T")),
-                death(6, Some("b"), Some("T"), "a", Some("CT")),
-            ])),
-            round(2, Some(vec![death(7, Some("a"), Some("T"), "b", Some("CT"))])),
+            round(
+                1,
+                Some(vec![
+                    death(1, Some("a"), Some("CT"), "b", Some("T")),
+                    death(2, Some("a"), Some("CT"), "a", Some("T")),
+                    death(3, Some("a"), Some("CT"), "c", Some("CT")),
+                    death(4, None, None, "b", Some("T")),
+                    death(5, Some("a"), None, "b", Some("T")),
+                    death(6, Some("b"), Some("T"), "a", Some("CT")),
+                ]),
+            ),
+            round(
+                2,
+                Some(vec![death(7, Some("a"), Some("T"), "b", Some("CT"))]),
+            ),
         ];
         let pairs = aggregate_observed_duels(&rounds).expect("verified stream");
         assert_eq!(pairs.len(), 2);
