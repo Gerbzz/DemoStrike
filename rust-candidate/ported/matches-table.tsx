@@ -12,6 +12,8 @@ import { DemoImport, cancelImport } from './demo-import';
 import type { ImportJob } from './demo-import';
 import { describe, invoke } from './match-data';
 
+export const manualLibraryChangeKey = 'csdm-port-manual-library-change';
+
 // Keep the original action bar, table, status bar, and route. This replaces
 // only the messages that would otherwise claim an unported demo import works.
 export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
@@ -29,7 +31,12 @@ export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
   const search = useFuzzySearchText();
   const acceptJob = useCallback((job: ImportJob) => {
     setQueued(job);
-    if (job.state === 'completed' && job.receipt) onOpenLibrary(job.receipt.path);
+    // A stale startup or poll reply may arrive after the user chooses Change
+    // library. Read the current choice when opening, not only at effect mount.
+    if (job.state === 'completed' && job.receipt &&
+        (!job.recovered || localStorage.getItem(manualLibraryChangeKey) !== '1')) {
+      onOpenLibrary(job.receipt.path);
+    }
   }, [onOpenLibrary]);
 
   useEffect(() => {
