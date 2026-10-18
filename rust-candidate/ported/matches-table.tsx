@@ -29,12 +29,12 @@ export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
   const fetchMatches = useFetchMatches();
   const { hasActiveFilter } = useActiveMatchesFilters();
   const search = useFuzzySearchText();
-  const acceptJob = useCallback((job: ImportJob) => {
+  const acceptJob = useCallback((job: ImportJob, fromCancel = false) => {
     setQueued(job);
     // A stale startup or poll reply may arrive after the user chooses Change
     // library. Read the current choice when opening, not only at effect mount.
     if (job.state === 'completed' && job.receipt &&
-        (!job.recovered || localStorage.getItem(manualLibraryChangeKey) !== '1')) {
+        (fromCancel || !job.recovered || localStorage.getItem(manualLibraryChangeKey) !== '1')) {
       onOpenLibrary(job.receipt.path);
     }
   }, [onOpenLibrary]);
@@ -112,7 +112,7 @@ export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
                 onClick={() => {
                   setCancelling(true);
                   setCancelError('');
-                  void cancelImport(queued.id).then(acceptJob)
+                  void cancelImport(queued.id).then((job) => acceptJob(job, true))
                     .catch((failure) => setCancelError(describe(failure)))
                     .finally(() => setCancelling(false));
                 }}>Cancel import</Button>}
