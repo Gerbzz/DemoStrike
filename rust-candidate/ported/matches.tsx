@@ -136,7 +136,7 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
         {jobs.slice(0, 5).map((job) => <div key={job.id} className="mt-4 flex flex-wrap items-center gap-x-8 gap-y-4 text-gray-700">
           <span className="break-all" role={job.state === 'failed' ? 'alert' : 'status'}>
             <span className="text-body-strong">{job.state === 'running' ? 'Analyzing' : job.state === 'completed' ? 'Imported' : job.state === 'failed' ? 'Import failed' : job.state === 'cancelled' ? 'Cancelled' : 'Queued'}</span>
-            {' '}{job.demoPath}{job.recovered ? ' � resumed after restart' : ''}{job.error ? `: ${job.error}` : ''}
+            {' '}{job.demoPath}{job.recovered ? ' · resumed after restart' : ''}{job.error ? `: ${job.error}` : ''}
           </span>
           {(job.state === 'queued' || job.state === 'running') && <Button isDisabled={cancellingId === job.id}
             onClick={() => {
@@ -163,7 +163,7 @@ function SourceMatches({ path, onChangeLibrary, onOpenLibrary }: { path: string;
       </CenteredContent>}
       {status === 'ready' && matches.length > 0 && <Table table={table} />}
       <div className="flex justify-end border-t border-gray-300 px-16 py-8 text-gray-700">
-        {status === 'ready' ? `${matches.length} recorded ${matches.length === 1 ? 'match' : 'matches'} � Read only` : 'Read only'}
+        {status === 'ready' ? `${matches.length} recorded ${matches.length === 1 ? 'match' : 'matches'} · Read only` : 'Read only'}
       </div>
     </>
   );
