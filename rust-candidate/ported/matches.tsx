@@ -12,7 +12,7 @@ import { CenteredContent } from 'csdm/ui/components/content';
 import { Table } from 'csdm/ui/components/table/table';
 import { useTable } from 'csdm/ui/components/table/use-table';
 import type { Column } from 'csdm/ui/components/table/table-types';
-import { MatchesTable, manualLibraryChangeKey } from './matches-table';
+import { MatchesTable, intendedImportJobKey, manualLibraryChangeKey } from './matches-table';
 import { describe, durationSeconds, invoke, libraryPathKey, matchRouteKey } from './match-data';
 import { DemoImport, cancelImport } from './demo-import';
 import type { ImportJob } from './demo-import';
@@ -192,12 +192,14 @@ export function Matches() {
   const [path, setPath] = useState(() => localStorage.getItem(libraryPathKey) ?? '');
   const openLibrary = useCallback((selected: string) => {
     localStorage.removeItem(manualLibraryChangeKey);
+    localStorage.removeItem(intendedImportJobKey);
     setPath(selected);
   }, []);
   if (!path) return <OriginalEmptyMatches onOpenLibrary={openLibrary}
     autoOpenRecovered={localStorage.getItem(manualLibraryChangeKey) !== '1'} />;
   return <SourceMatches path={path} onOpenLibrary={openLibrary} onChangeLibrary={() => {
     localStorage.setItem(manualLibraryChangeKey, '1');
+    localStorage.removeItem(intendedImportJobKey);
     localStorage.removeItem(libraryPathKey);
     setPath('');
   }} />;
