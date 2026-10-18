@@ -18,6 +18,18 @@ public static class LegacySmokeWindow {
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr handle, out RECT bounds);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT bounds);
+    [DllImport("user32.dll", EntryPoint="SendMessageW", CharSet=CharSet.Unicode)]
+    private static extern IntPtr SendMessageSetText(IntPtr handle, uint message, IntPtr parameter, string text);
+    [DllImport("user32.dll", EntryPoint="SendMessageW", CharSet=CharSet.Unicode)]
+    private static extern IntPtr SendMessageGetText(IntPtr handle, uint message, IntPtr length, System.Text.StringBuilder text);
+    public static void SetControlText(IntPtr handle, string text) {
+        SendMessageSetText(handle, 0x000C, IntPtr.Zero, text);
+    }
+    public static string ReadControlText(IntPtr handle) {
+        var result = new System.Text.StringBuilder(4096);
+        SendMessageGetText(handle, 0x000D, new IntPtr(result.Capacity), result);
+        return result.ToString();
+    }
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr handle, ref POINT point);
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
@@ -213,6 +225,23 @@ function Open-Dialog-Project([IntPtr]$dialog, [string]$project) {
         Send-Chord ([byte[]](0x11, 0x41)) # Ctrl+A in the verified File name control.
         Send-Chord ([byte[]](0x11, 0x56)) # Ctrl+V.
         Write-Output 'LEGACY_DIALOG_FILENAME_INPUT_SENT'
+        $nativeEdit = [LegacySmokeWindow]::FindChildByClass($fileNameHandle, 'Edit')
+        $textHandle = if ($nativeEdit -ne [IntPtr]::Zero) { $nativeEdit } else { $fileNameHandle }
+        $observed = [LegacySmokeWindow]::ReadControlText($textHandle)
+        $method = 'keyboard'
+        if ($observed -ne $project) {
+            [LegacySmokeWindow]::SetControlText($textHandle, $project)
+            Start-Sleep -Milliseconds 200
+            $observed = [LegacySmokeWindow]::ReadControlText($textHandle)
+            $method = 'verified-native-control'
+        }
+        if ($observed -ne $project) {
+            Write-Output "LEGACY_DIALOG_CHILD_CONTROLS $([LegacySmokeWindow]::ChildControlSummary($fileNameHandle))"
+            throw 'Verified File name control did not retain the exact synthetic project path'
+        }
+        Write-Output "LEGACY_DIALOG_FILENAME_VERIFIED method=$method characters=$($observed.Length)"
+        try { Save-Desktop-Diagnostic $dialog 'dialog-filename' }
+        catch { Write-Output "LEGACY_DESKTOP_DIAGNOSTIC_ERROR dialog $_" }
     }
     $buttonCondition = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
