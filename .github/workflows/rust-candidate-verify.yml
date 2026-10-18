@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'rust-candidate/**'
+      - 'tests/editor_runtime_native.ps1'
       - '.github/workflows/rust-candidate-verify.yml'
   workflow_dispatch:
 
