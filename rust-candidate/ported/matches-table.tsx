@@ -8,7 +8,7 @@ import { useMatchesTable } from 'csdm/ui/matches/table/use-matches-table';
 import { useFetchMatches } from 'csdm/ui/matches/use-fetch-matches';
 import { useActiveMatchesFilters } from 'csdm/ui/matches/use-active-matches-filters';
 import { useFuzzySearchText } from 'csdm/ui/matches/use-fuzzy-search-text';
-import { DemoImport } from './demo-import';
+import { DemoImport, cancelImport } from './demo-import';
 import type { ImportJob } from './demo-import';
 import { describe, invoke } from './match-data';
 
@@ -18,6 +18,8 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
   const [path, setPath] = useState('');
   const [pickerError, setPickerError] = useState('');
   const [queued, setQueued] = useState<ImportJob | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState('');
   const table = useMatchesTable();
   const status = useMatchesStatus();
   const fetchMatches = useFetchMatches();
@@ -33,7 +35,7 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
   }, []);
 
   useEffect(() => {
-    if (!queued || queued.state === 'completed' || queued.state === 'failed') return;
+    if (!queued || queued.state === 'completed' || queued.state === 'failed' || queued.state === 'cancelled') return;
     let active = true;
     async function poll() {
       try {
@@ -84,8 +86,18 @@ export function MatchesTable({ onOpenLibrary }: { onOpenLibrary: (path: string) 
                 {queued.state === 'failed' ? `Import failed: ${queued.error}` : queued.state === 'running'
                   ? queued.recovered ? 'Resuming demo analysis after restart. Large matches may take several minutes.'
                     : 'Analyzing demo in the import queue. Large matches may take several minutes.'
-                  : queued.recovered ? 'Demo queued again after restart.' : 'Demo queued for import.'}
+                  : queued.state === 'cancelled' ? 'Import cancelled. No match was saved.'
+                    : queued.recovered ? 'Demo queued again after restart.' : 'Demo queued for import.'}
               </p>}
+              {queued && (queued.state === 'queued' || queued.state === 'running') && <Button isDisabled={cancelling}
+                onClick={() => {
+                  setCancelling(true);
+                  setCancelError('');
+                  void cancelImport(queued.id).then(setQueued)
+                    .catch((failure) => setCancelError(describe(failure)))
+                    .finally(() => setCancelling(false));
+                }}>Cancel import</Button>}
+              {cancelError && <p role="alert" className="text-red-500 select-text">{cancelError}</p>}
               <div className="flex w-full flex-col gap-y-8 border-t border-gray-300 pt-16">
               <label htmlFor="local-library-path" className="text-body-strong">Open an existing DemoStrike SQLite library</label>
               <p className="text-gray-700">Paste the path to a library file to inspect its matches, rounds, players, and utility in read-only mode.</p>
