@@ -12,13 +12,12 @@ import { CenteredContent } from 'csdm/ui/components/content';
 import { Table } from 'csdm/ui/components/table/table';
 import { useTable } from 'csdm/ui/components/table/use-table';
 import type { Column } from 'csdm/ui/components/table/table-types';
-import { MatchesTable } from './matches-table';
+import { MatchesTable, manualLibraryChangeKey } from './matches-table';
 import { describe, durationSeconds, invoke, libraryPathKey, matchRouteKey } from './match-data';
 import { DemoImport, cancelImport } from './demo-import';
 import type { ImportJob } from './demo-import';
 import type { LibrarySnapshot, MatchSummary } from './match-data';
 
-const manualLibraryChangeKey = 'csdm-port-manual-library-change';
 
 const columns: readonly Column<MatchSummary>[] = [
   { id: 'fileName', accessor: 'fileName', headerText: 'Demo', headerTooltip: 'Demo file name', width: 210 },
