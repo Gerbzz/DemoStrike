@@ -1,0 +1,165 @@
+use demostrike_rust_candidate::library::{
+    ScoreRelation, get_match_detail, list_matches, score_relation,
+};
+use rusqlite::Connection;
+use tempfile::tempdir;
+
+fn fixture() -> (tempfile::TempDir, String) {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("library.sqlite");
+    let db = Connection::open(&path).unwrap();
+    db.execute_batch(
+        "PRAGMA user_version = 6;
+         CREATE TABLE matches (id INTEGER PRIMARY KEY, file_name TEXT, map_name TEXT, score_ct INTEGER, score_t INTEGER, imported_at TEXT, parser_capability TEXT, effect_attribution_version INTEGER);
+         CREATE TABLE players (match_id INTEGER, steamid TEXT, name TEXT);
+         CREATE TABLE rounds (match_id INTEGER, round_number INTEGER, winner TEXT, start_tick INTEGER, end_tick INTEGER);
+         CREATE TABLE utility_events (id INTEGER PRIMARY KEY, match_id INTEGER, round_number INTEGER, utility_type TEXT, thrower_name TEXT, thrower_team TEXT, throw_tick INTEGER, enemies_blinded INTEGER, damage_enemy INTEGER, blind_attribution_complete INTEGER NOT NULL DEFAULT 0, damage_attribution_complete INTEGER NOT NULL DEFAULT 0);
+         CREATE VIEW utility_events_supported AS
+         SELECT e.id, e.match_id, m.effect_attribution_version, e.blind_attribution_complete, e.damage_attribution_complete,
+                CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.blind_attribution_complete != 1 THEN NULL ELSE e.enemies_blinded END AS enemies_blinded,
+                CASE WHEN m.parser_capability = 'grenade-only-v1' OR m.effect_attribution_version IS NOT 2 OR e.damage_attribution_complete != 1 THEN NULL ELSE e.damage_enemy END AS damage_enemy
+         FROM utility_events e JOIN matches m ON m.id = e.match_id;
+         INSERT INTO matches VALUES (1, 'cache.dem', 'de_cache', 10, 5, '2026-10-17T00:00:00Z', 'native-combat-flash-v1', NULL);
+         INSERT INTO players VALUES (1, '7656', 'Tester');
+         INSERT INTO rounds VALUES (1, 1, 'CT', 100, 200);
+         INSERT INTO utility_events (id, match_id, round_number, utility_type, thrower_name, thrower_team, throw_tick, enemies_blinded, damage_enemy)
+         VALUES (1, 1, 1, 'smoke', 'Tester', 'CT', 140, 8, 34);",
+    )
+    .unwrap();
+    (dir, path.to_string_lossy().into_owned())
+}
+
+#[test]
+fn lists_real_schema_rows_without_writing() {
+    let (_dir, path) = fixture();
+    let before = std::fs::read(&path).unwrap();
+    let snapshot = list_matches(&path).unwrap();
+    assert_eq!(snapshot.matches.len(), 1);
+    assert_eq!(snapshot.matches[0].utility_count, 1);
+    assert_eq!(snapshot.matches[0].player_count, 1);
+    assert_eq!(
+        snapshot.matches[0].score_ct_relation,
+        ScoreRelation::Leading
+    );
+    assert_eq!(
+        snapshot.matches[0].score_t_relation,
+        ScoreRelation::Trailing
+    );
+    assert_eq!(std::fs::read(path).unwrap(), before);
+}
+
+#[test]
+fn preserves_upstream_team_score_relation_for_all_three_cases() {
+    assert_eq!(score_relation(5, 5), ScoreRelation::Tied);
+    assert_eq!(score_relation(10, 5), ScoreRelation::Leading);
+    assert_eq!(score_relation(5, 10), ScoreRelation::Trailing);
+}
+
+#[test]
+fn loads_rounds_players_and_utility_for_selected_match() {
+    let (_dir, path) = fixture();
+    let detail = get_match_detail(&path, 1).unwrap();
+    assert_eq!(detail.summary.map_name, "de_cache");
+    assert_eq!(detail.rounds.len(), 1);
+    assert_eq!(detail.players[0].name, "Tester");
+    assert_eq!(detail.utility_events[0].utility_type, "smoke");
+    assert_eq!(detail.utility_events[0].enemies_blinded, None);
+    assert_eq!(detail.utility_events[0].damage_enemy, None);
+    assert_eq!(detail.utility_breakdown[0].count, 1);
+}
+
+#[test]
+fn effect_totals_follow_supported_view_provenance() {
+    let (_dir, path) = fixture();
+    let db = Connection::open(&path).unwrap();
+    db.execute(
+        "UPDATE utility_events SET blind_attribution_complete = 1, damage_attribution_complete = 1",
+        [],
+    )
+    .unwrap();
+    // Versionless old imports retain stored numbers, but cannot prove attribution.
+    let detail = get_match_detail(&path, 1).unwrap();
+    assert_eq!(detail.utility_events[0].enemies_blinded, None);
+    assert_eq!(detail.utility_events[0].damage_enemy, None);
+
+    db.execute("UPDATE matches SET effect_attribution_version = 2", [])
+        .unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let detail = get_match_detail(&path, 1).unwrap();
+    assert_eq!(detail.utility_events[0].enemies_blinded, Some(8));
+    assert_eq!(detail.utility_events[0].damage_enemy, Some(34));
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+
+    db.execute(
+        "UPDATE utility_events SET damage_attribution_complete = 0",
+        [],
+    )
+    .unwrap();
+    let detail = get_match_detail(&path, 1).unwrap();
+    assert_eq!(detail.utility_events[0].enemies_blinded, Some(8));
+    assert_eq!(detail.utility_events[0].damage_enemy, None);
+
+    db.execute(
+        "UPDATE matches SET parser_capability = 'grenade-only-v1'",
+        [],
+    )
+    .unwrap();
+    let detail = get_match_detail(&path, 1).unwrap();
+    assert_eq!(detail.utility_events[0].enemies_blinded, None);
+    assert_eq!(detail.utility_events[0].damage_enemy, None);
+
+    db.execute(
+        "UPDATE matches SET parser_capability = 'native-combat-flash-v1'",
+        [],
+    )
+    .unwrap();
+    db.execute("UPDATE utility_events SET enemies_blinded = 0, damage_enemy = 0, damage_attribution_complete = 1", []).unwrap();
+    let detail = get_match_detail(&path, 1).unwrap();
+    assert_eq!(detail.utility_events[0].enemies_blinded, Some(0));
+    assert_eq!(detail.utility_events[0].damage_enemy, Some(0));
+}
+
+#[test]
+fn legacy_view_does_not_promote_stored_totals_into_facts() {
+    let (_dir, path) = fixture();
+    let db = Connection::open(&path).unwrap();
+    db.execute_batch(
+        "DROP VIEW utility_events_supported;
+         PRAGMA user_version = 5;
+         CREATE VIEW utility_events_supported AS
+         SELECT id, match_id, enemies_blinded, damage_enemy FROM utility_events;",
+    )
+    .unwrap();
+    let detail = get_match_detail(&path, 1).unwrap();
+    assert_eq!(detail.utility_events[0].enemies_blinded, None);
+    assert_eq!(detail.utility_events[0].damage_enemy, None);
+    assert_eq!(detail.utility_events.len(), 1);
+    db.execute_batch("PRAGMA user_version = 6;").unwrap();
+    let detail = get_match_detail(&path, 1).unwrap();
+    assert_eq!(detail.utility_events[0].enemies_blinded, None);
+    assert_eq!(detail.utility_events[0].damage_enemy, None);
+}
+
+#[test]
+fn rejects_missing_file_and_unknown_schema() {
+    let dir = tempdir().unwrap();
+    assert!(list_matches(&dir.path().join("missing.sqlite").to_string_lossy()).is_err());
+    let path = dir.path().join("wrong.sqlite");
+    Connection::open(&path)
+        .unwrap()
+        .execute_batch("CREATE TABLE unrelated (id INTEGER);")
+        .unwrap();
+    assert!(list_matches(&path.to_string_lossy()).is_err());
+}
+
+#[test]
+fn empty_valid_library_is_valid_and_missing_match_is_an_error() {
+    let (_dir, path) = fixture();
+    let db = Connection::open(&path).unwrap();
+    db.execute("DELETE FROM utility_events", []).unwrap();
+    db.execute("DELETE FROM rounds", []).unwrap();
+    db.execute("DELETE FROM players", []).unwrap();
+    db.execute("DELETE FROM matches", []).unwrap();
+    assert!(list_matches(&path).unwrap().matches.is_empty());
+    assert!(get_match_detail(&path, 1).is_err());
+}

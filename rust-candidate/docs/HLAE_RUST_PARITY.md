@@ -1,0 +1,24 @@
+# HLAE to Rust capture-provider track
+
+The candidate defines a pure `CaptureProvider` boundary and source-bound tick/camera request in `src-tauri/src/capture_provider.rs`. It has no executable HLAE or Rust provider, no game launch, no hooking, no recording, and no rendering. The current DemoStrike/CsThrowBack HLAE support remains the working baseline until a Rust provider passes equivalent tests. This track is separate from the first read-only match-library slice.
+
+## Existing CsThrowBack contract inspected
+
+Read-only source inspection of the current CsThrowBack `src-tauri/src/render/mod.rs`, `render/hlae_capture.rs`, `render/cs2_capture.rs`, and `hlae.rs` found an existing Rust `ClipRenderer` trait and a job queue that selects `"hlae"` or `"cs2"`, renders to partial MP4 and then publishes output. HLAE capture currently computes a jump/spectate/record/end tick schedule, writes a CS2 cfg, configures FFmpeg for `mirv_streams`, uses an observer slot for POV, waits for capture and probes the resulting file. `hlae.rs` discovers or stages HLAE and checks for `HLAE.exe` plus `AfxHookSource2.dll`. These are behavioral references, not modules copied or executed in this candidate.
+
+The current implementation also has side effects that must **not** be copied blindly: `stage_bundled` removes an existing staged directory when refreshing; `hlae_capture.rs` writes an FFmpeg ini and a game cfg, launches with `-insecure`, and its timeout/cancel path calls `taskkill /F /IM cs2.exe`. The replacement needs task-owned process identity, separate staging/rollback and crash-safe restoration before any runtime trial. This source inspection does not establish that the old capture path currently works end to end on this machine.
+
+The current candidate's `compile_tick_plan` is a pure semantic compiler: seek to a target tick, set camera, start recording, stop recording, in a fixed order. For the inspected `6400..7040` at 64 ticks per second it yields control tick 96, seek target 6272, camera tick 6336, recording ticks 6400 and 7040. It rejects clips too close to the beginning rather than silently moving requested recording bounds. This is a planning contract, not a game command interpreter or evidence of actual frame timing.
+
+Independent HLAE source research found that existing Rust campath code wraps `shared/CamPath.cpp` through C++, so its camera engine is not already Rust. The HLAE repository's main MIT grant excludes submodules, and CS2 includes `advancedfx-prop` SDK material described as proprietary/non-MIT. Translation does not remove that license boundary. No excluded files are copied into this candidate. A later contained port may evaluate the main-repository `shared/CommandSystem.*` with injected time/tick/execute interfaces after file-specific license review.
+
+## Provider contract and staged replacement
+
+1. Pin a real offline demo by SHA-256, tick rate and stable throw identity. Validate `start_tick ≤ throw_tick ≤ end_tick` with a nonempty interval and explicit POV/projectile/third-person camera identity. Preserve camera values in demo coordinates; conversion to frames belongs at output boundaries.
+2. Inventory every current HLAE-dependent function and its license, game-version and file/process effects before implementing a Rust replacement. Prefer existing Rust analysis and project data seams; retain HLAE as a selectable provider while the replacement is incomplete.
+3. Compare both providers on controlled offline fixtures: exact start/release/effect ticks, POV SteamID proof, projectile/third-person camera state, pause/resume alignment for both cameras, audio, frame count, duration and chronological versus final sequence order. A plan or API call is not footage proof.
+4. Runtime acceptance must verify only task-owned game processes, settings backup/restore, no changes to an existing session, cancellation at every stage, crash recovery, partial-output checkpoints, disk reserve on raw and final volumes, and no duplicate clip generation. Do not enable a Rust provider in normal workflow until its packaged real-game evidence and independent review pass.
+
+The later scheduler must be checked at HLAE's frame-render pass boundary, not against desktop wall-clock time: repeated/skipped ticks, backward seeks, tick zero/reset, same-tick command order, interval endpoints and schedule mutation all need fixtures. Camera parity includes client versus demo time, interpolation, quaternion/FOV/offsets/holds and XML round trips. Capture parity compares actual decoded frame count, exact start/stop, aligned audio, sampler input/output FPS and shutdown flushing. Unsupported capabilities must return explicit errors rather than render misleading footage.
+
+No live-match experiment, game security change, plugin installation, executable download or hook injection is part of this source slice.

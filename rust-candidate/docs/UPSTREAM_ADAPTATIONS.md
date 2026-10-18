@@ -1,0 +1,15 @@
+# Upstream interface adaptation
+
+Pinned upstream: `akiver/cs-demo-manager@7270bc95c8cab87b7f9ddd490fea13c6eda3ace7`.
+
+The candidate retains the upstream workflow order and component responsibilities from `src/ui/matches/matches.tsx`, `src/ui/matches/table/matches-table.tsx`, and `src/ui/match/overview/match-overview.tsx`: fetch status, action bar, matches table, selected match overview, and detail sections. Their present implementations depend on upstream Redux, PostgreSQL response types, WebSocket service, and extensive UI component graph, so these files cannot be copied into a functional Tauri slice without their dependency closure. `src/App.tsx` is an adaptation of their structure to a typed `invoke` command bridge and the existing DemoStrike SQLite schema, not a claim that the original screens have been ported. Preserve the upstream MIT notice above.
+
+`src/preload/preload.ts` defines the Electron-facing `window.csdm` surface, and `src/ui/web-socket-client.ts` provides UUID-correlated request/reply and push events. The current candidate bridge implements only `list_matches` and `get_match_detail`. The remaining preload and message contracts are outstanding migration tracks, with no fallback that silently discards behavior.
+
+The upstream palette and type scale in `src/ui/styles/variables.css` and `base.css` informed the control density and hierarchy. Local tokens soften the dark palette toward VS Code Dark Modern, as requested. No upstream logos, fonts, map images, or submodule assets are copied into this candidate.
+
+## First actual upstream component slice
+
+The pinned [`get-team-score-class-name.ts`](https://github.com/akiver/cs-demo-manager/blob/7270bc95c8cab87b7f9ddd490fea13c6eda3ace7/src/ui/styles/get-team-score-class-name.ts) function (Git blob `5d646660a00517a4e1d71ce84be1839de4ad3fde`) is copied intact, with provenance comments, into `src/upstream/get-team-score-class-name.ts`. It preserves upstream tie → blue, lead → green, trail → red behavior. [`TeamScore`](https://github.com/akiver/cs-demo-manager/blob/7270bc95c8cab87b7f9ddd490fea13c6eda3ace7/src/ui/components/match/team-score.tsx) (blob `0946c16e78b66cfc9aeeccdee4e17c651650378d`) is adapted into `src/upstream/TeamScore.tsx`: the score/name order and conditional score color remain, while Tailwind and `clsx` wrappers become local CSS and the unused React default import is removed for the automatic JSX runtime. A typed `relation` from the Rust adapter is exposed to the component for accessible labelling. The component is actually rendered in the match library table and selected-match overview.
+
+`src-tauri/src/library.rs` now ports the same three-way score comparison as `ScoreRelation` and returns CT/T relations with each match. This uses the **DemoStrike** SQLite `score_ct`/`score_t` fields; it does not port CS Demo Manager's team A/B identity, side changes, scoreboard statistics, PostgreSQL queries, or full match page. Node tests exercise the copied helper; Rust tests cover the corresponding contract but remain unrun under the local-build restriction. Native visual behavior is unverified. The MIT notice is in `LICENSE.upstream` and source comments.
