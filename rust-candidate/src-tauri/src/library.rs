@@ -1894,4 +1894,3 @@ mod observed_projectile_tests {
         );
     }
 }
-
