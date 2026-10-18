@@ -10,7 +10,6 @@ if (-not [IO.Path]::IsPathFullyQualified($Project) -or -not (Test-Path -LiteralP
 $app = (Resolve-Path (Join-Path $PSScriptRoot '..\target\debug\demostrike.exe')).Path
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName UIAutomationClient
-Add-Type -AssemblyName System.Drawing
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -22,6 +21,7 @@ public static class LegacySmokeWindow {
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr handle);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr handle, System.Text.StringBuilder name, int max);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
@@ -71,11 +71,6 @@ function Save-Desktop-Diagnostic([IntPtr]$handle, [string]$name) {
         }
         $foreground = [LegacySmokeWindow]::GetForegroundWindow()
         Write-Output "LEGACY_DESKTOP_DIAGNOSTIC $name window=$handle foreground=$foreground origin=$($origin.X),$($origin.Y) size=${width}x$height sampled_colors=$($colors.Count) sha256=$((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash)"
-        if ($name -eq 'empty') {
-            Write-Output 'LEGACY_DESKTOP_PREVIEW_BEGIN'
-            Write-Output ([Convert]::ToBase64String([IO.File]::ReadAllBytes($path)))
-            Write-Output 'LEGACY_DESKTOP_PREVIEW_END'
-        }
     } finally { $bitmap.Dispose() }
 }
 function Wait-Name([IntPtr]$handle, [string]$name) {
@@ -101,6 +96,53 @@ function Wait-Dialog {
         if ($class.ToString() -eq '#32770') { return $foreground }
     }
     throw 'Open editable project did not open a native file dialog'
+}
+function Open-Dialog-Project([IntPtr]$dialog, [string]$project) {
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($dialog)
+    $editCondition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Edit)
+    $edits = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $editCondition)
+    $fileName = $null
+    foreach ($edit in $edits) {
+        $name = $edit.Current.Name
+        $id = $edit.Current.AutomationId
+        Write-Output "LEGACY_DIALOG_EDIT name=$name automation_id=$id"
+        if ($id -eq '1148' -or $name -match '^File name:?$') { $fileName = $edit; break }
+    }
+    if (-not $fileName) { throw 'Native file dialog has no verified File name edit control' }
+    $value = $null
+    if (-not $fileName.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$value)) {
+        throw 'Native File name control has no ValuePattern'
+    }
+    $value.SetValue($project)
+    if ($value.Current.Value -ne $project) { throw 'Native File name control did not retain the project path' }
+    Write-Output 'LEGACY_DIALOG_FILENAME_SET'
+    $buttonCondition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Button)
+    $buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $buttonCondition)
+    $open = $null
+    foreach ($button in $buttons) {
+        $name = $button.Current.Name
+        $id = $button.Current.AutomationId
+        Write-Output "LEGACY_DIALOG_BUTTON name=$name automation_id=$id"
+        if ($name -eq 'Open' -or $id -eq '1') { $open = $button; break }
+    }
+    if (-not $open -or -not $open.Current.IsEnabled) { throw 'Native file dialog has no enabled Open button' }
+    $invoke = $null
+    if (-not $open.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) {
+        throw 'Native Open button has no InvokePattern'
+    }
+    $invoke.Invoke()
+    for ($i = 0; $i -lt 80; $i++) {
+        Start-Sleep -Milliseconds 250
+        if (-not [LegacySmokeWindow]::IsWindow($dialog)) {
+            Write-Output 'LEGACY_DIALOG_CLOSED_AFTER_OPEN'
+            return
+        }
+    }
+    throw 'Native file dialog remained open after invoking Open'
 }
 function Invoke-Return([IntPtr]$handle) {
     $root = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
@@ -164,12 +206,7 @@ try {
     Write-Output 'LEGACY_UI_MENU_OPENED'
     Click-Client $handle 390 111 # Open editable project
     $dialog = Wait-Dialog
-    [void][LegacySmokeWindow]::SetForegroundWindow($dialog)
-    Set-Clipboard -Value $Project
-    Send-Chord ([byte[]]@(0x12, 0x4E)) # Alt+N, filename
-    Send-Chord ([byte[]]@(0x11, 0x41)) # Ctrl+A
-    Send-Chord ([byte[]]@(0x11, 0x56)) # Ctrl+V
-    Send-Chord ([byte[]]@(0x0D))       # Enter
+    Open-Dialog-Project $dialog $Project
     Start-Sleep -Seconds 4
     $process.Refresh()
     if ($process.HasExited) { throw 'Native app exited while opening the FilmCraft project' }
