@@ -1,0 +1,38 @@
+name: HLAE scheduler source parity
+
+on:
+  pull_request:
+    paths:
+      - 'crates/hlae_scheduler/**'
+      - '.github/workflows/hlae-scheduler-parity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scheduler-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: crates/hlae_scheduler
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Rust toolchain
+        run: rustc --version && cargo --version
+      - name: Test isolated scheduler crate
+        run: CARGO_INCREMENTAL=0 cargo test --locked --offline
+      - name: Compare pinned original C++ source with Rust traces
+        run: bash ci/run-differential.sh
+      - name: Preserve source manifest and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hlae-scheduler-source-parity
+          path: |
+            crates/hlae_scheduler/reference/generated_manifest.json
+            crates/hlae_scheduler/reference_trace_cpp.txt
+            crates/hlae_scheduler/reference_trace_rust.txt
+          if-no-files-found: ignore
+          retention-days: 1
