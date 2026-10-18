@@ -51,8 +51,31 @@ function Save-EditorWindow([System.Diagnostics.Process]$process, [string]$name) 
     if (-not [EditorNativeWindow]::MoveWindow($handle, 8, 8, $targetWidth, $targetHeight, $true)) {
         throw "Could not fit native editor window inside hosted desktop: $name"
     }
-    Start-Sleep -Seconds 5
-    [void][EditorNativeWindow]::MoveWindow($handle, 8, 8, $targetWidth, $targetHeight, $true)
+    # The first WGPU window can expose its HWND before DWM installs the frame.
+    # Poll the actual client geometry, reapplying the requested size if the
+    # host is still presenting its temporary borderless startup surface.
+    $frameReady = $false
+    for ($attempt = 0; $attempt -lt 45; $attempt++) {
+        Start-Sleep -Seconds 1
+        $process.Refresh()
+        if ($process.HasExited) { throw "Native editor exited while settling its window: $name" }
+        $handle = $process.MainWindowHandle
+        if ($handle -eq [IntPtr]::Zero) { continue }
+        [void][EditorNativeWindow]::MoveWindow($handle, 8, 8, $targetWidth, $targetHeight, $true)
+        $outerProbe = [EditorNativeWindow+RECT]::new()
+        $clientProbe = [EditorNativeWindow+RECT]::new()
+        $originProbe = [EditorNativeWindow+POINT]::new()
+        if ([EditorNativeWindow]::GetWindowRect($handle, [ref]$outerProbe) -and
+            [EditorNativeWindow]::GetClientRect($handle, [ref]$clientProbe) -and
+            [EditorNativeWindow]::ClientToScreen($handle, [ref]$originProbe) -and
+            ($clientProbe.Right - $clientProbe.Left) -lt ($outerProbe.Right - $outerProbe.Left) -and
+            ($clientProbe.Bottom - $clientProbe.Top) -lt ($outerProbe.Bottom - $outerProbe.Top)) {
+            $frameReady = $true
+            Write-Output "EDITOR_FRAME_SETTLED $name attempt=$($attempt + 1)"
+            break
+        }
+    }
+    if (-not $frameReady) { throw "Native editor window frame did not settle within 45 seconds: $name" }
     Start-Sleep -Seconds 2
     $process.Refresh()
     Write-Output "EDITOR_WINDOW_RESPONDING $name $($process.Responding)"
