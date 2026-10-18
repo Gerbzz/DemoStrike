@@ -25,7 +25,11 @@ using System.Runtime.InteropServices;
 public static class EditorNativeWindow {
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT { public int X, Y; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT bounds);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr handle, out RECT bounds);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr handle, ref POINT point);
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
 }
@@ -62,11 +66,25 @@ function Save-EditorWindow([System.Diagnostics.Process]$process, [string]$name) 
         throw "Native editor extends beyond the hosted desktop work area: $name"
     }
 
-    $bitmap = [System.Drawing.Bitmap]::new($width, $height)
+    $client = [EditorNativeWindow+RECT]::new()
+    $clientOrigin = [EditorNativeWindow+POINT]::new()
+    if (-not [EditorNativeWindow]::GetClientRect($handle, [ref]$client) -or
+        -not [EditorNativeWindow]::ClientToScreen($handle, [ref]$clientOrigin)) {
+        throw "Could not read native editor client area: $name"
+    }
+    $clientWidth = $client.Right - $client.Left
+    $clientHeight = $client.Bottom - $client.Top
+    Write-Output "EDITOR_CLIENT_BOUNDS $name x=$($clientOrigin.X) y=$($clientOrigin.Y) size=$($clientWidth)x$clientHeight"
+    if ($clientWidth -lt 850 -or $clientHeight -lt 500 -or $clientOrigin.X -lt 0 -or
+        $clientOrigin.Y -lt 0 -or ($clientOrigin.X + $clientWidth) -gt $screenWidth -or
+        ($clientOrigin.Y + $clientHeight) -gt ($screenHeight - 48)) {
+        throw "Native editor client area extends beyond the hosted desktop work area: $name"
+    }
+    $bitmap = [System.Drawing.Bitmap]::new($clientWidth, $clientHeight)
     try {
         $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
         try {
-            $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bitmap.Size)
+            $graphics.CopyFromScreen($clientOrigin.X, $clientOrigin.Y, 0, 0, $bitmap.Size)
         } finally { $graphics.Dispose() }
         $png = Join-Path $EvidenceDir ($name + '.png')
         $bitmap.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
@@ -93,6 +111,9 @@ foreach ($case in $cases) {
     $start.UseShellExecute = $false
     $start.RedirectStandardError = $true
     $start.Environment['DEMOSTRIKE_EDITOR_CAPTURE_PROOF'] = '1'
+    $recoveryRoot = Join-Path $env:RUNNER_TEMP ('demostrike-editor-recovery-' + $case.Name)
+    [void](New-Item -ItemType Directory -Path $recoveryRoot -Force)
+    $start.Environment['LOCALAPPDATA'] = $recoveryRoot
     [void]$start.ArgumentList.Add('--project')
     [void]$start.ArgumentList.Add($project)
     $process = [System.Diagnostics.Process]::Start($start)
