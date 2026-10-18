@@ -216,6 +216,14 @@ int main() {
     }
     {
         Fixture f;
+        f.scheduler.AddAtTick("B", 1.0000000000000002);
+        f.scheduler.AddAtTick("A", 1.0);
+        f.scheduler.EditStartTick(1000.0);
+        f.frame(1000, 0);
+        emit("edit_collapsed_order", f.frame(1001, 0));
+    }
+    {
+        Fixture f;
         f.scheduler.AddAtTick("first", 3); f.scheduler.AddAtTick("second", 3);
         f.frame(3, 0);
         f.sink.mutate_once = true;

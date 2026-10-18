@@ -157,10 +157,25 @@ impl Timeline {
     }
 
     fn edit_start(&mut self, start: f64) {
-        let Some(first) = self.ordered_indices().first().copied() else {
+        if self.entries.is_empty() {
             return;
-        };
-        let offset = start - self.entries[first].interval.low;
+        }
+        // The pinned C++ multimap is traversed in pre-shift key order and
+        // reinserts in that order. Distinct keys can round to an equal key
+        // after shifting, so insertion order alone is no longer sufficient.
+        self.entries.sort_by(|a, b| {
+            a.interval
+                .low
+                .partial_cmp(&b.interval.low)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| {
+                    a.interval
+                        .high
+                        .partial_cmp(&b.interval.high)
+                        .unwrap_or(Ordering::Equal)
+                })
+        });
+        let offset = start - self.entries[0].interval.low;
         for entry in &mut self.entries {
             entry.interval.low += offset;
             entry.interval.high += offset;

@@ -134,6 +134,16 @@ fn add_at_last_tick_uses_cursor_and_edit_start_shifts_all() {
 }
 
 #[test]
+fn edit_start_preserves_pre_shift_order_when_distinct_keys_round_equal() {
+    let mut s = Scheduler::new();
+    s.add_at_tick("B", 1.0000000000000002);
+    s.add_at_tick("A", 1.0);
+    s.edit_start_tick(1000.0);
+    assert!(s.collect_frame(Some(1000.0), None).is_empty());
+    assert_eq!(s.collect_frame(Some(1001.0), None), ["A", "B"]);
+}
+
+#[test]
 fn pinned_tree_traversal_takes_only_left_branch_when_eligible() {
     let mut s = Scheduler::new();
     s.add_at_tick("root", 5.0);

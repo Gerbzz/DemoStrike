@@ -72,6 +72,17 @@ fn main() {
     }
     {
         let mut s = Scheduler::new();
+        s.add_at_tick("B", 1.0000000000000002);
+        s.add_at_tick("A", 1.0);
+        s.edit_start_tick(1000.0);
+        s.collect_frame(Some(1000.0), Some(0.0));
+        emit(
+            "edit_collapsed_order",
+            s.collect_frame(Some(1001.0), Some(0.0)),
+        );
+    }
+    {
+        let mut s = Scheduler::new();
         s.add_at_tick("first", 3.0);
         s.add_at_tick("second", 3.0);
         s.collect_frame(Some(3.0), Some(0.0));
