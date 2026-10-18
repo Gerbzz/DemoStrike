@@ -27,7 +27,13 @@ jobs:
         run: cargo test --locked --features native-ui --lib ui::tests::native_import_worker_persists_demo_and_cancel_keeps_previous_analysis -- --exact --test-threads=1
       - name: Test saved FilmCraft project navigation
         shell: pwsh
-        run: cargo test --locked --features native-ui --lib ui::tests::synthetic_filmcraft_project_opens_through_demo_workspace -- --exact --test-threads=1
+        run: |
+          $folder = Join-Path $env:RUNNER_TEMP 'demostrike-native-smoke'
+          New-Item -ItemType Directory -Path $folder -Force | Out-Null
+          $env:DEMOSTRIKE_NATIVE_SMOKE_PROJECT = Join-Path $folder 'synthetic.fcproj'
+          cargo test --locked --features native-ui --lib ui::tests::synthetic_filmcraft_project_opens_through_demo_workspace -- --exact --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'FilmCraft navigation test failed' }
+          if (-not (Test-Path -LiteralPath $env:DEMOSTRIKE_NATIVE_SMOKE_PROJECT)) { throw 'Synthetic FilmCraft project was not saved' }
       - name: Test isolated audio generation invariant
         shell: pwsh
         run: cargo test --locked --features native-ui --lib ui::filmcraft_audio::tests::stale_ready_generation_cannot_activate_or_become_the_clock -- --exact --test-threads=1 --nocapture
@@ -65,6 +71,19 @@ jobs:
         with:
           name: demostrike-workspace-${{ github.sha }}
           path: ${{ runner.temp }}/demostrike-empty-workspace.png
+          retention-days: 1
+          if-no-files-found: warn
+      - name: Exercise native saved matches, project menu, and return
+        shell: pwsh
+        run: |
+          $project = Join-Path (Join-Path $env:RUNNER_TEMP 'demostrike-native-smoke') 'synthetic.fcproj'
+          $evidence = Join-Path $env:RUNNER_TEMP 'demostrike-legacy-native-evidence'
+          ./tests/legacy_navigation_native.ps1 -Project $project -EvidenceDir $evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: demostrike-legacy-navigation-${{ github.sha }}
+          path: ${{ runner.temp }}/demostrike-legacy-native-evidence/
           retention-days: 1
           if-no-files-found: warn
       - name: Bound and hash executable

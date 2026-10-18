@@ -7,6 +7,7 @@ on:
       - 'src/native_grenade_parser.rs'
       - 'src/analysis/mod.rs'
       - 'src/demo_import.rs'
+      - 'src/ui.rs'
       - 'src/db/**'
       - 'tests/public_demo_integration.rs'
   workflow_dispatch:
