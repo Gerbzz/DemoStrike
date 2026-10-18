@@ -244,13 +244,20 @@ function Drag-EditorClient([IntPtr]$handle, [int]$fromX, [int]$fromY, [int]$toX,
         Write-Output 'EDITOR_GUI_SOURCE_TILE_SELECTED'
     }
     [EditorNativeWindow]::mouse_event([uint32]2, 0, 0, 0, [UIntPtr]::Zero)
-    for ($step = 1; $step -le 20; $step++) {
-        $x = $origin.X + [int][Math]::Round($fromX + ($toX - $fromX) * $step / 20.0)
-        $y = $origin.Y + [int][Math]::Round($fromY + ($toY - $fromY) * $step / 20.0)
-        [void][EditorNativeWindow]::SetCursorPos($x, $y)
-        Start-Sleep -Milliseconds 40
+    try {
+        # Give egui a frame to observe mouse-down, the hovered V1 target,
+        # and the final position before releasing the native drag.
+        Start-Sleep -Milliseconds 300
+        for ($step = 1; $step -le 32; $step++) {
+            $x = $origin.X + [int][Math]::Round($fromX + ($toX - $fromX) * $step / 32.0)
+            $y = $origin.Y + [int][Math]::Round($fromY + ($toY - $fromY) * $step / 32.0)
+            [void][EditorNativeWindow]::SetCursorPos($x, $y)
+            Start-Sleep -Milliseconds 55
+        }
+        Start-Sleep -Milliseconds 450
+    } finally {
+        [EditorNativeWindow]::mouse_event([uint32]4, 0, 0, 0, [UIntPtr]::Zero)
     }
-    [EditorNativeWindow]::mouse_event([uint32]4, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Seconds 2
     Write-Output "EDITOR_GUI_DRAG $action from=$fromX,$fromY to=$toX,$toY"
 }
