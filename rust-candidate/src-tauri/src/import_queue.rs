@@ -53,14 +53,49 @@ impl ImportQueue {
         };
         let mut connection = queue.open()?;
         Self::migrate_cancelled_state(&mut connection)?;
-        // A killed process cannot have committed a successful result. The
-        // native import transaction handles an interrupted database write.
-        connection
-            .execute(
-                "UPDATE import_jobs SET state = 'queued', recovered = 1 WHERE state = 'running'",
-                [],
-            )
+        // The library commit and queue receipt are separate transactions. A
+        // crash between them leaves a saved match behind a running queue row.
+        // Reconcile that receipt before making the job cancellable again.
+        let pending = {
+            let mut query = connection
+                .prepare(
+                    "SELECT id,demo_path FROM import_jobs
+                     WHERE state='running' OR (state='queued' AND recovered=1)",
+                )
+                .map_err(|error| error.to_string())?;
+            let records = query
+                .query_map([], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|error| error.to_string())?;
+            records
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| error.to_string())?
+        };
+        let transaction = connection
+            .transaction()
             .map_err(|error| error.to_string())?;
+        for (id, path) in pending {
+            if let Some(receipt) = queue.recovered_receipt(&path)? {
+                let json = serde_json::to_string(&receipt).map_err(|error| error.to_string())?;
+                transaction
+                    .execute(
+                        "UPDATE import_jobs SET state='completed', recovered=1,
+                         receipt=?2, error=NULL WHERE id=?1",
+                        params![id, json],
+                    )
+                    .map_err(|error| error.to_string())?;
+            } else {
+                transaction
+                    .execute(
+                        "UPDATE import_jobs SET state='queued', recovered=1
+                         WHERE id=?1 AND state='running'",
+                        [id],
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+        transaction.commit().map_err(|error| error.to_string())?;
         Ok(queue)
     }
 
@@ -166,20 +201,44 @@ impl ImportQueue {
     }
 
     pub fn cancel(&self, id: i64) -> Result<ImportJob, String> {
+        self.cancel_with_hook(id, || {})
+    }
+
+    fn cancel_with_hook(&self, id: i64, after_signal: impl FnOnce()) -> Result<ImportJob, String> {
         // Claim and cancellation share this lock: a job cannot become
-        // "running" between the state read and control registration.
+        // "running" between the state read and control registration. Finish
+        // uses the same lock so an accepted cancel cannot become failed.
         let current = self.current.lock().map_err(|error| error.to_string())?;
         let connection = self.open()?;
         let job = Self::read_job(&connection, id)?;
+        if job.recovered && (job.state == "queued" || job.state == "running") {
+            if let Some(receipt) = self.recovered_receipt(&job.demo_path)? {
+                let json = serde_json::to_string(&receipt).map_err(|error| error.to_string())?;
+                let changed = connection
+                    .execute(
+                        "UPDATE import_jobs SET state='completed', receipt=?2, error=NULL
+                         WHERE id=?1 AND state IN ('queued','running')",
+                        params![id, json],
+                    )
+                    .map_err(|error| error.to_string())?;
+                if changed != 1 {
+                    return Err("Import changed state during recovery.".into());
+                }
+                return Self::read_job(&connection, id);
+            }
+        }
         match job.state.as_str() {
             "queued" => {
-                connection
+                let changed = connection
                     .execute(
                         "UPDATE import_jobs SET state='cancelled', error=NULL
                          WHERE id=?1 AND state='queued'",
                         [id],
                     )
                     .map_err(|error| error.to_string())?;
+                if changed != 1 {
+                    return Err("Import changed state; try cancelling again.".into());
+                }
             }
             "running" => {
                 let Some((active_id, control)) = current.as_ref() else {
@@ -191,13 +250,17 @@ impl ImportQueue {
                 if !control.request_cancel() {
                     return Err("Import is finalizing and can no longer be cancelled.".into());
                 }
-                connection
+                after_signal();
+                let changed = connection
                     .execute(
                         "UPDATE import_jobs SET state='cancelled', error=NULL
                          WHERE id=?1 AND state='running'",
                         [id],
                     )
                     .map_err(|error| error.to_string())?;
+                if changed != 1 {
+                    return Err("Import changed state; try cancelling again.".into());
+                }
             }
             "cancelled" => return Ok(job),
             _ => return Err("Only queued or running imports can be cancelled.".into()),
@@ -231,9 +294,12 @@ impl ImportQueue {
     }
 
     fn finish(&self, id: i64, result: Result<ImportReceipt, String>) -> Result<(), String> {
+        // Serialize the terminal queue transition with cancel's signal and
+        // persisted state change. The import transaction's separate control
+        // still owns the source-library commit boundary.
+        let _current = self.current.lock().map_err(|error| error.to_string())?;
         let connection = self.open()?;
-        let succeeded = result.is_ok();
-        let changed = match result {
+        let changed = match &result {
             Ok(receipt) => {
                 let json = serde_json::to_string(&receipt).map_err(|error| error.to_string())?;
                 connection
@@ -253,30 +319,53 @@ impl ImportQueue {
                 .map_err(|error| error.to_string())?,
         };
         if changed == 0 {
-            let state = Self::read_job(&connection, id)?.state;
-            if state != "cancelled" || succeeded {
-                return Err(format!(
-                    "Import job {id} changed state before completion: {state}"
-                ));
+            let job = Self::read_job(&connection, id)?;
+            if job.state == "cancelled" && result.is_err() {
+                return Ok(());
             }
+            if job.state == "completed"
+                && job.receipt.as_ref().zip(result.as_ref().ok()).is_some_and(
+                    |(saved, incoming)| {
+                        saved.path == incoming.path
+                            && saved.match_id == incoming.match_id
+                            && saved.map_name == incoming.map_name
+                            && saved.player_count == incoming.player_count
+                            && saved.round_count == incoming.round_count
+                    },
+                )
+            {
+                return Ok(());
+            }
+            return Err(format!(
+                "Import job {id} changed state before completion: {}",
+                job.state
+            ));
         }
         Ok(())
     }
 
-    fn recovered_receipt(&self, source: &str) -> Option<ImportReceipt> {
+    fn recovered_receipt(&self, source: &str) -> Result<Option<ImportReceipt>, String> {
+        if !self.library.is_file() {
+            return Ok(None);
+        }
         let library = self.library.to_string_lossy();
-        let snapshot = crate::library::list_matches(&library).ok()?;
-        let match_row = snapshot
+        let snapshot = crate::library::list_matches(&library).map_err(|error| error.to_string())?;
+        let Some(match_row) = snapshot
             .matches
             .into_iter()
-            .find(|item| item.demo_file_path.as_deref() == Some(source))?;
-        Some(ImportReceipt {
+            .find(|item| item.demo_file_path.as_deref() == Some(source))
+        else {
+            return Ok(None);
+        };
+        Ok(Some(ImportReceipt {
             path: library.into_owned(),
             match_id: match_row.id,
             map_name: match_row.map_name,
-            player_count: usize::try_from(match_row.player_count).ok()?,
-            round_count: usize::try_from(match_row.round_count).ok()?,
-        })
+            player_count: usize::try_from(match_row.player_count)
+                .map_err(|error| error.to_string())?,
+            round_count: usize::try_from(match_row.round_count)
+                .map_err(|error| error.to_string())?,
+        }))
     }
 
     pub fn start(self: &Arc<Self>) {
@@ -303,9 +392,9 @@ impl ImportQueue {
                         let result =
                             import_native_with_control(Path::new(&path), &queue.library, &control);
                         let result = match result {
-                            Err(error) if recovered && error.contains("already imported") => {
-                                queue.recovered_receipt(&path).ok_or(error)
-                            }
+                            Err(error) if recovered && error.contains("already imported") => queue
+                                .recovered_receipt(&path)
+                                .and_then(|receipt| receipt.ok_or(error)),
                             other => other,
                         };
                         if let Err(error) = queue.finish(id, result) {
@@ -375,6 +464,36 @@ pub fn csdm_cancel_import(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn seed_committed_match(queue: &ImportQueue, source: &str) {
+        let connection = Connection::open(&queue.library).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE matches (
+                    id INTEGER PRIMARY KEY, file_name TEXT, file_path TEXT,
+                    map_name TEXT, score_ct INTEGER, score_t INTEGER,
+                    imported_at TEXT, parser_capability TEXT
+                );
+                CREATE TABLE players (match_id INTEGER, steamid TEXT, name TEXT);
+                CREATE TABLE rounds (
+                    match_id INTEGER, round_number INTEGER, winner TEXT,
+                    start_tick INTEGER, end_tick INTEGER
+                );
+                CREATE TABLE utility_events (
+                    id INTEGER, match_id INTEGER, round_number INTEGER,
+                    utility_type TEXT, thrower_name TEXT, thrower_team TEXT,
+                    throw_tick INTEGER
+                );",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO matches VALUES (7,'committed.dem',?1,'de_mirage',8,6,
+                 '2026-10-18T00:00:00Z','native-combat-full-v2')",
+                [source],
+            )
+            .unwrap();
+    }
 
     #[test]
     fn interrupted_queue_job_is_recovered_without_losing_history() {
@@ -517,5 +636,120 @@ mod tests {
             !queue.library.exists(),
             "cancelled source must not create a match library"
         );
+    }
+
+    #[test]
+    fn accepted_cancel_serializes_failure_persistence() {
+        let temporary = tempfile::tempdir().unwrap();
+        let queue = Arc::new(ImportQueue::new(temporary.path()).unwrap());
+        let connection = queue.open().unwrap();
+        connection
+            .execute(
+                "INSERT INTO import_jobs(demo_path,state) VALUES ('race.dem','running')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+        let control = ImportControl::new();
+        *queue.current.lock().unwrap() = Some((1, control.clone()));
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let worker_queue = Arc::clone(&queue);
+        let worker_barrier = Arc::clone(&barrier);
+        let worker = std::thread::spawn(move || {
+            worker_barrier.wait();
+            done_tx
+                .send(worker_queue.finish(1, Err("demo import cancelled".into())))
+                .unwrap();
+        });
+
+        let cancelled = queue.cancel_with_hook(1, || {
+            assert!(control.is_cancelled());
+            barrier.wait();
+            assert!(matches!(
+                done_rx.recv_timeout(Duration::from_secs(2)),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            ));
+        });
+        assert_eq!(cancelled.unwrap().state, "cancelled");
+        worker.join().unwrap();
+        done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        let reopened = ImportQueue::new(temporary.path()).unwrap();
+        assert_eq!(
+            ImportQueue::read_job(&reopened.open().unwrap(), 1)
+                .unwrap()
+                .state,
+            "cancelled"
+        );
+    }
+
+    #[test]
+    fn crash_after_library_commit_reconciles_receipt_before_retry() {
+        let temporary = tempfile::tempdir().unwrap();
+        let queue = ImportQueue::new(temporary.path()).unwrap();
+        let source = temporary.path().join("committed.dem");
+        std::fs::write(&source, b"PBDEMS2\0saved source").unwrap();
+        let source = source.to_string_lossy().into_owned();
+        queue
+            .open()
+            .unwrap()
+            .execute(
+                "INSERT INTO import_jobs(demo_path,state) VALUES (?1,'running')",
+                [&source],
+            )
+            .unwrap();
+        seed_committed_match(&queue, &source);
+        let library_before = std::fs::read(&queue.library).unwrap();
+        drop(queue); // Simulated crash before queue.finish persisted the receipt.
+
+        let recovered = ImportQueue::new(temporary.path()).unwrap();
+        let job = ImportQueue::read_job(&recovered.open().unwrap(), 1).unwrap();
+        assert_eq!(job.state, "completed");
+        assert!(job.recovered);
+        assert_eq!(job.receipt.unwrap().match_id, 7);
+        assert!(recovered.cancel(1).is_err());
+        assert_eq!(std::fs::read(&recovered.library).unwrap(), library_before);
+    }
+
+    #[test]
+    fn cancel_during_recovery_returns_existing_receipt_not_cancelled() {
+        let temporary = tempfile::tempdir().unwrap();
+        let queue = ImportQueue::new(temporary.path()).unwrap();
+        let source = temporary.path().join("committed.dem");
+        std::fs::write(&source, b"PBDEMS2\0saved source").unwrap();
+        let source = source.to_string_lossy().into_owned();
+        let connection = queue.open().unwrap();
+        connection
+            .execute(
+                "INSERT INTO import_jobs(demo_path,state,recovered)
+                 VALUES (?1,'queued',1)",
+                [&source],
+            )
+            .unwrap();
+        seed_committed_match(&queue, &source);
+        let library_before = std::fs::read(&queue.library).unwrap();
+        let queued = queue.cancel(1).unwrap();
+        assert_eq!(queued.state, "completed");
+        assert_eq!(queued.receipt.as_ref().unwrap().match_id, 7);
+
+        // Recreate the narrow window after a recovered worker claimed the
+        // row but before it persisted the existing library receipt.
+        connection
+            .execute(
+                "UPDATE import_jobs SET state='running', receipt=NULL WHERE id=1",
+                [],
+            )
+            .unwrap();
+        let control = ImportControl::new();
+        *queue.current.lock().unwrap() = Some((1, control.clone()));
+        let running = queue.cancel(1).unwrap();
+        assert_eq!(running.state, "completed");
+        assert_eq!(running.receipt.as_ref().unwrap().match_id, 7);
+        assert!(control.can_cancel(), "existing match must not be cancelled");
+        queue.finish(1, Ok(running.receipt.unwrap())).unwrap();
+        assert_eq!(std::fs::read(&queue.library).unwrap(), library_before);
     }
 }
