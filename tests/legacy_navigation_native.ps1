@@ -225,12 +225,43 @@ function Open-Dialog-Project([IntPtr]$dialog, [string]$project) {
         Write-Output "LEGACY_DIALOG_BUTTON name=$name automation_id=$id"
         if ($name -eq 'Open' -or $id -eq '1') { $open = $button; break }
     }
-    if (-not $open -or -not $open.Current.IsEnabled) { throw 'Native file dialog has no enabled Open button' }
-    $invoke = $null
-    if (-not $open.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) {
-        throw 'Native Open button has no InvokePattern'
+    $invoked = $false
+    if ($open -and $open.Current.IsEnabled) {
+        $invoke = $null
+        if ($open.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) {
+            $invoke.Invoke()
+            Write-Output 'LEGACY_DIALOG_OPEN_UIA_INVOKED'
+            $invoked = $true
+        }
     }
-    $invoke.Invoke()
+    if (-not $invoked) {
+        $openHandle = [LegacySmokeWindow]::FindChildById($dialog, 1) # Standard native IDOK.
+        if ($openHandle -eq [IntPtr]::Zero) {
+            Write-Output "LEGACY_DIALOG_CHILD_CONTROLS $([LegacySmokeWindow]::ChildControlSummary($dialog))"
+            throw 'Native file dialog has no verified Open control'
+        }
+        $openClass = [Text.StringBuilder]::new(128)
+        [void][LegacySmokeWindow]::GetClassName($openHandle, $openClass, $openClass.Capacity)
+        $openBounds = [LegacySmokeWindow+RECT]::new()
+        $dialogBounds = [LegacySmokeWindow+RECT]::new()
+        if ($openClass.ToString() -ne 'Button' -or
+            -not [LegacySmokeWindow]::GetWindowRect($openHandle, [ref]$openBounds) -or
+            -not [LegacySmokeWindow]::GetWindowRect($dialog, [ref]$dialogBounds) -or
+            $openBounds.Right - $openBounds.Left -lt 25 -or
+            $openBounds.Bottom - $openBounds.Top -lt 12 -or
+            $openBounds.Left -lt $dialogBounds.Left -or $openBounds.Right -gt $dialogBounds.Right -or
+            $openBounds.Top -lt $dialogBounds.Top -or $openBounds.Bottom -gt $dialogBounds.Bottom) {
+            throw 'Native Open control has an unexpected class or screen bounds'
+        }
+        [void][LegacySmokeWindow]::SetForegroundWindow($dialog)
+        [void][LegacySmokeWindow]::SetCursorPos(
+            [int][Math]::Round(($openBounds.Left + $openBounds.Right) / 2),
+            [int][Math]::Round(($openBounds.Top + $openBounds.Bottom) / 2))
+        Start-Sleep -Milliseconds 200
+        [LegacySmokeWindow]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+        [LegacySmokeWindow]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+        Write-Output 'LEGACY_DIALOG_OPEN_POINTER_CLICK'
+    }
     for ($i = 0; $i -lt 80; $i++) {
         Start-Sleep -Milliseconds 250
         if (-not [LegacySmokeWindow]::IsWindow($dialog)) {
