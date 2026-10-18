@@ -830,24 +830,29 @@ fn get_viewer_round_inner(
             }
             // get_viewer_frames uses this metadata only for bounds and coverage;
             // avoid rescanning the entire round for every 512-tick chunk.
-            if include_utility_links && !utility_events.is_empty() && grenade_sample_count > 0 {
-                let mut query = connection.prepare(
-                    "SELECT tick,trajectory_index,entity_id,thrower_steamid
+            if let Some((start, end)) = start_tick.zip(end_tick).filter(|(start, end)| start < end)
+            {
+                if include_utility_links && !utility_events.is_empty() && grenade_sample_count > 0 {
+                    let mut query = connection.prepare(
+                        "SELECT tick,trajectory_index,entity_id,thrower_steamid
                      FROM viewer_grenade_positions
-                     WHERE match_id=?1 AND round_number=?2 ORDER BY tick,trajectory_index",
-                )?;
-                let samples = query
-                    .query_map(params![match_id, round_number], |row| {
-                        Ok(ProjectileSample {
-                            tick: row.get(0)?,
-                            trajectory_index: row.get(1)?,
-                            entity_id: row.get(2)?,
-                            thrower_steamid: row.get(3)?,
-                        })
-                    })?
-                    .collect::<Result<Vec<_>, _>>()?;
-                for event in &mut utility_events {
-                    event.observed_trajectory_index = select_projectile_trajectory(event, &samples);
+                     WHERE match_id=?1 AND round_number=?2 AND tick BETWEEN ?3 AND ?4
+                     ORDER BY tick,trajectory_index",
+                    )?;
+                    let samples = query
+                        .query_map(params![match_id, round_number, start, end], |row| {
+                            Ok(ProjectileSample {
+                                tick: row.get(0)?,
+                                trajectory_index: row.get(1)?,
+                                entity_id: row.get(2)?,
+                                thrower_steamid: row.get(3)?,
+                            })
+                        })?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    for event in &mut utility_events {
+                        event.observed_trajectory_index =
+                            select_projectile_trajectory(event, &samples);
+                    }
                 }
             }
             if schema_version >= 11
@@ -1856,14 +1861,24 @@ mod observed_projectile_tests {
             INSERT INTO utility_events VALUES
                 (1, 1, 1, 'smoke', 'Alice', 'CT', 100, 130, 1, 2, 3, 7, 'a'),
                 (2, 1, 1, 'flash', 'Alice', 'CT', 100, 130, 1, 2, 3, 8, 'a'),
-                (3, 1, 1, 'he', 'Alice', 'CT', 100, 130, 1, 2, 3, NULL, 'a');
+                (3, 1, 1, 'he', 'Alice', 'CT', 100, 130, 1, 2, 3, NULL, 'a'),
+                (4, 1, 1, 'smoke', 'Alice', 'CT', 90, 92, 1, 2, 3, 9, 'a'),
+                (5, 1, 1, 'flash', 'Alice', 'CT', 200, 202, 1, 2, 3, 10, 'a'),
+                (6, 1, 1, 'he', 'Alice', 'CT', 201, 203, 1, 2, 3, 11, 'a'),
+                (7, 1, 1, 'decoy', 'Alice', 'CT', 89, 91, 1, 2, 3, 12, 'a');
             INSERT INTO viewer_player_positions VALUES
                 (1, 1, 100, 'a', 'Alice', 'CT', 1, 2, 3, 1, 100, 0);
             INSERT INTO viewer_grenade_positions VALUES
                 (1, 1, 101, 41, 7, 'SmokeProjectile', 'a', 1, 2, 3),
                 (1, 1, 102, 42, 7, 'SmokeProjectile', 'a', 1, 2, 3),
                 (1, 1, 99, 51, 8, 'FlashProjectile', 'a', 1, 2, 3),
-                (1, 1, 101, 52, 8, 'FlashProjectile', 'a', 1, 2, 3);
+                (1, 1, 101, 52, 8, 'FlashProjectile', 'a', 1, 2, 3),
+                (1, 1, 89, 81, 9, 'SmokeProjectile', 'a', 1, 2, 3),
+                (1, 1, 90, 82, 9, 'SmokeProjectile', 'a', 1, 2, 3),
+                (1, 1, 200, 92, 10, 'FlashProjectile', 'a', 1, 2, 3),
+                (1, 1, 201, 91, 10, 'FlashProjectile', 'a', 1, 2, 3),
+                (1, 1, 201, 101, 11, 'HEGrenadeProjectile', 'a', 1, 2, 3),
+                (1, 1, 89, 111, 12, 'DecoyProjectile', 'a', 1, 2, 3);
         "#,
             )
             .expect("schema and projectile rows");
@@ -1873,24 +1888,38 @@ mod observed_projectile_tests {
         let meta = get_viewer_round(path, 1, 1).expect("recorded round");
         assert!(meta.positions_available);
         assert_eq!(
+            meta.grenade_sample_count, 10,
+            "SQLite retains the out-of-round tails"
+        );
+        assert_eq!(
             meta.utility_events
                 .iter()
-                .map(|event| event.observed_trajectory_index)
+                .map(|event| (event.id, event.observed_trajectory_index))
                 .collect::<Vec<_>>(),
-            vec![Some(41), None, None]
+            vec![
+                (7, None),
+                (4, Some(82)),
+                (1, Some(41)),
+                (2, None),
+                (3, None),
+                (5, Some(92)),
+                (6, None),
+            ]
         );
         let wire = serde_json::to_value(&meta).expect("IPC serialization");
-        assert_eq!(wire["utilityEvents"][0]["observedTrajectoryIndex"], 41);
-        assert!(wire["utilityEvents"][1]["observedTrajectoryIndex"].is_null());
+        assert!(wire["utilityEvents"][0]["observedTrajectoryIndex"].is_null());
+        assert_eq!(wire["utilityEvents"][1]["observedTrajectoryIndex"], 82);
+        assert_eq!(wire["utilityEvents"][2]["observedTrajectoryIndex"], 41);
+        assert!(wire["utilityEvents"][6]["observedTrajectoryIndex"].is_null());
         let chunk = get_viewer_frames(path, 1, 1, 90, 200).expect("bounded frames");
-        assert_eq!(chunk.grenades.len(), 4);
+        assert_eq!(chunk.grenades.len(), 6);
         assert_eq!(
             chunk
                 .grenades
                 .iter()
                 .map(|frame| frame.trajectory_index)
                 .collect::<Vec<_>>(),
-            vec![51, 41, 52, 42]
+            vec![82, 51, 41, 52, 42, 92]
         );
     }
 }
