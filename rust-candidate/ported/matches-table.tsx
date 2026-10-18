@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Status } from 'csdm/common/types/status';
 import { Button } from 'csdm/ui/components/buttons/button';
 import { CenteredContent } from 'csdm/ui/components/content';
@@ -30,6 +30,9 @@ export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
   const [queued, setQueued] = useState<ImportJob | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState('');
+  const mounted = useRef(false);
+  const choiceGeneration = useRef(0);
+  const importRequestGeneration = useRef(0);
   const table = useMatchesTable();
   const status = useMatchesStatus();
   const fetchMatches = useFetchMatches();
@@ -44,10 +47,23 @@ export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
       onOpenLibrary(job.receipt.path);
     }
   }, [onOpenLibrary]);
+  const beginImport = useCallback(() => {
+    importRequestGeneration.current = choiceGeneration.current;
+  }, []);
   const acceptNewImport = useCallback((job: ImportJob) => {
+    if (!mounted.current || choiceGeneration.current !== importRequestGeneration.current) return;
     localStorage.setItem(intendedImportJobKey, String(job.id));
     acceptJob(job);
   }, [acceptJob]);
+  const openManually = useCallback((selected: string) => {
+    choiceGeneration.current += 1;
+    onOpenLibrary(selected);
+  }, [onOpenLibrary]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -109,7 +125,7 @@ export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
           </p>
           {!hasActiveFilter && !search && (
             <div className="flex w-full flex-col gap-y-16 text-left">
-              <DemoImport onQueued={acceptNewImport} />
+              <DemoImport onStart={beginImport} onQueued={acceptNewImport} />
               {queued && <p role={queued.state === 'failed' ? 'alert' : 'status'} className="break-all text-gray-700">
                 {queued.state === 'failed' ? `Import failed: ${queued.error}` : queued.state === 'running'
                   ? queued.recovered ? 'Resuming demo analysis after restart. Large matches may take several minutes.'
@@ -121,11 +137,14 @@ export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
               </p>}
               {queued && (queued.state === 'queued' || queued.state === 'running') && <Button isDisabled={cancelling}
                 onClick={() => {
+                  const requestedAt = choiceGeneration.current;
                   setCancelling(true);
                   setCancelError('');
-                  void cancelImport(queued.id).then((job) => acceptJob(job, true))
-                    .catch((failure) => setCancelError(describe(failure)))
-                    .finally(() => setCancelling(false));
+                  void cancelImport(queued.id).then((job) => {
+                    if (mounted.current && choiceGeneration.current === requestedAt) acceptJob(job, true);
+                  }).catch((failure) => {
+                    if (mounted.current && choiceGeneration.current === requestedAt) setCancelError(describe(failure));
+                  }).finally(() => { if (mounted.current) setCancelling(false); });
                 }}>Cancel import</Button>}
               {cancelError && <p role="alert" className="text-red-500 select-text">{cancelError}</p>}
               <div className="flex w-full flex-col gap-y-8 border-t border-gray-300 pt-16">
@@ -135,14 +154,19 @@ export function MatchesTable({ onOpenLibrary, autoOpenRecovered }: {
                 value={path} onChange={(event) => setPath(event.target.value)} placeholder="C:\\path\\to\\matches.sqlite" />
               {pickerError && <p role="alert" className="text-red-500 select-text">{pickerError}</p>}
               <div className="flex gap-x-8">
-                <Button isDisabled={!path.trim()} onClick={() => onOpenLibrary(path.trim())}>Open local library</Button>
+                <Button isDisabled={!path.trim()} onClick={() => openManually(path.trim())}>Open local library</Button>
                 <Button onClick={() => {
                   setPickerError('');
+                  const requestedAt = choiceGeneration.current;
                   const native = (window as any).__TAURI_INTERNALS__;
                   if (!native?.invoke) { setPickerError('The Tauri host is unavailable.'); return; }
                   void native.invoke('csdm_choose_library').then((selected: string | null) => {
-                    if (selected) { setPath(selected); onOpenLibrary(selected); }
-                  }).catch((error: unknown) => setPickerError(String(error)));
+                    if (mounted.current && choiceGeneration.current === requestedAt && selected) {
+                      setPath(selected); openManually(selected);
+                    }
+                  }).catch((error: unknown) => {
+                    if (mounted.current && choiceGeneration.current === requestedAt) setPickerError(String(error));
+                  });
                 }}>Browse.</Button>
               </div>
               </div>
