@@ -1,14 +1,14 @@
 # Native UI previews
 
-## Current draft workspace - 17 October 2026
+## Historical PR #2 empty workspace - 17 October 2026
 
-The [current README image](../assets/screenshots/demostrike-empty-native-pr2-2026-10-17.png) is an unedited 1024 × 768 PNG captured by DemoStrike's native eframe/egui renderer in a hosted Windows run. It shows the revised empty workspace with its import action, saved-match navigation, and optional configuration panels. The capture used an isolated empty `LOCALAPPDATA` directory; no demo or media was loaded.
+The [README's retained historical image](../assets/screenshots/demostrike-empty-native-pr2-2026-10-17.png) is an unedited 1024 × 768 PNG captured by DemoStrike's native eframe/egui renderer in a hosted Windows run. It shows the revised empty workspace with its import action, saved-match navigation, and optional configuration panels. The capture used an isolated empty `LOCALAPPDATA` directory; no demo or media was loaded. It does not show the current `main` source.
 
-- Source: draft PR [#2](https://github.com/Gerbzz/DemoStrike/pull/2), commit `f73f62a043a5e34245aacf4bfd2a924888c83050`.
+- Source: PR [#2](https://github.com/Gerbzz/DemoStrike/pull/2), commit `f73f62a043a5e34245aacf4bfd2a924888c83050`. PR #2 and its [integration PR #5](https://github.com/Gerbzz/DemoStrike/pull/5) merged on 18 October 2026; neither merge changes this image's source provenance.
 - Hosted test, native build, and capture: [Actions run 38989213660](https://github.com/Gerbzz/DemoStrike/actions/runs/38989213660), completed successfully for that exact source commit.
 - PNG SHA-256: `1E705B74DEFA43D6028E5DB7CD5928788EB8B974EBE64BFBF82A9A903351F82A` (64,773 bytes).
 
-This capture verifies the empty native window only. The later saved-match empty-state text and import action require interactive review. Demo import, event analysis, capture quality, FilmCraft editing, and export are outside this image's scope.
+This capture verifies the historical empty native window only. A fresh capture from current `main` is still needed before using an image to describe its present UI. The later saved-match empty-state text and import action require interactive review. Demo import, event analysis, capture quality, FilmCraft editing, and export are outside this image's scope.
 
 ## Earlier baseline - 15 October 2026
 

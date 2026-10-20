@@ -17,7 +17,7 @@ DemoStrike turns supported CS2 demos into searchable match events. Review combat
 
 ![DemoStrike native desktop app showing its empty analysis workspace](assets/screenshots/demostrike-empty-native-pr2-2026-10-17.png)
 
-*Native empty workspace, captured from [draft PR #2](https://github.com/Gerbzz/DemoStrike/pull/2) on 17 October 2026. No demo, match events, capture footage, or media were loaded. [Capture provenance and limits](docs/NATIVE_UI_PREVIEW.md).*
+*Historical native empty workspace, captured on 17 October 2026 from source `f73f62a` in [PR #2](https://github.com/Gerbzz/DemoStrike/pull/2). PR #2 and its [integration PR #5](https://github.com/Gerbzz/DemoStrike/pull/5) are now merged; this is not a capture of current `main`. No demo, match events, capture footage, or media were loaded. [Capture provenance and limits](docs/NATIVE_UI_PREVIEW.md).*
 
 ## Highlights
 
@@ -27,7 +27,7 @@ DemoStrike turns supported CS2 demos into searchable match events. Review combat
 
 ## Current status
 
-Alpha source. A draft branch with a screenshot hook passed a hosted Windows native build and focused binary test, and its executable produced the image above. The main branch itself has not had a fresh heavy build. Broad demo compatibility, a new CS2/HLAE capture, human media review, and release packaging remain unverified.
+Alpha source. [PR #2](https://github.com/Gerbzz/DemoStrike/pull/2) and [PR #5](https://github.com/Gerbzz/DemoStrike/pull/5) are merged. The earlier PR #2 source passed a hosted Windows native build and focused binary test, and its executable produced the historical image above. No source-matched screenshot of current `main` is recorded here. Broad demo compatibility, a new CS2/HLAE capture, human media review, and release packaging remain unverified.
 
 ## Capture and editor flow
 
