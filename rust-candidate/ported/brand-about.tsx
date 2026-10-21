@@ -1,7 +1,7 @@
 // Keep CSDM's original credits, version information and controls visible.
 import React from 'react';
 import { About as OriginalAbout } from '../upstream/cs-demo-manager/src/ui/settings/about/about';
-import mark from '../../assets/branding/DemoStrike-geometric.svg?url';
+import mark from '../../assets/branding/demostrike-dem-tactical.svg?url';
 
 export function About() {
   return (
