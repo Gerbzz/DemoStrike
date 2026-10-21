@@ -13,5 +13,5 @@
     "windows": [{ "title": "DemoStrike Rust Candidate", "width": 1440, "height": 900, "minWidth": 880, "minHeight": 600 }],
     "security": { "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'" }
   },
-  "bundle": { "active": false }
+  "bundle": { "active": false, "icon": ["icons/demostrike-geometric.ico"] }
 }

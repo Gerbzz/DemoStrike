@@ -50,10 +50,16 @@ fn main() -> eframe::Result<()> {
         "DemoStrike — utility analysis",
         eframe::NativeOptions {
             renderer: eframe::Renderer::Wgpu,
-            viewport: if capturing {
-                eframe::egui::ViewportBuilder::default().with_inner_size([1440.0, 900.0])
-            } else {
-                Default::default()
+            viewport: {
+                let viewport = if capturing {
+                    eframe::egui::ViewportBuilder::default().with_inner_size([1440.0, 900.0])
+                } else {
+                    eframe::egui::ViewportBuilder::default()
+                };
+                match eframe::icon_data::from_png_bytes(include_bytes!("../assets/branding/DemoStrike-geometric.png")) {
+                    Ok(icon) => viewport.with_icon(icon),
+                    Err(_) => viewport,
+                }
             },
             ..Default::default()
         },
