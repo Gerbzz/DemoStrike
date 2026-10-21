@@ -10,21 +10,21 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-filmcraft-time = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-geom = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-color = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-frame = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-media = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-project = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-tts = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-edit = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-render = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-text = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-audio-dsp = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-engine = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-export = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-gpu = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-scopes = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
+filmcraft-time = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-geom = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-color = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-frame = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-media = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-project = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-tts = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-edit = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-render = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-text = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-audio-dsp = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-engine = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-export = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-gpu = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-scopes = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
 egui = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit"] }
 serde = { workspace = true }
@@ -44,11 +44,11 @@ cpu-time = "1"
 
 [dev-dependencies]
 pollster = "0.4"
-filmcraft-codecs = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
+filmcraft-codecs = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
 # the bench registers OS hardware decoders as the desktop app does (dev-dependency only: ui-egui
 # itself stays OS-independent and web-portable)
-filmcraft-platform = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
-filmcraft-interchange = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb" }
+filmcraft-platform = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
+filmcraft-interchange = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d" }
 egui_kittest = { workspace = true, features = ["eframe", "wgpu"] }
 
 # build.rs bakes contributors/contributors.json into the binary (About ▸ Contributors).
