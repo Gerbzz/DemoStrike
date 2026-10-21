@@ -1,0 +1,70 @@
+name: ClipStrike dependency compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'third_party/filmcraft_source/crates/ui-egui/Cargo.toml'
+      - 'rust-candidate/src-tauri/Cargo.lock'
+      - 'tests/clipstrike_dependency.py'
+      - '.github/workflows/clipstrike-dependency.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'third_party/filmcraft_source/crates/ui-egui/Cargo.toml'
+      - 'rust-candidate/src-tauri/Cargo.lock'
+      - 'tests/clipstrike_dependency.py'
+      - '.github/workflows/clipstrike-dependency.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clipstrike-dependency-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    name: Dependency (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out exact reviewed head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Select stable Rust
+        run: |
+          git rev-parse HEAD
+          rustup update stable --no-self-update
+          rustc +stable --version
+      - name: Verify dependency contract and run consumed export regressions
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python tests/clipstrike_dependency.py --base-ref "$BASE_REF" --test-export
+      - name: Test capture package persistence, QC cancellation, receipts and planning
+        run: cargo +stable test --locked --lib --test handoff -- --test-threads=1
+      - name: Test editor handoff and synchronized release cues
+        run: cargo +stable test --locked --features offline-filmcraft --lib -- --test-threads=1
+      - name: Verify locks remain unchanged
+        run: git diff --exit-code -- Cargo.lock rust-candidate/src-tauri/Cargo.lock
