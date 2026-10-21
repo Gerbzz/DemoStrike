@@ -126,6 +126,7 @@ async function main() {
     await page.getByText('Import a CS2 demo for round and player combat analysis').waitFor({ timeout: 25000 });
     const brandMark = page.getByTestId('demostrike-mark');
     await brandMark.waitFor({ state: 'visible', timeout: 10000 });
+    await brandMark.evaluate((image) => image.decode());
     assert.ok(await brandMark.evaluate((image) => image.complete && image.naturalWidth > 0),
       'Selected native renderer did not load its geometric DemoStrike mark');
     assert.equal(await page.title(), 'DemoStrike', 'Selected native renderer title is stale');

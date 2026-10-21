@@ -931,7 +931,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-color"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "serde",
 ]
@@ -939,7 +939,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-format"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-media",
  "filmcraft-project",
@@ -952,7 +952,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-frame"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-color",
  "filmcraft-time",
@@ -963,7 +963,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-geom"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "serde",
 ]
@@ -971,7 +971,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-media"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-color",
  "filmcraft-frame",
@@ -985,7 +985,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-project"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-color",
  "filmcraft-geom",
@@ -999,7 +999,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-time"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "serde",
 ]

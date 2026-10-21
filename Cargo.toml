@@ -23,11 +23,11 @@ log = "0.4"
 clipstrike-core = { git = "https://github.com/Gerbzz/Clipstrike", rev = "fdf2f6ac8828374b803577ae1f6b310b73860075" }
 clipstrike-ui = { git = "https://github.com/Gerbzz/Clipstrike", rev = "fdf2f6ac8828374b803577ae1f6b310b73860075", optional = true, features = ["gstreamer-backend"] }
 clipstrike-media = { git = "https://github.com/Gerbzz/Clipstrike", rev = "fdf2f6ac8828374b803577ae1f6b310b73860075", optional = true, features = ["gstreamer-backend"] }
-filmcraft-engine = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb", optional = true }
-filmcraft-export = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb", optional = true }
-filmcraft-format = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb", optional = true }
-filmcraft-project = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb", optional = true }
-filmcraft-time = { git = "https://github.com/Gerbzz/Clipstrike", rev = "4be130f016fe7a0a3b7ae5d59a037c299594aecb", optional = true }
+filmcraft-engine = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d", optional = true }
+filmcraft-export = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d", optional = true }
+filmcraft-format = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d", optional = true }
+filmcraft-project = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d", optional = true }
+filmcraft-time = { git = "https://github.com/Gerbzz/Clipstrike", rev = "a539163b9d86546ba61130c56a0395e05d16d39d", optional = true }
 filmcraft-ui-egui = { path = "third_party/filmcraft_source/crates/ui-egui", optional = true }
 eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "wayland", "x11"], optional = true }
 rfd = { version = "0.17", optional = true }

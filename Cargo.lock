@@ -1934,7 +1934,7 @@ checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 [[package]]
 name = "filmcraft-aac"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-bitstream",
  "thiserror 2.0.21",
@@ -1943,7 +1943,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-ac3"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -1951,7 +1951,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-apv"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-bitstream",
  "rayon",
@@ -1961,12 +1961,12 @@ dependencies = [
 [[package]]
 name = "filmcraft-audio-dsp"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 
 [[package]]
 name = "filmcraft-av1"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-bitstream",
  "rayon",
@@ -1976,12 +1976,12 @@ dependencies = [
 [[package]]
 name = "filmcraft-bitstream"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 
 [[package]]
 name = "filmcraft-captions"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-color",
  "filmcraft-project",
@@ -1994,12 +1994,12 @@ dependencies = [
 [[package]]
 name = "filmcraft-cfb"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 
 [[package]]
 name = "filmcraft-codecs"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-aac",
  "filmcraft-ac3",
@@ -2032,7 +2032,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-color"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "serde",
 ]
@@ -2040,7 +2040,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-dnx"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-bitstream",
  "rayon",
@@ -2050,7 +2050,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-edit"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-project",
  "filmcraft-time",
@@ -2060,7 +2060,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-engine"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-audio-dsp",
  "filmcraft-captions",
@@ -2091,7 +2091,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-export"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-aac",
  "filmcraft-apv",
@@ -2120,7 +2120,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-format"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-media",
  "filmcraft-project",
@@ -2133,7 +2133,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-frame"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-color",
  "filmcraft-time",
@@ -2144,7 +2144,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-geom"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "serde",
 ]
@@ -2152,7 +2152,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-gpu"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-color",
  "filmcraft-frame",
@@ -2169,7 +2169,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-h264"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-bitstream",
  "rayon",
@@ -2179,7 +2179,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-h264enc"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-bitstream",
  "rayon",
@@ -2189,7 +2189,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-hevc"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-bitstream",
  "rayon",
@@ -2199,7 +2199,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-interchange"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-cfb",
  "filmcraft-color",
@@ -2216,7 +2216,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-isobmff"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-bitstream",
  "thiserror 2.0.21",
@@ -2225,12 +2225,12 @@ dependencies = [
 [[package]]
 name = "filmcraft-matroska"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 
 [[package]]
 name = "filmcraft-media"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-color",
  "filmcraft-frame",
@@ -2244,7 +2244,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-mpeg2v"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "rayon",
  "thiserror 2.0.21",
@@ -2253,7 +2253,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-mpegts"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -2261,22 +2261,22 @@ dependencies = [
 [[package]]
 name = "filmcraft-mxf"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 
 [[package]]
 name = "filmcraft-ogg"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 
 [[package]]
 name = "filmcraft-opus"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 
 [[package]]
 name = "filmcraft-project"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-color",
  "filmcraft-geom",
@@ -2290,7 +2290,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-prores"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-bitstream",
  "rayon",
@@ -2300,7 +2300,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-render"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-audio-dsp",
  "filmcraft-captions",
@@ -2319,7 +2319,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-scopes"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-color",
  "serde",
@@ -2328,7 +2328,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-speech"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-project",
  "filmcraft-time",
@@ -2341,7 +2341,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-text"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-color",
  "harfrust",
@@ -2354,7 +2354,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-time"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "serde",
 ]
@@ -2362,7 +2362,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-tts"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -2403,7 +2403,7 @@ dependencies = [
 [[package]]
 name = "filmcraft-vp9"
 version = "0.6.0"
-source = "git+https://github.com/Gerbzz/Clipstrike?rev=4be130f016fe7a0a3b7ae5d59a037c299594aecb#4be130f016fe7a0a3b7ae5d59a037c299594aecb"
+source = "git+https://github.com/Gerbzz/Clipstrike?rev=a539163b9d86546ba61130c56a0395e05d16d39d#a539163b9d86546ba61130c56a0395e05d16d39d"
 dependencies = [
  "filmcraft-bitstream",
  "rayon",
