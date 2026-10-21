@@ -25,6 +25,8 @@ export default {
       { find: 'react/compiler-runtime', replacement: path.resolve(upstreamModules, 'react/compiler-runtime.js') },
       { find: 'react/jsx-runtime', replacement: path.resolve(upstreamModules, 'react/jsx-runtime.js') },
       { find: './index.css', replacement: path.resolve(portedRoot, 'index.css') },
+      { find: 'csdm/ui/title-bar/title-bar', replacement: path.resolve(portedRoot, 'brand-title-bar.tsx') },
+      { find: './about/about', replacement: path.resolve(portedRoot, 'brand-about.tsx') },
       { find: 'csdm/ui/settings/database/database-settings', replacement: path.resolve(portedRoot, 'database-settings.tsx') },
       { find: './database/database-settings', replacement: path.resolve(portedRoot, 'database-settings.tsx') },
       { find: './error-boundary', replacement: path.resolve(portedRoot, 'error-boundary.tsx') },

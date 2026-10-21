@@ -5,6 +5,9 @@ on:
     paths:
       - 'rust-candidate/**'
       - 'tests/editor_runtime_native.ps1'
+      - 'assets/branding/**'
+      - 'tools/verify_geometric_identity.py'
+      - 'tools/test_icon_resource_verifier.py'
       - '.github/workflows/rust-candidate-verify.yml'
   workflow_dispatch:
 
@@ -36,6 +39,13 @@ jobs:
           path: rust-candidate/ported/dist
       - name: Build native original renderer host
         run: npm run tauri -- build --config src-tauri/tauri.upstream.smoke.conf.json --features synthetic-import-smoke
+      - name: Verify original art and exact selected-host icon
+        shell: pwsh
+        run: |
+          python ../tools/test_icon_resource_verifier.py
+          if ($LASTEXITCODE -ne 0) { throw 'Icon resource negative controls failed' }
+          python ../tools/verify_geometric_identity.py --svg ../assets/branding/DemoStrike-geometric.svg --png ../assets/branding/DemoStrike-geometric.png --ico src-tauri/icons/demostrike-geometric.ico --original ../assets/branding/DemoStrike.png --original-sha256 d039582241b04a74d6e8124a0021d22df91a5acb1641ccc0f873b72376e4320b --exe src-tauri/target/release/demostrike-rust-candidate.exe --group-id 32512
+          if ($LASTEXITCODE -ne 0) { throw 'Selected native host identity verification failed' }
       - name: Generate sanitized synthetic library
         run: python tests/make_smoke_fixture.py
       - name: Exercise original startup and capture native app
