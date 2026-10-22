@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   original-native:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/diagnostic/dem-native-context-20261022') }}
     needs: upstream-renderer
     runs-on: windows-latest
     timeout-minutes: 90
@@ -153,6 +154,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
   verify:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/diagnostic/dem-native-context-20261022') }}
     runs-on: windows-latest
     timeout-minutes: 90
     defaults:
@@ -222,6 +224,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
   editor-runtime:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/diagnostic/dem-native-context-20261022') }}
     needs: original-native
     runs-on: windows-latest
     timeout-minutes: 120
@@ -273,3 +276,117 @@ jobs:
           path: ${{ runner.temp }}/demostrike-editor-runtime/*
           if-no-files-found: warn
           retention-days: 1
+  native-context-observation:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/diagnostic/dem-native-context-20261022' }}
+    needs: upstream-renderer
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: rust-candidate
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - name: Require exact manual diagnostic ref before work
+        shell: pwsh
+        working-directory: .
+        run: |
+          if ($env:GITHUB_EVENT_NAME -cne 'workflow_dispatch' -or $env:GITHUB_REF -cne 'refs/heads/diagnostic/dem-native-context-20261022') { throw 'Exact manual diagnostic ref required' }
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install hosted tooling
+        run: npm ci --no-audit --no-fund
+      - name: Download verified original renderer bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: csdm-ported-renderer
+          path: rust-candidate/ported/dist
+      - name: Record source and rebuilt renderer hashes
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'demostrike-native-context-build'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          $source = @{
+            commit = (git rev-parse HEAD)
+            applicationBase = '06a16d8c40e2d15a980e9c11fa4ece84fe9f728b'
+            preconditioning = 'Feature-free cold host only; prior synthetic startup/recovery profile history is omitted'
+            canonicalDriver = (git hash-object tests/public-native-smoke.cjs)
+            runnerOs = $env:RUNNER_OS
+            runnerImage = $env:ImageVersion
+            node = (node --version)
+            cargo = (cargo --version)
+          }
+          $source | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $output 'source.json')
+          if ($source.canonicalDriver -ne '04b7c48938e8d904c4e1410de2f0b46f26ed7823') { throw 'Canonical native driver changed' }
+          if ((git rev-parse HEAD^) -ne '06a16d8c40e2d15a980e9c11fa4ece84fe9f728b') { throw 'Diagnostic commit base changed' }
+          git -C .. diff --exit-code 06a16d8c40e2d15a980e9c11fa4ece84fe9f728b HEAD -- . ':(exclude).github/workflows/rust-candidate-verify.yml' ':(exclude)rust-candidate/tests/observe-public-native.cjs' ':(exclude)rust-candidate/tests/observe-native-processes.ps1'
+          if ($LASTEXITCODE -ne 0) { throw 'Application, assets or dependency source changed' }
+          $root = (Resolve-Path 'ported/dist').Path
+          $files = @(Get-ChildItem -LiteralPath $root -File -Recurse | Sort-Object FullName | ForEach-Object {
+            @{ path = [IO.Path]::GetRelativePath($root, $_.FullName).Replace('\', '/'); bytes = $_.Length; sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() }
+          })
+          $files | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $output 'renderer-files-sha256.json')
+      - name: Build unchanged feature-free native host once
+        run: npm run tauri -- build --config src-tauri/tauri.upstream.smoke.conf.json
+      - name: Verify original art and exact selected-host icon
+        shell: pwsh
+        run: |
+          python ../tools/test_icon_resource_verifier.py
+          if ($LASTEXITCODE -ne 0) { throw 'Icon resource negative controls failed' }
+          python ../tools/verify_geometric_identity.py --svg ../assets/branding/demostrike-dem-tactical.svg --png ../assets/branding/demostrike-dem-tactical.png --ico src-tauri/icons/demostrike-dem-tactical.ico --original ../assets/branding/DemoStrike.png --original-sha256 d039582241b04a74d6e8124a0021d22df91a5acb1641ccc0f873b72376e4320b --exe src-tauri/target/release/demostrike-rust-candidate.exe --group-id 32512
+          if ($LASTEXITCODE -ne 0) { throw 'Selected native host identity verification failed' }
+      - name: Fetch pinned public CS2 demo for real native UI import
+        shell: pwsh
+        run: |
+          $fixture = Join-Path $env:RUNNER_TEMP 'public-cs2-fixture.dem'
+          curl.exe --fail --location --retry 2 --max-filesize 65000000 --max-time 180 --output $fixture 'https://raw.githubusercontent.com/LaihoE/demoparser/45ca85aeac8fb0de9d385124d2c7fe0e7b8ff0c8/src/parser/test_demo.dem'
+          if ($LASTEXITCODE -ne 0) { throw 'Public fixture download failed' }
+          if ((Get-Item -LiteralPath $fixture).Length -ne 60601900) { throw 'Public fixture size changed' }
+          if ((git hash-object -- $fixture) -ne 'e5cc97203262ab36bb756514b02d56eb6bd972a0') { throw 'Public fixture content changed' }
+      - name: Fetch hash-pinned public CSDM radar for transient native capture
+        shell: pwsh
+        run: |
+          $radar = Join-Path $env:RUNNER_TEMP 'de_mirage-radar.png'
+          curl.exe --fail --location --retry 2 --max-filesize 200000 --max-time 60 --output $radar 'https://raw.githubusercontent.com/akiver/cs-demo-manager/7270bc95c8cab87b7f9ddd490fea13c6eda3ace7/static/images/maps/cs2/radars/de_mirage.png'
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned CSDM radar download failed' }
+          if ((Get-Item -LiteralPath $radar).Length -ne 144543) { throw 'Pinned CSDM radar size changed' }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $radar).Hash.ToLowerInvariant() -ne 'af139a92cf929214f7c0ac35e2d8c82bad385d83e71eeaf7b955dac96467a136') { throw 'Pinned CSDM radar content changed' }
+      - name: Record native executable and public input hashes
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'demostrike-native-context-build'
+          $hashes = @(
+            @{ role = 'native-executable'; sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath 'src-tauri/target/release/demostrike-rust-candidate.exe').Hash.ToLowerInvariant() },
+            @{ role = 'public-demo'; sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $env:RUNNER_TEMP 'public-cs2-fixture.dem')).Hash.ToLowerInvariant() },
+            @{ role = 'public-radar'; sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $env:RUNNER_TEMP 'de_mirage-radar.png')).Hash.ToLowerInvariant() }
+          )
+          $hashes | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $output 'build-inputs-sha256.json')
+      - name: Keep tracked source and locks unchanged after build
+        shell: pwsh
+        run: |
+          git -C .. diff --exit-code HEAD -- .
+          if ($LASTEXITCODE -ne 0) { throw 'Build changed tracked application source, assets, configuration or dependency locks' }
+      - name: Observe unchanged native public-demo acceptance
+        run: node tests/observe-public-native.cjs
+        env:
+          EXPECT_FEATURE_FREE: '1'
+          CSDM_PUBLIC_RADAR_PATH: ${{ runner.temp }}/de_mirage-radar.png
+      - name: Retain failed and successful context observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demostrike-native-context-observation
+          path: |
+            ${{ runner.temp }}/demostrike-native-context-observer/*.json
+            ${{ runner.temp }}/demostrike-native-context-observer/*.jsonl
+            ${{ runner.temp }}/demostrike-native-context-observer/*.txt
+            ${{ runner.temp }}/demostrike-native-context-build/*.json
+            ${{ runner.temp }}/demostrike-public-native/*
+          if-no-files-found: warn
+          retention-days: 1
+
