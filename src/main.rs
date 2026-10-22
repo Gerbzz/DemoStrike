@@ -56,7 +56,7 @@ fn main() -> eframe::Result<()> {
                 } else {
                     eframe::egui::ViewportBuilder::default()
                 };
-                match eframe::icon_data::from_png_bytes(include_bytes!("../assets/branding/DemoStrike-geometric.png")) {
+                match eframe::icon_data::from_png_bytes(include_bytes!("../assets/branding/demostrike-dem-tactical.png")) {
                     Ok(icon) => viewport.with_icon(icon),
                     Err(_) => viewport,
                 }

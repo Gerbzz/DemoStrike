@@ -44,7 +44,7 @@ jobs:
         run: |
           python ../tools/test_icon_resource_verifier.py
           if ($LASTEXITCODE -ne 0) { throw 'Icon resource negative controls failed' }
-          python ../tools/verify_geometric_identity.py --svg ../assets/branding/DemoStrike-geometric.svg --png ../assets/branding/DemoStrike-geometric.png --ico src-tauri/icons/demostrike-geometric.ico --original ../assets/branding/DemoStrike.png --original-sha256 d039582241b04a74d6e8124a0021d22df91a5acb1641ccc0f873b72376e4320b --exe src-tauri/target/release/demostrike-rust-candidate.exe --group-id 32512
+          python ../tools/verify_geometric_identity.py --svg ../assets/branding/demostrike-dem-tactical.svg --png ../assets/branding/demostrike-dem-tactical.png --ico src-tauri/icons/demostrike-dem-tactical.ico --original ../assets/branding/DemoStrike.png --original-sha256 d039582241b04a74d6e8124a0021d22df91a5acb1641ccc0f873b72376e4320b --exe src-tauri/target/release/demostrike-rust-candidate.exe --group-id 32512
           if ($LASTEXITCODE -ne 0) { throw 'Selected native host identity verification failed' }
       - name: Generate sanitized synthetic library
         run: python tests/make_smoke_fixture.py

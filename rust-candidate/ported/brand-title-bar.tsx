@@ -7,7 +7,7 @@ import { HistoryNavigation } from 'csdm/ui/title-bar/history/history-navigation'
 import { MenuButton } from 'csdm/ui/title-bar/menu-button';
 import { WindowControls } from 'csdm/ui/title-bar/window-controls/window-controls';
 import { UpdateAvailableButton } from 'csdm/ui/title-bar/update-available-button';
-import mark from '../../assets/branding/DemoStrike-geometric.svg?url';
+import mark from '../../assets/branding/demostrike-dem-tactical.svg?url';
 
 export function TitleBar() {
   const databaseStatus = useDatabaseStatus();
