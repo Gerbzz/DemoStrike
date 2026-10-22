@@ -18,7 +18,9 @@
 
 DemoStrike turns supported CS2 demos into searchable match events. Review combat, utility, and flashes; mark favorites and tags; then prepare a supervised capture and editable handoff for selected moments.
 
-*The selected Tauri candidate is being checked with the .DEM file badge. A source-matched native screenshot will be added after the hosted check; [earlier native previews are retained as historical evidence](docs/NATIVE_UI_PREVIEW.md).*
+![DemoStrike's selected Tauri candidate showing its .DEM badge and empty match library](assets/screenshots/demostrike-dem-tactical-native-pr14.png)
+
+*Genuine hosted Tauri/WebView2 smoke-build capture of the ported CS Demo Manager renderer with the .DEM file badge. This frame shows an empty library. The application and branding source match this README update. [Capture provenance, launcher distinction and limits](docs/NATIVE_UI_PREVIEW.md).*
 
 ## Highlights
 
@@ -30,7 +32,7 @@ DemoStrike turns supported CS2 demos into searchable match events. Review combat
 
 Alpha source. The selected renderer is the separate Tauri candidate under `rust-candidate/ported`, built from the pinned full CS Demo Manager application source with native adapters. The repository-root `demostrike` binary still uses the legacy eframe UI; the Tauri candidate is separate from that launcher and is not a released installer.
 
-The preceding candidate source passed a hosted Windows native build and WebView2 smoke test. The selected .DEM branding change requires its own source-matched native check and capture. Older eframe screenshots are retained as [historical previews](docs/NATIVE_UI_PREVIEW.md#historical-eframe-previews). Broad demo compatibility, a new CS2/HLAE capture, human media review, and release packaging remain unverified.
+The selected .DEM identity passed a hosted Windows native build and WebView2 smoke test. The image above comes from that actual selected candidate; this documentation follow-up changes no application or branding source. Older eframe screenshots are retained as [historical previews](docs/NATIVE_UI_PREVIEW.md#historical-eframe-previews). Broad demo compatibility, a new CS2/HLAE capture, human media review, and release packaging remain unverified.
 
 ## Capture and editor flow
 
@@ -50,7 +52,7 @@ Use a reviewed Windows Rust/Cargo toolchain and the committed lockfile. Populate
 
 ## Verification history
 
-The earlier local foundation passed 91 no-UI and 112 native-UI library tests, linked the native executable, and passed a generated three-take technical QC/mux exercise. A retained-media editor proof imported a capture, saved and reopened an editable project, and decoded a rendered export. At that earlier checkpoint, the public source snapshot removed match-specific proof tests and identifiers and had not yet been rebuilt. The current identity's hosted validation and screenshot provenance will be recorded in [Native UI previews](docs/NATIVE_UI_PREVIEW.md). These checks do not establish broad demo support or human approval of capture quality.
+The earlier local foundation passed 91 no-UI and 112 native-UI library tests, linked the native executable, and passed a generated three-take technical QC/mux exercise. A retained-media editor proof imported a capture, saved and reopened an editable project, and decoded a rendered export. At that earlier checkpoint, the public source snapshot removed match-specific proof tests and identifiers and had not yet been rebuilt. The current identity's hosted validation and screenshot provenance are recorded in [Native UI previews](docs/NATIVE_UI_PREVIEW.md). These checks do not establish broad demo support or human approval of capture quality.
 
 ## PWDS brand artwork
 

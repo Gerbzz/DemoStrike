@@ -1,8 +1,20 @@
 # Native UI previews
 
-## Selected .DEM identity native check
+## Selected .DEM identity native capture - PR #14
 
-The selected ported Tauri/WebView2 source candidate is being verified with the .DEM file badge. A new unedited native capture and its exact source, tree, run and PNG provenance will be recorded here after the hosted check. The repository-root `demostrike` executable remains the legacy eframe launcher; it is separate from the selected renderer.
+The [README showcase](../assets/screenshots/demostrike-dem-tactical-native-pr14.png) is the original, unedited 1028 × 749 PNG from the actual hosted Windows Tauri/WebView2 window. It shows the ported CS Demo Manager renderer with the .DEM title-bar badge, original navigation and window controls, and an empty match library. The path fields contain placeholders; no personal path or match data is shown.
+
+This is the separate source candidate under `rust-candidate/ported`, using the pinned full upstream application source with native adapters. The repository-root `demostrike` executable remains the legacy eframe launcher. This capture does not establish that the candidate is the default launcher, a released installer, or a completed port of every upstream feature.
+
+- Source PR: [#14](https://github.com/Gerbzz/DemoStrike/pull/14), captured source head `854128ff8d45637ccc88c9f6634f7c90b7b22adb`.
+- Actual checked-out native test merge: `b90697ea884104c0b288b9683cbd9a67aaccb91d`, combining that head with base `a1d3c12b8aa59e0630418a46d024958e5c504248`.
+- Tested tree: `4c0df0acf2d296d6f212dc4c9b1faad8cf430238`. The later README, provenance and screenshot commit changes only documentation and this PNG; all application and branding paths remain identical to this captured source.
+- Hosted capture: [run 39696300842, original-native job 119554636650](https://github.com/Gerbzz/DemoStrike/actions/runs/39696300842/job/119554636650). Its `demostrike-original-native-startup` artifact's `proof.json` binds the source commit, executable and screenshot hashes.
+- Capture artifact: `demostrike-original-native-startup`, ID `12391542933`, uploaded at `2026-10-22T00:08:16Z`; ZIP SHA-256 `27c79f64dfced933e8f71c10c23272c036f928bd3e9f8ba313f2448dba812e16`. The artifact timestamp is distinct from the source commit date.
+- Original member: `original-matches-empty.png`, copied byte for byte to the showcase path; 60305 bytes; SHA-256 `20739fb709e75434f36b116306c6d9ef56a9084f1a59f19ad6e4fa586f1f8925`.
+- Captured executable SHA-256: `0d93eecbd51c78bdb4f2a30a38e9727de058f1a4905110733884801396c0011e`.
+
+The same job verified all seven embedded icon payloads at Windows resource group 32512 and asserted that the title-bar image finished decoding and the page title was DemoStrike. The capture used the existing CI synthetic-import smoke build, whose parser is configured for synthetic fixtures; this empty frame shows no loaded fixture. That captured executable is not a production release executable or proof of real-demo decoding. Its broader native smoke exercises synthetic import and read-only navigation separately. The PNG alone does not demonstrate demo analysis, HLAE capture, FilmCraft editing/export, taskbar appearance, alternate DPI, or interactive Room acceptance.
 
 The retained images below are historical eframe captures. They do not establish the appearance of the selected .DEM identity or a released installer.
 
