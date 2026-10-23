@@ -36,6 +36,8 @@ fn trace_editor_once(seen: &AtomicBool, step: &str) {
 mod filmcraft_legacy;
 #[path = "filmcraft_audio.rs"]
 mod filmcraft_audio;
+#[path = "native_review_ui.rs"]
+mod native_review_ui;
 
 fn load_editor_session(path: &Path) -> Result<(Session, bool), String> {
     let extension = path.extension().and_then(|s| s.to_str()).unwrap_or_default();
@@ -70,7 +72,7 @@ fn editor_return_state(editor: &FilmcraftApp, discard_confirmed: bool) -> Editor
 
 enum ImportMessage {
     Stage(&'static str),
-    Finished(Result<ImportedMatch, String>),
+    Finished { database: PathBuf, navigation_generation: u64, result: Result<ImportedMatch, String> },
 }
 
 enum PilotOutcome {
@@ -138,6 +140,8 @@ pub struct DemoStrikeApp {
     selected_event: Option<UtilityEventDetail>,
     tag_draft: String,
     capture: Option<CaptureOnce>,
+    native_review: native_review_ui::NativeReviewUi,
+    native_review_capture_receipt: Option<PathBuf>,
 }
 
 struct CaptureOnce {
@@ -189,7 +193,7 @@ impl Default for DemoStrikeApp {
             library_matches: Vec::new(), library_opened: false, library_events: Vec::new(), library_match_id: None,
             library_page: 0, library_search: String::new(), library_search_applied: String::new(),
             library_favorites_only: false, selected_event: None, tag_draft: String::new(),
-            capture: None,
+            capture: None, native_review: Default::default(), native_review_capture_receipt: None,
         }
     }
 }
@@ -206,6 +210,25 @@ impl Drop for DemoStrikeApp {
 }
 
 impl DemoStrikeApp {
+    pub fn open_native_review(&mut self, context: &egui::Context, database: &Path, match_id: Option<i64>, round_number: Option<i64>, radar: Option<&Path>) -> Result<(), String> {
+        self.database_path = database.display().to_string();
+        self.native_review.open_ready(database.to_path_buf(), match_id, round_number)?;
+        if let Some(path) = radar { self.native_review.load_radar(context, path)?; }
+        Ok(())
+    }
+    /// Optional source-bound native review receipt. It does not change screenshot clocks.
+    pub fn set_native_review_capture_receipt(&mut self, path: PathBuf) -> Result<(), String> {
+        if !path.is_absolute() || !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"))
+            || path.file_name().and_then(|n| n.to_str()).is_none_or(|n| n.contains(':')) {
+            return Err("native review capture receipt must be an absolute normal .json path".into());
+        }
+        match std::fs::symlink_metadata(&path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+            _ => return Err("native review capture receipt destination already exists or is inaccessible".into()),
+        }
+        self.native_review_capture_receipt = Some(path);
+        Ok(())
+    }
     /// Capture one fully painted native window, then close. Existing files are preserved.
     pub fn capture_once(&mut self, path: PathBuf,
         outcome: Arc<Mutex<Option<Result<(), String>>>>) {
@@ -216,6 +239,13 @@ impl DemoStrikeApp {
 
     fn finish_capture(&mut self, ctx: &egui::Context, result: Result<(), String>) {
         if let Some(capture) = self.capture.take() {
+            let result = result.and_then(|()| {
+                if let Some(path) = self.native_review_capture_receipt.take() {
+                    let paint = self.native_review.settled_paint()?;
+                    crate::native_review_capture::save_native_review_capture(&path, &capture.path, &paint)?;
+                }
+                Ok(())
+            });
             *capture.outcome.lock().unwrap() = Some(result);
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
@@ -370,6 +400,7 @@ impl DemoStrikeApp {
 
     fn install_editor(&mut self, mut session: Session, legacy: bool,
         recovery: bool) -> Result<(), String> {
+        self.native_review.suspend();
         let trace = std::env::var_os("DEMOSTRIKE_EDITOR_CAPTURE_PROOF").is_some();
         if trace {
             eprintln!("EDITOR_BOOT before_autosave");
@@ -907,15 +938,20 @@ impl DemoStrikeApp {
     }
 
     fn start_capture_request(&mut self, event_id: i64, destination: &Path) -> Result<(), String> {
+        self.start_capture_request_in_library(event_id,destination,PathBuf::from(&self.database_path),None)
+    }
+
+    fn start_capture_request_in_library(&mut self,event_id:i64,destination:&Path,database:PathBuf,expected:Option<(i64,String)>)->Result<(),String>{
         if self.capture_request_messages.is_some() {
             return Err("another capture request is still being prepared".into());
         }
-        let database = PathBuf::from(&self.database_path);
         let destination = destination.to_path_buf();
         let (sender, receiver) = mpsc::channel();
         std::thread::Builder::new().name("capture-request".into()).spawn(move || {
-            let result = build_capture_request(&database, event_id)
-                .and_then(|request| save_request_noclobber(&request, &destination).map(|_| destination));
+            let result = build_capture_request(&database, event_id).and_then(|request| {
+                if let Some((match_id,source_sha256))=&expected {if request.match_id!=*match_id || request.demo_sha256!=*source_sha256 {return Err("Selected native match/source changed; review the throw again before preparing capture".into());}}
+                save_request_noclobber(&request,&destination).map(|_|destination)
+            });
             let _ = sender.send(result);
         }).map_err(|error| format!("could not start capture request worker: {error}"))?;
         self.capture_request_messages = Some(receiver);
@@ -976,13 +1012,14 @@ impl DemoStrikeApp {
         let path = path.to_path_buf();
         let worker_path = path.clone();
         let database = PathBuf::from(&self.database_path);
+        let navigation_generation = self.native_review.navigation_generation();
         let (sender, receiver) = mpsc::channel();
         let cancelled = Arc::new(ImportControl::new());
         let worker_cancelled = Arc::clone(&cancelled);
         std::thread::Builder::new().name("demo-import".into()).spawn(move || {
             let result = import_demo(&worker_path, &database, parser.as_ref(), &worker_cancelled,
                 |stage| { let _ = sender.send(ImportMessage::Stage(stage)); });
-            let _ = sender.send(ImportMessage::Finished(result));
+            let _ = sender.send(ImportMessage::Finished { database, navigation_generation, result });
         }).map_err(|error| {
             let message = format!("could not start demo import: {error}");
             self.error = Some(message.clone()); message
@@ -1014,10 +1051,17 @@ impl DemoStrikeApp {
                 };
                 match message {
                     ImportMessage::Stage(stage) => self.import_stage = Some(stage.into()),
-                    ImportMessage::Finished(result) => {
+                    ImportMessage::Finished { database, navigation_generation, result } => {
                         finished = true;
                         match result {
                             Ok(imported) => {
+                                // A completed import belongs to its original library. Never reinterpret
+                                // an ID from A in B or cancel newer native navigation back to A.
+                                if Path::new(&self.database_path) != database
+                                    || self.native_review.navigation_generation() != navigation_generation {
+                                    self.import_stage = Some(format!("Complete in {}; current selection retained", database.display()));
+                                    continue;
+                                }
                                 new_match_id = Some(imported.match_id);
                                 self.capabilities = Some(imported.capabilities);
                                 self.analyzed = Some(imported.analyzed);
@@ -1039,6 +1083,7 @@ impl DemoStrikeApp {
         if let Some(id) = new_match_id {
             self.library_match_id = Some(id);
             if let Err(error) = self.refresh_library() { self.error = Some(error); }
+            if self.native_review.active {self.native_review.open(PathBuf::from(&self.database_path),Some(id),None);}
         }
     }
 
@@ -1413,8 +1458,41 @@ impl eframe::App for DemoStrikeApp {
                     }
                 }
                 });
+                if ui.button("Native match review").clicked() { self.native_review.open(PathBuf::from(&self.database_path), self.library_match_id, None); }
             });
         });
+
+        if self.native_review.active {
+            let mut review_actions = Vec::new();
+            egui::CentralPanel::default().show(ui, |ui| {
+                if let Some(error)=&self.error {ui.colored_label(egui::Color32::LIGHT_RED,error);}
+                if let Some(stage)=&self.import_stage {ui.small(format!("Native demo import: {stage}"));}
+                if self.import_messages.is_some() {
+                    if let Some((tick,total))=self.import_cancel.parsing_progress(){ui.add(egui::ProgressBar::new(tick as f32/total.max(1) as f32).text(format!("Decoded tick {tick} / {total}")));}
+                    if ui.add_enabled(self.import_cancel.can_cancel(),egui::Button::new("Cancel demo import")).clicked(){self.import_cancel.request_cancel();}
+                    ctx.request_repaint_after(Duration::from_millis(100));
+                }
+                review_actions = self.native_review.show(ui);
+            });
+            if let Some(path)=self.native_review.library_path(){self.database_path=path.display().to_string();}
+            for action in review_actions {
+                match action {
+                    native_review_ui::ReviewAction::CaptureTools => {self.native_review.suspend();self.native_review.active = false;},
+                    native_review_ui::ReviewAction::ImportDemo => { if let Some(path) = rfd::FileDialog::new().add_filter("CS2 demo", &["dem"]).pick_file() { let _ = self.start_demo_import(&path); } },
+                    native_review_ui::ReviewAction::ChooseLibrary => { if let Some(path) = rfd::FileDialog::new().add_filter("DemoStrike library", &["sqlite", "sqlite3", "db"]).pick_file() { self.native_review.open(path, None, None); } },
+                    native_review_ui::ReviewAction::ChooseRadar => { if let Some(path) = rfd::FileDialog::new().add_filter("Radar PNG", &["png"]).pick_file() { if let Err(error) = self.native_review.load_radar(&ctx, &path) { self.error = Some(error); } } },
+                    native_review_ui::ReviewAction::PrepareCapture {event_id:id,database,match_id,source_sha256} => {
+                        if let Some(hash)=source_sha256 {
+                            if let Some(path)=rfd::FileDialog::new().add_filter("DemoStrike capture request", &["json"]).set_file_name(format!("demostrike-event-{id}-capture-request.json")).save_file(){
+                                self.native_review.suspend();self.native_review.active=false;self.database_path=database.display().to_string();
+                                if let Err(error)=self.start_capture_request_in_library(id,&path,database,Some((match_id,hash))){self.error=Some(error);}
+                            }
+                        } else {self.error=Some("This import has no verified source identity for capture planning".into());}
+                    },
+                }
+            }
+            return;
+        }
 
         egui::CentralPanel::default().show(ui, |ui| {
             ui.collapsing("Demo parser configuration", |ui| {
@@ -1824,13 +1902,13 @@ impl eframe::App for DemoStrikeApp {
 
 #[cfg(test)]
 mod tests {
-    use super::{DemoStrikeApp, EditorReturnGate, editor_return_gate, load_editor_session};
+    use super::{DemoStrikeApp, EditorReturnGate, ImportMessage, editor_return_gate, load_editor_session, import_demo};
     use crate::demo_import::ParserCapabilities;
     use crate::demo_import::DemoFactsParser;
     use crate::parser::raw::RawDemo;
     use std::fs;
     use std::path::Path;
-    use std::sync::Arc;
+    use std::sync::{Arc, mpsc};
     use crate::demo_import::ImportControl;
     use std::time::Duration;
     use filmcraft_engine::Session;
@@ -1914,6 +1992,46 @@ mod tests {
         let cancel_signal = Arc::clone(&app.import_cancel);
         drop(app);
         assert!(cancel_signal.is_cancelled());
+    }
+
+    #[test]
+    fn completed_import_cannot_reinterpret_a_match_in_a_new_library_or_navigation() {
+        let dir = tempfile::tempdir().unwrap();
+        let demo = dir.path().join("fixture.dem");
+        fs::write(&demo, b"PBDEMS2\0fixture").unwrap();
+        let database_a = dir.path().join("a.sqlite");
+        let database_b = dir.path().join("b.sqlite");
+        let parser = UiFixtureParser { wait_for_cancel: false };
+        let imported = import_demo(&demo, &database_a, &parser, &ImportControl::new(), |_| {}).unwrap();
+        let imported_b = import_demo(&demo, &database_b, &parser, &ImportControl::new(), |_| {}).unwrap();
+        assert_eq!(imported.match_id, imported_b.match_id, "IDs deliberately collide across libraries");
+        let mut app = DemoStrikeApp::default();
+        app.database_path = database_b.display().to_string();
+        app.analyzed = Some(imported_b.analyzed);
+        app.source_label = Some("selected B".into());
+        let (sender, receiver) = mpsc::channel();
+        sender.send(ImportMessage::Finished { database: database_a.clone(), navigation_generation: 0, result: Ok(imported) }).unwrap();
+        app.import_messages = Some(receiver);
+        app.poll_demo_import();
+        assert_eq!(app.database_path, database_b.display().to_string());
+        assert_eq!(app.source_label.as_deref(), Some("selected B"));
+        assert!(app.library_match_id.is_none());
+        assert!(app.import_stage.as_ref().unwrap().contains("current selection retained"));
+
+        // Even while the global path still says A2, a pending native B navigation owns selection.
+        // A2 is fresh: duplicate-source protection in A must remain intact.
+        let database_a = dir.path().join("a-second.sqlite");
+        app.database_path = database_a.display().to_string();
+        app.native_review.open(database_b.clone(), Some(imported_b.match_id), None);
+        let imported = import_demo(&demo, &database_a, &parser, &ImportControl::new(), |_| {}).unwrap();
+        let generation = app.native_review.navigation_generation();
+        let (sender, receiver) = mpsc::channel();
+        sender.send(ImportMessage::Finished { database: database_a, navigation_generation: generation - 1, result: Ok(imported) }).unwrap();
+        app.import_messages = Some(receiver);
+        app.poll_demo_import();
+        assert_eq!(app.native_review.navigation_generation(), generation);
+        assert_eq!(app.source_label.as_deref(), Some("selected B"));
+        assert!(app.library_match_id.is_none());
     }
 
     #[test]
