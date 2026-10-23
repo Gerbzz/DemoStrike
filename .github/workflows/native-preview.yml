@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: demostrike-native-heavy
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: windows-latest
