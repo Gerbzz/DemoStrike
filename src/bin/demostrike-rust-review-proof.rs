@@ -678,10 +678,36 @@ mod tests {
         let proof = folder.path().join("new.json");
         let plan = parse_args(&arguments(&demo, &database, &proof)).unwrap();
         assert_eq!(plan.demo, demo.canonicalize().unwrap());
-        assert_eq!(plan.database, database);
-        assert_eq!(plan.proof, proof);
+        // Windows TEMP may use an 8.3 alias while canonicalize returns a
+        // verbatim long path. The parent is resolved; new files do not exist.
+        let canonical_parent = folder.path().canonicalize().unwrap();
+        assert_eq!(plan.database, canonical_parent.join("new.sqlite"));
+        assert_eq!(plan.proof, canonical_parent.join("new.json"));
         assert!(!database.exists());
         assert!(!proof.exists());
+    }
+    #[test]
+    fn existing_parent_aliases_resolve_without_creating_output_files_or_directories() {
+        let folder = tempfile::tempdir().unwrap();
+        let demo = folder.path().join("source.dem");
+        std::fs::write(&demo, b"unparsed test bytes").unwrap();
+        let child = folder.path().join("existing-child");
+        std::fs::create_dir(&child).unwrap();
+        let alias = child.join("..");
+        let database = alias.join("new.sqlite");
+        let proof = alias.join("new.json");
+        let plan = parse_args(&arguments(&demo, &database, &proof)).unwrap();
+        let canonical_parent = folder.path().canonicalize().unwrap();
+        assert_eq!(plan.database, canonical_parent.join("new.sqlite"));
+        assert_eq!(plan.proof, canonical_parent.join("new.json"));
+        assert!(!database.exists());
+        assert!(!proof.exists());
+        assert!(!plan.database.exists());
+        assert!(!plan.proof.exists());
+        let absent = folder.path().join("missing-child");
+        assert!(parse_args(&arguments(&demo, &absent.join("new.sqlite"), &proof)).is_err());
+        assert!(!absent.exists());
+        assert_eq!(std::fs::read(&demo).unwrap(), b"unparsed test bytes");
     }
     #[test]
     fn existing_outputs_are_rejected_without_overwriting_either_file() {
