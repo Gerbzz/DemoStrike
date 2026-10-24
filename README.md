@@ -35,6 +35,8 @@ DemoStrike turns supported CS2 demos into searchable match events. Review combat
 
 Alpha source. [PR #2](https://github.com/Gerbzz/DemoStrike/pull/2) and [PR #5](https://github.com/Gerbzz/DemoStrike/pull/5) are merged. The earlier PR #2 source passed a hosted Windows native build and focused binary test, and its executable produced the historical image above. No source-matched screenshot of current `main` is recorded here. Broad demo compatibility, a new CS2/HLAE capture, human media review, and release packaging remain unverified.
 
+See the [native Rust migration milestone and explicit remaining parity](docs/NATIVE_RUST_MIGRATION.md) for the direct Rust match/round/2D review path; retained TypeScript is not counted as Rust parity.
+
 ## Capture and editor flow
 
 The in-app path can stage a supervised offline pilot, launch owned CS2/HLAE processes in a bounded Windows Job Object, inspect three camera roles, preview muxed media in the embedded FilmCraft editor, and author a reviewed receipt. Technical QC and media decoding do not mark image, motion, POV or audio as human-approved. Sealing checks source hashes, runtime identity, proof and receipt relationships; the new package sidecar can be verified after relocation. Raw HLAE WAVs, logs and proof PNGs are retained separately for an independent evidence audit. The app does not create footage without external CS2/HLAE tools.

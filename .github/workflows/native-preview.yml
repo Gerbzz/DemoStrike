@@ -17,11 +17,22 @@ jobs:
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_DEV_DEBUG: '0'
+      DEMOSTRIKE_REVIEW_BUILD_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
       - name: Select stable Rust
         shell: pwsh
         run: rustup default stable
+      - name: Test Rust parser, database, reader and replay contracts
+        shell: pwsh
+        run: cargo test --locked --lib
+      - name: Test actual Rust review UI and import identity
+        shell: pwsh
+        run: |
+          cargo test --locked --features native-ui --lib native_review -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'Native Rust review interaction tests failed' }
+          cargo test --locked --features native-ui --lib ui::tests::completed_import_cannot_reinterpret_a_match_in_a_new_library_or_navigation -- --exact --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'Import library identity regression failed' }
       - name: Test imported match navigation
         shell: pwsh
         run: cargo test --locked --features native-ui --lib ui::tests::native_import_worker_persists_demo_and_cancel_keeps_previous_analysis -- --exact --test-threads=1
@@ -46,6 +57,45 @@ jobs:
       - name: Build native editor
         shell: pwsh
         run: cargo build --locked --features native-ui --bin demostrike
+      - name: Import hash-pinned real demo through Rust and prove all recorded rounds
+        shell: pwsh
+        run: |
+          $folder = Join-Path $env:RUNNER_TEMP 'demostrike-rust-review'
+          New-Item -ItemType Directory -Path $folder -ErrorAction Stop | Out-Null
+          $demo = Join-Path $folder 'mirage.dem'
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/LaihoE/demoparser/45ca85aeac8fb0de9d385124d2c7fe0e7b8ff0c8/src/parser/test_demo.dem' -OutFile $demo
+          if ((Get-Item -LiteralPath $demo).Length -ne 60601900 -or (Get-FileHash -LiteralPath $demo -Algorithm SHA256).Hash.ToLowerInvariant() -ne '84a1a4191302bdd2a3bbb5a727842093744b1fb1a228aeec630369e44b622cb2') { throw 'Public real-demo fixture pin mismatch' }
+          $radar = Join-Path $folder 'de_mirage.png'
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/akiver/cs-demo-manager/7270bc95c8cab87b7f9ddd490fea13c6eda3ace7/static/images/maps/cs2/radars/de_mirage.png' -OutFile $radar
+          if ((Get-Item -LiteralPath $radar).Length -ne 144543 -or (Get-FileHash -LiteralPath $radar -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'af139a92cf929214f7c0ac35e2d8c82bad385d83e71eeaf7b955dac96467a136') { throw 'Pinned upstream radar mismatch' }
+          cargo test --locked --bin demostrike-rust-review-proof
+          if ($LASTEXITCODE -ne 0) { throw 'Rust proof CLI/no-clobber tests failed' }
+          $database = Join-Path $folder 'mirage.sqlite'
+          $proof = Join-Path $folder 'real-demo-rust-proof.json'
+          cargo run --locked --bin demostrike-rust-review-proof -- --demo $demo --database $database --proof $proof
+          if ($LASTEXITCODE -ne 0) { throw 'Real-demo Rust reader/replay proof failed' }
+      - name: Capture actual native Rust match viewer with source-bound paint receipt
+        shell: pwsh
+        run: |
+          $folder = Join-Path $env:RUNNER_TEMP 'demostrike-rust-review'
+          $env:DEMOSTRIKE_RUST_REVIEW_DATABASE = Join-Path $folder 'mirage.sqlite'
+          $env:DEMOSTRIKE_RUST_REVIEW_RADAR = Join-Path $folder 'de_mirage.png'
+          $env:DEMOSTRIKE_RUST_REVIEW_HEADLESS_PROOF = Join-Path $folder 'real-demo-rust-proof.json'
+          $env:DEMOSTRIKE_RUST_REVIEW_EVIDENCE = Join-Path $folder 'native-captures'
+          cargo test --locked --features native-ui --test native_rust_review -- --ignored --test-threads=1 --nocapture 2>&1 | Tee-Object -FilePath (Join-Path $folder 'native-rust-review-output.txt')
+          if ($LASTEXITCODE -ne 0) { throw 'Actual native Rust renderer acceptance failed' }
+          $exeHash = (Get-FileHash -LiteralPath target/debug/demostrike.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          @{ commit = $env:GITHUB_SHA; executable_sha256 = $exeHash; real_demo_sha256 = '84a1a4191302bdd2a3bbb5a727842093744b1fb1a228aeec630369e44b622cb2'; scope = 'Native Rust review milestone only, not complete CSDM parity or media capture' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $folder 'hosted-source-binding.json') -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: demostrike-native-rust-review-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/demostrike-rust-review/*.json
+            ${{ runner.temp }}/demostrike-rust-review/*output.txt
+            ${{ runner.temp }}/demostrike-rust-review/native-captures/
+          retention-days: 1
+          if-no-files-found: warn
       - name: Capture empty native workspace
         shell: pwsh
         run: |
