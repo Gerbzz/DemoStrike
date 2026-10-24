@@ -15,6 +15,12 @@
 
 DemoStrike turns supported CS2 demos into searchable match events. Review combat, utility, and flashes; mark favorites and tags; then prepare a supervised capture and editable handoff for selected moments.
 
+## Rust direction and migration status
+
+- **Target:** Port the entire CS Demo Manager application to Rust while preserving its original UI, layout, and behavior—not replace it with a redesigned custom egui interface.
+- **Current implementation:** Published `main` still contains the earlier Rust capture/editor host, staged original CS Demo Manager source, and a partial Rust/Tauri proof in [`rust-candidate/`](rust-candidate/). Newer independently reviewed original-UI component work remains local and is not represented by this published checkpoint.
+- **Remaining migration:** Complete the original application contracts, persistence, parsing, and service migration, then verify the original UI interactively and finish capture/editor integration. Neither the historical screenshots below nor local component checks establish a complete Rust port, full-match parity, native UI acceptance, or a release. See the [published source baseline](rust-candidate/docs/UPSTREAM_BASELINE.md).
+
 ![DemoStrike native desktop app showing its empty analysis workspace](assets/screenshots/demostrike-empty-native-pr2-2026-10-17.png)
 
 *Historical native empty workspace, captured on 17 October 2026 from source `f73f62a` in [PR #2](https://github.com/Gerbzz/DemoStrike/pull/2). PR #2 and its [integration PR #5](https://github.com/Gerbzz/DemoStrike/pull/5) are now merged; this is not a capture of current `main`. No demo, match events, capture footage, or media were loaded. [Capture provenance and limits](docs/NATIVE_UI_PREVIEW.md).*
