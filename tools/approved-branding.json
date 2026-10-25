@@ -1,0 +1,60 @@
+{
+  "source": "assets/branding/DemoStrike-logo.svg",
+  "approved_sha256": "52b1cab9420a0d62988046ba4e02a1935c714d43247a968f10651789501ce5e4",
+  "sizes": [
+    16,
+    20,
+    24,
+    32,
+    40,
+    48,
+    64,
+    128,
+    256,
+    512,
+    1024
+  ],
+  "ico_sizes": [
+    16,
+    24,
+    32,
+    48,
+    64,
+    128,
+    256
+  ],
+  "outputs": {
+    "assets/branding/platform/DemoStrike.png": 1024,
+    "assets/branding/platform/DemoStrike.ico": "ico",
+    "rust-candidate/src-tauri/icons/demostrike-approved.ico": "ico"
+  },
+  "references": {
+    "README.md": [
+      "assets/branding/DemoStrike-logo.svg"
+    ],
+    "src/main.rs": [
+      "assets/branding/platform/DemoStrike.png"
+    ],
+    "build.rs": [
+      "assets/branding/platform/DemoStrike.ico"
+    ],
+    "rust-candidate/ported/brand-about.tsx": [
+      "assets/branding/DemoStrike-logo.svg"
+    ],
+    "rust-candidate/ported/brand-title-bar.tsx": [
+      "assets/branding/DemoStrike-logo.svg"
+    ],
+    "rust-candidate/ported/index.html": [
+      "assets/branding/DemoStrike-logo.svg"
+    ],
+    "rust-candidate/src-tauri/tauri.conf.json": [
+      "icons/demostrike-approved.ico"
+    ],
+    ".github/workflows/rust-candidate-verify.yml": [
+      "assets/branding/DemoStrike-logo.svg",
+      "assets/branding/platform/DemoStrike.png",
+      "icons/demostrike-approved.ico",
+      "--ico src-tauri/icons/demostrike-approved.ico"
+    ]
+  }
+}

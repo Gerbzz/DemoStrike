@@ -2,5 +2,5 @@
 mod windows_icon;
 
 fn main() {
-    windows_icon::embed("assets/branding/DemoStrike-geometric.ico", "demostrike");
+    windows_icon::embed("assets/branding/platform/DemoStrike.ico", "demostrike");
 }

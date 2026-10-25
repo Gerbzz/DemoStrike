@@ -1,0 +1,20 @@
+{
+  "source": "assets/branding/DemoStrike-logo.svg",
+  "approved_sha256": "52b1cab9420a0d62988046ba4e02a1935c714d43247a968f10651789501ce5e4",
+  "transform": "Full original SVG page; unchanged proportions, centering and padding",
+  "native_acceptance": "unknown",
+  "files": {
+    "assets/branding/platform/DemoStrike.png": {
+      "sha256": "b3ae1a0c51c1c9beb1c67243fbc6c7ab95f9091274c6b9cb053ba3dbd3e72617",
+      "kind": 1024
+    },
+    "assets/branding/platform/DemoStrike.ico": {
+      "sha256": "d24fab779103ea0dd547305942bbe8f80b0044e19a04b23c847de0c150ae2f84",
+      "kind": "ico"
+    },
+    "rust-candidate/src-tauri/icons/demostrike-approved.ico": {
+      "sha256": "d24fab779103ea0dd547305942bbe8f80b0044e19a04b23c847de0c150ae2f84",
+      "kind": "ico"
+    }
+  }
+}

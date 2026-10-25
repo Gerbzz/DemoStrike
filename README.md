@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/branding/DemoStrike-geometric.svg" alt="DemoStrike: an event diamond locks onto a segmented timeline" width="160" height="160">
+  <img src="assets/branding/DemoStrike-logo.svg" alt="DemoStrike approved DEM tactical file logo" width="160" height="160">
 </p>
 
 <h1 align="center">DemoStrike</h1>
@@ -58,3 +58,7 @@ The earlier local foundation passed 91 no-UI and 112 native-UI library tests, li
 ## PWDS brand artwork
 
 The company mark in this masthead is the existing [official PWDS logo](https://github.com/Gerbzz/PWDS-Website/blob/main/public/prowebdevsolutions-logo.png), with the [official orange display asset](https://prowebdevsolutions.com/images/prowebdevsolutions-logo-orange.svg) for dark backgrounds. Any app logo above it remains the original Strike suite artwork.
+
+### Approved runtime branding (25 October 2026)
+
+The exact approved [SVG master](assets/branding/DemoStrike-logo.svg) is retained as vector artwork. Desktop and packaged icon references use full-page exports without cropping, recoloring, or adding padding. Existing upstream artwork and licence notices are preserved. [Export manifest](assets/branding/platform/manifest.json) and `python tools/export_approved_branding.py --check` bind the derived assets and runtime references to the approved SHA-256. Regenerate with `python tools/export_approved_branding.py` (Inkscape and Pillow). Native platform acceptance of these new exports remains **unknown**; older screenshots are historical.
