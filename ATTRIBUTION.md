@@ -20,3 +20,12 @@ The embedded editor is adapted from public [Gerbzz/Clipstrike commit `4be130f016
 The selected FilmCraft donor source is MIT OR Apache-2.0, but those inherited texts do not establish terms for first-party ClipStrike or DemoStrike modifications. The earlier public ClipStrike crates are pinned to [commit `fdf2f6ac8828374b803577ae1f6b310b73860075`](https://github.com/Gerbzz/Clipstrike/commit/fdf2f6ac8828374b803577ae1f6b310b73860075); `third_party/clipstrike_legacy/LICENSE-MIT` preserves that public repository's Gerbzz MIT text. Neither historical license file is presented as a blanket license for this combined repository.
 
 The `.cstrike` name and ClipStrike strings in migrated source-format metadata are historical provenance. DemoStrike supplies its own UI host brand. No raw match data, donor ArtCraft marks, original private source checkout or contributor personal metadata is included.
+
+## Approved full-page icon exports — 2026-10-25
+
+Original approved artwork; exact master and derived hashes are recorded in `assets/branding/platform/manifest.json`. No inherited asset or licence is replaced.
+
+| `assets/branding/DemoStrike-logo.svg` | DemoStrike contributors | Derived from approved `assets/branding/DemoStrike-logo.svg`, unchanged page geometry | Existing original Strike artwork terms; no new licence grant | Runtime/package branding; native acceptance unknown |
+| `assets/branding/platform/DemoStrike.png` | DemoStrike contributors | Derived from approved `assets/branding/DemoStrike-logo.svg`, unchanged page geometry | Existing original Strike artwork terms; no new licence grant | Runtime/package branding; native acceptance unknown |
+| `assets/branding/platform/DemoStrike.ico` | DemoStrike contributors | Derived from approved `assets/branding/DemoStrike-logo.svg`, unchanged page geometry | Existing original Strike artwork terms; no new licence grant | Runtime/package branding; native acceptance unknown |
+| `rust-candidate/src-tauri/icons/demostrike-approved.ico` | DemoStrike contributors | Derived from approved `assets/branding/DemoStrike-logo.svg`, unchanged page geometry | Existing original Strike artwork terms; no new licence grant | Runtime/package branding; native acceptance unknown |
