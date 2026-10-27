@@ -191,7 +191,11 @@ function NativeOriginalViewer({ detail, recorded, meta, frames, radarBitmap, ini
     grenadePositions, infernoPositions: [], chickenPositions: [],
     bombsPlantStart: [], bombsDefuseStart: [],
     bombExploded: bombs.bombExploded, bombPlanted: bombs.bombPlanted,
-    bombDefused: bombs.bombDefused, shouldDrawBombs: bombs.bombPlanted !== null,
+    // Carrier state is unavailable in native frames. Before the observed
+    // plant, CSDM's carrier fallback scans every earlier absolute tick through
+    // the full position stream on each animation frame without finding one.
+    bombDefused: bombs.bombDefused,
+    shouldDrawBombs: bombs.bombPlanted !== null && currentTick >= bombs.bombPlanted.tick,
     focusedPlayerId, updateFocusedPlayerId: (id: string) => setFocusedPlayerId((value) => value === id ? undefined : id),
     lowerRadarOffsetX, setLowerRadarOffsetX, lowerRadarOffsetY, setLowerRadarOffsetY,
     lowerRadarOpacity, setLowerRadarOpacity,
