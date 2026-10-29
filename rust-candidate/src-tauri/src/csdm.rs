@@ -4,9 +4,54 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
+
+// Keep the startup argument snapshot in memory for the lifetime of the host.
+// Other arguments are intentionally not exposed until their consumers are ported.
+struct StartupArguments {
+    start_path: Option<String>,
+}
+
+impl StartupArguments {
+    fn from_os_args(args: impl IntoIterator<Item = std::ffi::OsString>) -> Self {
+        Self::from_args(
+            args.into_iter()
+                .map(|arg| arg.to_string_lossy().into_owned()),
+        )
+    }
+
+    fn from_args(args: impl IntoIterator<Item = String>) -> Self {
+        let start_path = args
+            .into_iter()
+            .find_map(|arg| arg.strip_prefix("--start-path=").map(str::to_owned));
+        Self { start_path }
+    }
+}
+
+fn process_startup_arguments() -> &'static Mutex<StartupArguments> {
+    static STARTUP: OnceLock<Mutex<StartupArguments>> = OnceLock::new();
+    STARTUP.get_or_init(|| Mutex::new(StartupArguments::from_os_args(std::env::args_os())))
+}
+
+fn startup_request(startup: &Mutex<StartupArguments>, name: &str) -> Result<Value, String> {
+    let mut state = startup
+        .lock()
+        .map_err(|_| "Startup arguments are unavailable.".to_owned())?;
+    match name {
+        "get-startup-arguments" => Ok(match &state.start_path {
+            Some(value) => json!([{ "name": "start-path", "value": value }]),
+            None => json!([]),
+        }),
+        "clear-startup-arguments" => {
+            state.start_path = None;
+            Ok(Value::Null)
+        }
+        _ => Err(format!("Unsupported startup request: {name}")),
+    }
+}
 
 struct Store {
     root: PathBuf,
@@ -68,6 +113,19 @@ impl Store {
             serde_json::from_str(&payload).map_err(|error| error.to_string())
         })
         .collect()
+    }
+
+    fn dispatch_request(
+        &self,
+        name: &str,
+        payload: Option<Value>,
+        startup: &Mutex<StartupArguments>,
+    ) -> Result<Value, String> {
+        if matches!(name, "get-startup-arguments" | "clear-startup-arguments") {
+            return startup_request(startup, name);
+        }
+        let settings = self.settings(Value::Null)?;
+        self.request(name, payload, settings)
     }
 
     fn request(
@@ -238,8 +296,7 @@ pub fn csdm_request(
     payload: Option<Value>,
 ) -> Result<Value, String> {
     let store = app_store(&app)?;
-    let settings = store.settings(Value::Null)?;
-    store.request(&name, payload, settings)
+    store.dispatch_request(&name, payload, process_startup_arguments())
 }
 
 #[tauri::command]
@@ -270,6 +327,80 @@ pub fn csdm_window_action(window: tauri::Window, action: String) -> Result<bool,
 mod tests {
     use super::*;
     use rusqlite::params;
+
+    #[test]
+    fn startup_arguments_request_is_available_without_settings() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("fresh-profile");
+        let store = Store::new(root.clone());
+        let startup = Mutex::new(StartupArguments::from_args([
+            "app".to_owned(),
+            "--start-path=demos".to_owned(),
+        ]));
+        let expected = json!([{ "name": "start-path", "value": "demos" }]);
+        assert_eq!(
+            store
+                .dispatch_request("get-startup-arguments", None, &startup)
+                .unwrap(),
+            expected
+        );
+        assert_eq!(
+            store
+                .dispatch_request("get-startup-arguments", None, &startup)
+                .unwrap(),
+            expected
+        );
+        assert_eq!(
+            store
+                .dispatch_request("clear-startup-arguments", None, &startup)
+                .unwrap(),
+            Value::Null
+        );
+        assert_eq!(
+            store
+                .dispatch_request("get-startup-arguments", None, &startup)
+                .unwrap(),
+            json!([])
+        );
+        assert!(
+            !root.exists(),
+            "startup requests must not initialize settings"
+        );
+    }
+
+    #[test]
+    fn startup_arguments_preserve_first_exact_value() {
+        let state = StartupArguments::from_args([
+            "--start-paths=ignored".to_owned(),
+            "--start-path=search=extra".to_owned(),
+            "--start-path=demos".to_owned(),
+            "--demo-path=private.dem".to_owned(),
+        ]);
+        assert_eq!(state.start_path.as_deref(), Some("search=extra"));
+        let empty = StartupArguments::from_args([
+            "--start-path=".to_owned(),
+            "--start-path=demos".to_owned(),
+        ]);
+        assert_eq!(empty.start_path.as_deref(), Some(""));
+        let missing = StartupArguments::from_args(["--demo-path=private.dem".to_owned()]);
+        assert_eq!(missing.start_path, None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn first_startup_argument_is_not_skipped_for_invalid_unicode() {
+        use std::os::windows::ffi::OsStringExt;
+        let mut first: Vec<u16> = "--start-path=".encode_utf16().collect();
+        first.push(0xd800);
+        let args = [
+            std::ffi::OsString::from_wide(&first),
+            "--start-path=demos".into(),
+        ];
+        assert_eq!(
+            StartupArguments::from_os_args(args).start_path.as_deref(),
+            Some("\u{fffd}")
+        );
+    }
 
     #[test]
     fn fresh_library_reports_actual_empty_state_and_rejects_unsupported_data() {

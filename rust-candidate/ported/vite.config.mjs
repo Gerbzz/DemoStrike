@@ -30,6 +30,7 @@ export default {
       { find: 'csdm/ui/settings/database/database-settings', replacement: path.resolve(portedRoot, 'database-settings.tsx') },
       { find: './database/database-settings', replacement: path.resolve(portedRoot, 'database-settings.tsx') },
       { find: './error-boundary', replacement: path.resolve(portedRoot, 'error-boundary.tsx') },
+      { find: 'csdm/ui/bootstrap/initial-route-redirector', replacement: path.resolve(portedRoot, 'initial-route-redirector.ts') },
       { find: 'csdm/ui/matches/table/matches-table', replacement: path.resolve(portedRoot, 'matches-table.tsx') },
       { find: 'csdm/ui/matches/matches', replacement: path.resolve(portedRoot, 'matches.tsx') },
       { find: 'csdm/ui/match/match-loader', replacement: path.resolve(portedRoot, 'match-loader.tsx') },

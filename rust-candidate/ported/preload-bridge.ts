@@ -20,8 +20,8 @@ const api = {
   embeddedDatabaseLogFilePath: '',
   platform: isWindows ? 'win32' : isMac ? 'darwin' : 'linux',
   isMac, isWindows, isLinux: !isMac && !isWindows,
-  getStartupArguments: async () => [],
-  clearStartupArguments: async () => {},
+  getStartupArguments: () => invoke<{ name: string; value: string }[]>('csdm_request', { name: 'get-startup-arguments' }),
+  clearStartupArguments: async () => { await invoke<null>('csdm_request', { name: 'clear-startup-arguments' }); },
   getTheme: async () => currentSettings.ui.theme,
   parseSettingsFile: async () => {
     currentSettings = await invoke<typeof defaultSettings>('csdm_load_settings', { defaults: defaultSettings });
