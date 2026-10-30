@@ -1,0 +1,28 @@
+{
+  "before": {
+    "videos": [],
+    "paused": true
+  },
+  "after": {
+    "videos": [],
+    "paused": true
+  },
+  "events": [
+    {
+      "name": "video-queue-resumed"
+    },
+    {
+      "name": "video-queue-paused"
+    },
+    {
+      "name": "video-queue-paused"
+    },
+    {
+      "name": "videos-removed-from-queue",
+      "payload": [
+        "missing"
+      ]
+    }
+  ],
+  "sourceSha256": "6c19c3eaa9d37875c2bb09d01a034ea83e79101e0b3730f132df7e4e18223572"
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "version": 16,
+    "code": 701,
+    "message": "Database schema version mismatch. Database schema version is 16, app schema version is 15."
+  },
+  {
+    "version": 20,
+    "code": 701,
+    "message": "Database schema version mismatch. Database schema version is 20, app schema version is 15."
+  },
+  {
+    "version": 2147483647,
+    "code": 701,
+    "message": "Database schema version mismatch. Database schema version is 2147483647, app schema version is 15."
+  }
+]

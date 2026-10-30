@@ -1,3 +1,4 @@
+import { Demos as OriginalDemos } from 'csdm/ui/demos/upstream-demos';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from 'csdm/ui/components/buttons/button';
 import { CenteredContent } from 'csdm/ui/components/content';
@@ -22,7 +23,7 @@ function formatSize(bytes: number) {
 // The preserved router and LeftBar open this route. This narrow read-only
 // adapter avoids presenting the upstream analysis, delete, or watch actions
 // before their backend contracts exist.
-export function Demos() {
+function LocalDemos() {
   const [folder, setFolder] = useState(() => localStorage.getItem(folderKey) ?? '');
   const [folderInput, setFolderInput] = useState(folder);
   const [files, setFiles] = useState<DemoFile[]>([]);
@@ -130,4 +131,12 @@ export function Demos() {
       )}
     </div>
   );
+}
+
+// Select the source table only when the managed service explicitly supports it.
+export function Demos() {
+  const [supported, setSupported] = useState<boolean | null>(null);
+  useEffect(() => { let active = true; void invoke<boolean>('csdm_request', {name:'supports-original-demos-table'}).then(v => { if (active) setSupported(v === true); }).catch(() => { if (active) setSupported(false); }); return () => { active = false; }; }, []);
+  if (supported === null) return <CenteredContent><p role="status">Loading demos.</p></CenteredContent>;
+  return supported ? <OriginalDemos /> : <LocalDemos />;
 }

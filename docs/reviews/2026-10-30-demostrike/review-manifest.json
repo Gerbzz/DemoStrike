@@ -1,0 +1,578 @@
+{
+  "base": "69a0bfc6dc885cee0cd02514003a3d8c9ee7066c",
+  "files": [
+    {
+      "path": "rust-candidate/ported/demos.tsx",
+      "original_sha256": "db4605f93736313f471062d3f04601076fec527c6ab28a4b660f43fc3812258f",
+      "review_sha256": "db4605f93736313f471062d3f04601076fec527c6ab28a4b660f43fc3812258f",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/ported/initial-route-redirector.ts",
+      "original_sha256": "861c404916f43ef36339ab4c143e26da70d878df671772b82946c190cbe9ace2",
+      "review_sha256": "861c404916f43ef36339ab4c143e26da70d878df671772b82946c190cbe9ace2",
+      "redacted": false,
+      "publication_status": "excluded startup boundary"
+    },
+    {
+      "path": "rust-candidate/ported/preload-bridge.ts",
+      "original_sha256": "e89f9b667d19423a0ae769d3d42fc445bfb6a1d87fa341fc98e760a9a1500377",
+      "review_sha256": "e89f9b667d19423a0ae769d3d42fc445bfb6a1d87fa341fc98e760a9a1500377",
+      "redacted": false,
+      "publication_status": "excluded startup boundary"
+    },
+    {
+      "path": "rust-candidate/ported/vite.config.mjs",
+      "original_sha256": "9eef0168e842b2ad9b919721befb154093a959b6df479fd72a4534bf79251b04",
+      "review_sha256": "9eef0168e842b2ad9b919721befb154093a959b6df479fd72a4534bf79251b04",
+      "redacted": false,
+      "publication_status": "excluded startup boundary"
+    },
+    {
+      "path": "rust-candidate/ported/web-socket-client.ts",
+      "original_sha256": "b155c456b071ba33a483f094602021db2e55b3714ba2caeb965740b36a4f5cf9",
+      "review_sha256": "b155c456b071ba33a483f094602021db2e55b3714ba2caeb965740b36a4f5cf9",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/Cargo.lock",
+      "original_sha256": "d7f503db8f02732408d78dca130670affd5c65aacfbe72b4d5622c0162a291e2",
+      "review_sha256": "d7f503db8f02732408d78dca130670affd5c65aacfbe72b4d5622c0162a291e2",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/Cargo.toml",
+      "original_sha256": "93eb378e7e9ef8538d77c80464b4375d8999f7e37abc9f0910bfc524036ecba8",
+      "review_sha256": "93eb378e7e9ef8538d77c80464b4375d8999f7e37abc9f0910bfc524036ecba8",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm.rs",
+      "original_sha256": "8631e14aabbb4e7833f7152bf48ced7f55ee0313db87a5bfda74045d866ad3e7",
+      "review_sha256": "c52b617fdd7e6e05a79ddcbf5a1b16fe4227e26361d1953a977a30c012d5b30f",
+      "redacted": true,
+      "publication_status": "excluded startup boundary"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_analysis.rs",
+      "original_sha256": "8fab0d9370f68b46cc849080d06536671505695fc6dfe28d8d6160cde5fd3ddd",
+      "review_sha256": "8fab0d9370f68b46cc849080d06536671505695fc6dfe28d8d6160cde5fd3ddd",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_analysis_service.rs",
+      "original_sha256": "a25753c5b1dc47d66ac56f93fccda466a5239bb78de1619b9617b63180644fa6",
+      "review_sha256": "a25753c5b1dc47d66ac56f93fccda466a5239bb78de1619b9617b63180644fa6",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_analyzer.rs",
+      "original_sha256": "5ad95d3bd5d628da13916e0423f73aaea61da2a5dd1ba745450f53882b4d6cc5",
+      "review_sha256": "5ad95d3bd5d628da13916e0423f73aaea61da2a5dd1ba745450f53882b4d6cc5",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_cli_demo.rs",
+      "original_sha256": "0c68340da1d4526bb8023176d151af714cfcbbaed563e08b30953e7aa0d0d46a",
+      "review_sha256": "82687ae302a5c0045fb9326957331ad05603d730dab8d40a7ca550fda566d862",
+      "redacted": true,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_cli_handler.rs",
+      "original_sha256": "fed1ad0c40defc5f9b91e7a5645d261e7aa3cc836f4f6f0e16e551bf310301ff",
+      "review_sha256": "fed1ad0c40defc5f9b91e7a5645d261e7aa3cc836f4f6f0e16e551bf310301ff",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_cli_loopback_tests.rs",
+      "original_sha256": "7b1de5645b90f5cc59dc20260f93139094f04663ed752dc415846214640dd8a6",
+      "review_sha256": "7b1de5645b90f5cc59dc20260f93139094f04663ed752dc415846214640dd8a6",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_cli_resolver_job.rs",
+      "original_sha256": "d770f36912ecea8904bee3432fd58df686deafd77a4910a4c19d0664a80c170e",
+      "review_sha256": "f41fc9cc9f22bf1dfbcfd67aa7e18c3016e7442513741c7c3868cb6d99b49eff",
+      "redacted": true,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_cli_transport.rs",
+      "original_sha256": "33249474695f435259102bc64373a79189e11a3bb0b95b14a42201462447a051",
+      "review_sha256": "33249474695f435259102bc64373a79189e11a3bb0b95b14a42201462447a051",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_demos_table.rs",
+      "original_sha256": "df852eae279bf4ade82ebf8a787f0c5c25c7249a61734fa9b710b8d815bd0958",
+      "review_sha256": "df852eae279bf4ade82ebf8a787f0c5c25c7249a61734fa9b710b8d815bd0958",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_demo_checksum.rs",
+      "original_sha256": "42cb40e72af22d3bce469b6061fdef36d28ca226925f78486af551b293adc3b0",
+      "review_sha256": "42cb40e72af22d3bce469b6061fdef36d28ca226925f78486af551b293adc3b0",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_import.rs",
+      "original_sha256": "ea30bb77e89bdd7ef032860395b7b42c10aa7e7b5c85c9e716064ef3a1f26bf2",
+      "review_sha256": "ea30bb77e89bdd7ef032860395b7b42c10aa7e7b5c85c9e716064ef3a1f26bf2",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_init_visuals.rs",
+      "original_sha256": "2dc9837595163df2d8a1365e309bdc74d5f4e600d03c7f8bad19a298fcc63552",
+      "review_sha256": "7ba08f74ac335ad3b4a5132246df2c17bfdd3728b8de7cd7fb4427e42f52477c",
+      "redacted": true,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_live_service.rs",
+      "original_sha256": "3a2ba55e73410dea3d07b035455c10dcc388cbf0fa34aef128e69f6c9765d768",
+      "review_sha256": "3a2ba55e73410dea3d07b035455c10dcc388cbf0fa34aef128e69f6c9765d768",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_match_readback.rs",
+      "original_sha256": "3f51737d95cbe26373096f3d8b8cf919aff7f3b63b24d6e4fd00585fe0697148",
+      "review_sha256": "3f51737d95cbe26373096f3d8b8cf919aff7f3b63b24d6e4fd00585fe0697148",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_owned_analysis.rs",
+      "original_sha256": "2353cc3ec8ad55ffa0258df32502c90fa8646d9a316fe43f06445bdcb316198a",
+      "review_sha256": "e308489829e8f30008292044f5ba992f96fd435a0e10df5cae9c75ef5e2134f5",
+      "redacted": true,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_pg79_authority.rs",
+      "original_sha256": "767a3a4333163c0377621a7b0b3e19ae83619db87c9af721775faff9f4d0e843",
+      "review_sha256": "555a19d8bc312e25909afee7529042a266ad6c6df593c0d7f93eb93d866d8880",
+      "redacted": true,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_pg79_live.rs",
+      "original_sha256": "a7d9f935d3a40b0af763660d4737894d5358a62faf2db2b8b532e5c2c8156ece",
+      "review_sha256": "a7d9f935d3a40b0af763660d4737894d5358a62faf2db2b8b532e5c2c8156ece",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_pg79_scheduler.rs",
+      "original_sha256": "af11b5c70b411176a024bed137a67e4fd52d104023c4811e4e5460c3691c909d",
+      "review_sha256": "af11b5c70b411176a024bed137a67e4fd52d104023c4811e4e5460c3691c909d",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_pg80_background.rs",
+      "original_sha256": "7865f222e1d4045ca33c9845d3a2a81f0fa32b7ad7546d764b6eaf43547a5e2f",
+      "review_sha256": "7865f222e1d4045ca33c9845d3a2a81f0fa32b7ad7546d764b6eaf43547a5e2f",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_pg80_download.rs",
+      "original_sha256": "c3cea6a91bdf5f17166df8c0eb45d1fe911a190a592f3a0d1194a70c49118709",
+      "review_sha256": "c3cea6a91bdf5f17166df8c0eb45d1fe911a190a592f3a0d1194a70c49118709",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_pg80_video.rs",
+      "original_sha256": "909741213867c2868deb7c474b5d82df75c796e380e7cd44edb0b3d25aed3f97",
+      "review_sha256": "909741213867c2868deb7c474b5d82df75c796e380e7cd44edb0b3d25aed3f97",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_pg80_watcher.rs",
+      "original_sha256": "d99510a9de98adf0b944973abfdceebcddede87cf2d2495fa81dde3c56570217",
+      "review_sha256": "d99510a9de98adf0b944973abfdceebcddede87cf2d2495fa81dde3c56570217",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_product_service.rs",
+      "original_sha256": "1726b49c7e324d6fe04d8668da84019b9be903e4235f59c5d0829ebd01a7153d",
+      "review_sha256": "1726b49c7e324d6fe04d8668da84019b9be903e4235f59c5d0829ebd01a7153d",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_scheduler_owner.rs",
+      "original_sha256": "01a6001c1e6ae5e9eab35dfddd2e9d7535555574a3ab1886655a150bc40c9cfb",
+      "review_sha256": "01a6001c1e6ae5e9eab35dfddd2e9d7535555574a3ab1886655a150bc40c9cfb",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_service_context.rs",
+      "original_sha256": "6667864246376286d8dd21946775bb26e1bda73fee2343ea387ed69a4b4c879d",
+      "review_sha256": "6667864246376286d8dd21946775bb26e1bda73fee2343ea387ed69a4b4c879d",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_tags.rs",
+      "original_sha256": "1777a1f0bfc12065f5d8cfab4d2d6e0644321f8a91f406dd4c2d313481e292c9",
+      "review_sha256": "1777a1f0bfc12065f5d8cfab4d2d6e0644321f8a91f406dd4c2d313481e292c9",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_tag_selection.rs",
+      "original_sha256": "76c1fb3912676fa320cb9d555b02e5e6eb48605ec65939815dd4c83b1fd329f2",
+      "review_sha256": "76c1fb3912676fa320cb9d555b02e5e6eb48605ec65939815dd4c83b1fd329f2",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/csdm_windows_job.rs",
+      "original_sha256": "32eac42c32c7ac6810d01c5f39ca29faab25e3678923afbf5850b54efc44febc",
+      "review_sha256": "32eac42c32c7ac6810d01c5f39ca29faab25e3678923afbf5850b54efc44febc",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/owned_settings.rs",
+      "original_sha256": "5e0d2bd2fc80c9b718d914798f19c10e55fbd3684933d4208753d4c27d87a096",
+      "review_sha256": "0a8cf6b0cc5bb788479e85e86a1da14724e02862e7499f098b9ce9119830b92d",
+      "redacted": true,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_migrations.rs",
+      "original_sha256": "41c8ec5c096708f24496bc7495bb6bb8f17834b57d99bce905b4d97de86e82e2",
+      "review_sha256": "41c8ec5c096708f24496bc7495bb6bb8f17834b57d99bce905b4d97de86e82e2",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v10.sql",
+      "original_sha256": "f4e1ee288c25bef89d96810fe55b75169ce4ae20f35349be9f74a6d729d5b034",
+      "review_sha256": "f4e1ee288c25bef89d96810fe55b75169ce4ae20f35349be9f74a6d729d5b034",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v11.sql",
+      "original_sha256": "e8a8fded35a0fa93148ddb07d41e6bf63e564269f60536af6d94a02a36ad11c2",
+      "review_sha256": "e8a8fded35a0fa93148ddb07d41e6bf63e564269f60536af6d94a02a36ad11c2",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v12.sql",
+      "original_sha256": "2f2105d8b43d8a00baaadc7c7cbd1d706c3612ff66380092e0ecd3bc32017a0a",
+      "review_sha256": "2f2105d8b43d8a00baaadc7c7cbd1d706c3612ff66380092e0ecd3bc32017a0a",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v13.sql",
+      "original_sha256": "245ca4e70fd89e1b83acdef685d343e232b3f26c35a8012a245429b771cf7b39",
+      "review_sha256": "245ca4e70fd89e1b83acdef685d343e232b3f26c35a8012a245429b771cf7b39",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v14.sql",
+      "original_sha256": "a27d02a6eddaeb234666a2abefb350712039e8d531166501301ef5464c6e0035",
+      "review_sha256": "a27d02a6eddaeb234666a2abefb350712039e8d531166501301ef5464c6e0035",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v15.sql",
+      "original_sha256": "965606a62412374ddeb9d196cf345a1e06f4dd040409e83f9cb5731e5d806373",
+      "review_sha256": "965606a62412374ddeb9d196cf345a1e06f4dd040409e83f9cb5731e5d806373",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v1_remaining.sql",
+      "original_sha256": "abdff8a2f477509afdeb713740ce7c6533747c618ea21fd9bdfc5eb820b509c0",
+      "review_sha256": "abdff8a2f477509afdeb713740ce7c6533747c618ea21fd9bdfc5eb820b509c0",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v3_default_maps.rs",
+      "original_sha256": "00a3fadc604a6da30211339f4c3be9b4590eb3cf167a4031c7fb6ea1c5f90293",
+      "review_sha256": "00a3fadc604a6da30211339f4c3be9b4590eb3cf167a4031c7fb6ea1c5f90293",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v4.sql",
+      "original_sha256": "f44a8f2b499a822d56f6c72d79217b0e25b9ed8719040cd46b1f4875070082d2",
+      "review_sha256": "f44a8f2b499a822d56f6c72d79217b0e25b9ed8719040cd46b1f4875070082d2",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v5.sql",
+      "original_sha256": "11852c86d48257b4c184faa7558edb335da3b913388746845ba845aa55bfa0f0",
+      "review_sha256": "11852c86d48257b4c184faa7558edb335da3b913388746845ba845aa55bfa0f0",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v6.sql",
+      "original_sha256": "249a643bd271559e0ad723373598e54a9788fc9dfa2eda538cb13ba3fcc18125",
+      "review_sha256": "249a643bd271559e0ad723373598e54a9788fc9dfa2eda538cb13ba3fcc18125",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v7.sql",
+      "original_sha256": "30d21b9a584cc232639cfd2c876be9f7875bc03e639788a074eecb7977599bcc",
+      "review_sha256": "30d21b9a584cc232639cfd2c876be9f7875bc03e639788a074eecb7977599bcc",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v8.sql",
+      "original_sha256": "19cfe0229484b4fac720150d0d285dd023ef5291f9c50aeba7f4bf57429565c7",
+      "review_sha256": "19cfe0229484b4fac720150d0d285dd023ef5291f9c50aeba7f4bf57429565c7",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/src/postgres_v9.sql",
+      "original_sha256": "e9abd1979cb7461dcec31103bbd4b36c57b32d6743ca1e107cfa1585bbca12a7",
+      "review_sha256": "e9abd1979cb7461dcec31103bbd4b36c57b32d6743ca1e107cfa1585bbca12a7",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/pg29_analysis.rs",
+      "original_sha256": "028e750af9f17b00e6cea505f6ce429c982c09b0fd53016e9f38ee73963214b6",
+      "review_sha256": "028e750af9f17b00e6cea505f6ce429c982c09b0fd53016e9f38ee73963214b6",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/pg36_analyzer.rs",
+      "original_sha256": "93283ef2bf5d47dc7f2e98544145652df4d24772a40981504761d805fac41ae1",
+      "review_sha256": "a53892f15fd0dc845f5994cfebec0c98d0cecfd02b02a2e59c761509e731e0d7",
+      "redacted": true,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg100-tag-selection-oracle-v2.json",
+      "original_sha256": "7413d9ab34edfa28ada670373613ef13b4a9a8a81716cd4af19542a528603e3f",
+      "review_sha256": "7413d9ab34edfa28ada670373613ef13b4a9a8a81716cd4af19542a528603e3f",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg12-handler-original-oracle.json",
+      "original_sha256": "d70233b31f1b7ab2427e56a1e649ec41fde2246a1d0049c61d79b190cc572fac",
+      "review_sha256": "d70233b31f1b7ab2427e56a1e649ec41fde2246a1d0049c61d79b190cc572fac",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg25-analysis-lifecycle-oracle.json",
+      "original_sha256": "d26418bd66c0c9c70219c3d2b1ff53d937c7ce64a5bc8b3b0f7ec7eee407c4c2",
+      "review_sha256": "d26418bd66c0c9c70219c3d2b1ff53d937c7ce64a5bc8b3b0f7ec7eee407c4c2",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg25-original-analysis-oracle.json",
+      "original_sha256": "3d78b737c29a4c00e5138dfb33a5cee25fc59ca342885a4a80db0c5cb23121a5",
+      "review_sha256": "3d78b737c29a4c00e5138dfb33a5cee25fc59ca342885a4a80db0c5cb23121a5",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg27-navigation-original-oracle.json",
+      "original_sha256": "5babdeb16e9907cce4ee4e3a884f21e9168f0e0a16e377bee021008652981fe2",
+      "review_sha256": "5babdeb16e9907cce4ee4e3a884f21e9168f0e0a16e377bee021008652981fe2",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg27-original-checksum-oracle.json",
+      "original_sha256": "989565b3aac9455466aed197d65bbaefd3e480f99ebee68e866d5265b7ba37af",
+      "review_sha256": "989565b3aac9455466aed197d65bbaefd3e480f99ebee68e866d5265b7ba37af",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg29-original-duplicate-oracle.json",
+      "original_sha256": "071778a75e26f9d721cc60bd583b6b3d77fe02070fcb9dced483c7eaa8f69d1b",
+      "review_sha256": "071778a75e26f9d721cc60bd583b6b3d77fe02070fcb9dced483c7eaa8f69d1b",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg29-original-running-oracle.json",
+      "original_sha256": "f0803eb7cb6e1d06abd1c3a96415447fd9cf420f426f169b7e8c60785170bb40",
+      "review_sha256": "f0803eb7cb6e1d06abd1c3a96415447fd9cf420f426f169b7e8c60785170bb40",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg30-frame-oracle.json",
+      "original_sha256": "33007325376740e4d5fbfbfae186d0bb1256178ae0b3fa970d095be1b54d3199",
+      "review_sha256": "33007325376740e4d5fbfbfae186d0bb1256178ae0b3fa970d095be1b54d3199",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg30-group-oracle.json",
+      "original_sha256": "bb837e5a9a61e395d3445ac5b2ad70f0ca639ffc296d08d6c2403c0f8eb2c9c5",
+      "review_sha256": "bb837e5a9a61e395d3445ac5b2ad70f0ca639ffc296d08d6c2403c0f8eb2c9c5",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg35-original-args-oracle.json",
+      "original_sha256": "e0820d685eda7b8216caa7d5144e2dfb86380960c81c9e318fb7de59b69a27e8",
+      "review_sha256": "d00b05ecca485d048052e936da2e8c718897782d34bf20d2d71ababbc8c85c76",
+      "redacted": true,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg80-original-background-oracle.json",
+      "original_sha256": "1e0f20c6a816133bbc7e4f52389bc2a1f9da2404c896dcc2313b32f0b84efd66",
+      "review_sha256": "1e0f20c6a816133bbc7e4f52389bc2a1f9da2404c896dcc2313b32f0b84efd66",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg80-original-download-empty-oracle.json",
+      "original_sha256": "4d114fb3c8b4eea03d0bf53819ca088834a9f496bf5785a29173a51ddf64f00a",
+      "review_sha256": "4d114fb3c8b4eea03d0bf53819ca088834a9f496bf5785a29173a51ddf64f00a",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg80-original-video-empty-oracle.json",
+      "original_sha256": "8f854a2a8567989aef8d8c0fd8f9f5b711baec4c8ce9376d7954208720c72982",
+      "review_sha256": "8f854a2a8567989aef8d8c0fd8f9f5b711baec4c8ce9376d7954208720c72982",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/pg80-original-watcher-oracle.json",
+      "original_sha256": "3810f73f2d00394d87e6dea0a796132b06fdb6823dea7a4307e8e4c973b89a12",
+      "review_sha256": "3810f73f2d00394d87e6dea0a796132b06fdb6823dea7a4307e8e4c973b89a12",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/src-tauri/tests/fixtures/schema-version-original-oracle.json",
+      "original_sha256": "041987a17275385eb6f967bf4b8fd168e51b41adab6423fd6a41c432b94e8858",
+      "review_sha256": "041987a17275385eb6f967bf4b8fd168e51b41adab6423fd6a41c432b94e8858",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/tests/generate-login-argument-oracle.cjs",
+      "original_sha256": "46839474e321cac4062c98993da54acd88d9a082fa06ecca538cc24cfb33d4c7",
+      "review_sha256": "46839474e321cac4062c98993da54acd88d9a082fa06ecca538cc24cfb33d4c7",
+      "redacted": false,
+      "publication_status": "excluded startup boundary"
+    },
+    {
+      "path": "rust-candidate/tests/generate-login-policy-oracle.cjs",
+      "original_sha256": "8397e48e889521bf9d7910452d9cf43bb5560118223f1300c4d0f5f040b2d952",
+      "review_sha256": "8397e48e889521bf9d7910452d9cf43bb5560118223f1300c4d0f5f040b2d952",
+      "redacted": false,
+      "publication_status": "excluded startup boundary"
+    },
+    {
+      "path": "rust-candidate/tests/login-argument-original-oracle.json",
+      "original_sha256": "7536b2d0180b09267aabdd80546eeea830c1ae493203567742cb2fe5935ea4b0",
+      "review_sha256": "7536b2d0180b09267aabdd80546eeea830c1ae493203567742cb2fe5935ea4b0",
+      "redacted": false,
+      "publication_status": "excluded startup boundary"
+    },
+    {
+      "path": "rust-candidate/tests/login-policy-original-oracle.json",
+      "original_sha256": "6d75e0a9de0299622f274dbe3bfb819c798c86b442abcb18ea0740d97ea1d44d",
+      "review_sha256": "6d75e0a9de0299622f274dbe3bfb819c798c86b442abcb18ea0740d97ea1d44d",
+      "redacted": false,
+      "publication_status": "excluded startup boundary"
+    },
+    {
+      "path": "rust-candidate/tests/pg105-original-delete-oracle.cjs",
+      "original_sha256": "b07aff1ff07ff08320bea5c272a7d32b2d81b00ba5beed4296523ca83942a005",
+      "review_sha256": "b07aff1ff07ff08320bea5c272a7d32b2d81b00ba5beed4296523ca83942a005",
+      "redacted": false,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/tests/postgres-search-original-oracle.cjs",
+      "original_sha256": "c6b4e3e14c5e247ae8a45863344fd56c025f78ac83167e8f4f6fe69172fd6b84",
+      "review_sha256": "a4a15e5cd20e516ea1ed102bfd50c49fe0bf91eb0de8ae02e12ef67f2e729ad0",
+      "redacted": true,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/tests/postgres-search-original-schema-oracle.cjs",
+      "original_sha256": "0dd095dec3124f187309b4130d39b86cd3e76f1fb27ad17efa582cebeddad773",
+      "review_sha256": "039e1a4ce434157334cf034dd839a7a9156be119a24cce5d6e43509955a85166",
+      "redacted": true,
+      "publication_status": "included"
+    },
+    {
+      "path": "rust-candidate/tests/startup-bridge.test.cjs",
+      "original_sha256": "bc1a01361b29af18c3077411bc0d067e4610adecc5685f112470efcb56d5ea7f",
+      "review_sha256": "bc1a01361b29af18c3077411bc0d067e4610adecc5685f112470efcb56d5ea7f",
+      "redacted": false,
+      "publication_status": "excluded startup boundary"
+    },
+    {
+      "path": "rust-candidate/tests/startup-redirector.test.cjs",
+      "original_sha256": "2d53d8a815497add7d4a799b734d4d1ab4b7c2a9beca80e90b70182d938e9eea",
+      "review_sha256": "2d53d8a815497add7d4a799b734d4d1ab4b7c2a9beca80e90b70182d938e9eea",
+      "redacted": false,
+      "publication_status": "excluded startup boundary"
+    },
+    {
+      "path": "rust-candidate/tests/fixtures/pg80-original-analysis-snapshot.json",
+      "original_sha256": "fd0452b5898d8d5d833cceb767104c5bb9ff443f912698138a53604b9ebfdc69",
+      "review_sha256": "fd0452b5898d8d5d833cceb767104c5bb9ff443f912698138a53604b9ebfdc69",
+      "redacted": false,
+      "publication_status": "included"
+    }
+  ],
+  "excluded": [
+    "docs/CSDM_SOURCE_MAP_AND_TEST_LEDGER.md",
+    "docs/MIGRATION_LEDGER.csv",
+    "src-tauri/tests/fixtures/pg30-frame-fixtures/frame-4067.dem",
+    "src-tauri/tests/fixtures/pg30-frame-fixtures/frame-4068.dem",
+    "src-tauri/tests/fixtures/pg30-frame-fixtures/frame-4073.dem",
+    "src-tauri/tests/fixtures/pg30-frame-fixtures/frame-4075.dem",
+    "src-tauri/tests/fixtures/pg30-frame-fixtures/frame-4076.dem",
+    "src-tauri/tests/fixtures/pg30-group-fixtures/group.dem",
+    "src-tauri/tests/fixtures/pg30-group-fixtures/mismatch.dem",
+    "src-tauri/tests/fixtures/pg30-group-fixtures/nested.dem",
+    "src-tauri/tests/fixtures/pg30-group-fixtures/unclosed.dem"
+  ]
+}

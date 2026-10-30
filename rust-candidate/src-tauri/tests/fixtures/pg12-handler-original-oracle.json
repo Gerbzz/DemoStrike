@@ -1,0 +1,104 @@
+{
+  "handlerSha256": "36f4553aa8c07fdb4aa9d3413dd359176f62a09fa96d68894227be14b5cf24b2",
+  "errorSourceSha256": "757d570447c31a64d3e2fab93df9334c27732a6f8ad45882015ca25e5de76480",
+  "payload": {
+    "maps": [
+      {
+        "id": "map"
+      }
+    ],
+    "cameras": [
+      {
+        "id": "camera"
+      }
+    ],
+    "tags": [
+      {
+        "id": "tag"
+      }
+    ],
+    "matchChecksums": [
+      "checksum"
+    ],
+    "settings": {
+      "marker": "settings"
+    },
+    "faceitAccounts": [
+      {
+        "id": "faceit"
+      }
+    ],
+    "fiveEPlayAccounts": [
+      {
+        "id": "five"
+      }
+    ],
+    "renownAccounts": [
+      {
+        "id": "renown"
+      }
+    ],
+    "ignoredSteamAccounts": [
+      {
+        "steamId": "steam"
+      }
+    ],
+    "analyses": [
+      {
+        "id": "analysis"
+      }
+    ],
+    "downloads": [
+      {
+        "id": "download"
+      }
+    ],
+    "videos": [
+      {
+        "id": "video"
+      }
+    ],
+    "isVideoQueuePaused": true
+  },
+  "successCalls": [
+    "settings",
+    "maps",
+    "cameras",
+    "tags",
+    "matchChecksums",
+    "faceitAccounts",
+    "fiveEPlayAccounts",
+    "renownAccounts",
+    "ignoredSteamAccounts",
+    "analyses",
+    "downloads",
+    "videos",
+    "isVideoQueuePaused",
+    "startBackgroundTasks"
+  ],
+  "failure": "owned maps failure",
+  "failureCalls": [
+    "settings",
+    "maps",
+    "cameras",
+    "tags",
+    "matchChecksums",
+    "faceitAccounts",
+    "fiveEPlayAccounts",
+    "renownAccounts",
+    "ignoredSteamAccounts"
+  ],
+  "liveFailure": "owned analyses failure",
+  "liveFailureCalls": [
+    "settings",
+    "maps",
+    "cameras",
+    "tags",
+    "matchChecksums",
+    "faceitAccounts",
+    "fiveEPlayAccounts",
+    "renownAccounts",
+    "ignoredSteamAccounts",
+    "analyses"
+  ]
+}

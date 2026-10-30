@@ -6,6 +6,7 @@ publish = false
 
 [features]
 synthetic-import-smoke = []
+pg80-owned-observe = []
 
 [lib]
 name = "demostrike_rust_candidate"
@@ -13,14 +14,26 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
 demostrike = { path = "../..", features = ["offline-filmcraft"] }
+postgres = { version = "=0.19.14", features = ["with-chrono-0_4"] }
+chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+same-file = "1.0.6"
 tauri = { version = "2" }
 tauri-plugin-dialog = "2"
+
+regex = "1"
+tungstenite = { version = "=0.30.0", default-features = false, features = ["handshake"] }
 
 [build-dependencies]
 tauri-build = { version = "2" }
 
 [dev-dependencies]
 tempfile = "3"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Pipes", "Win32_System_Diagnostics_ToolHelp"] }
+

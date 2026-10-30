@@ -1,0 +1,11 @@
+{
+  "handlerSha256": "90aae2c8ee81a9f2f9b7d344ea901d994b10f8585eda2e2d276d8634d62313b8",
+  "checksumSha256": "82b7b4218ba9dad954558870828a62c21920913b85411717bbaaaedce2d01311",
+  "query": "injected true; no database",
+  "event": {
+    "name": "navigate-to-match",
+    "payload": "6ba1b77cb7404aa"
+  },
+  "missingError": true,
+  "afterMissing": 0
+}

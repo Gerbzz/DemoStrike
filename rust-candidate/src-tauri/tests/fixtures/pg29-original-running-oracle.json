@@ -1,0 +1,220 @@
+{
+  "sourceSha256": "6a873183919d68038e0c7431b5aaf9f09d326e0ec4f7b3b628e2aa2dd346a383",
+  "snapshots": [
+    {
+      "step": "running",
+      "analyses": [
+        {
+          "addedAt": "<time>",
+          "status": "pending",
+          "demoChecksum": "b",
+          "demoPath": "C:\\owned\\b.dem",
+          "mapName": "de_nuke",
+          "source": "valve",
+          "output": ""
+        },
+        {
+          "addedAt": "<time>",
+          "status": "analyzing",
+          "demoChecksum": "a",
+          "demoPath": "C:\\owned\\a.dem",
+          "mapName": "de_nuke",
+          "source": "valve",
+          "output": ""
+        }
+      ],
+      "events": [
+        {
+          "name": "demos-added-to-analyses",
+          "payload": [
+            {
+              "addedAt": "<time>",
+              "status": "pending",
+              "demoChecksum": "a",
+              "demoPath": "C:\\owned\\a.dem",
+              "mapName": "de_nuke",
+              "source": "valve",
+              "output": ""
+            },
+            {
+              "addedAt": "<time>",
+              "status": "pending",
+              "demoChecksum": "b",
+              "demoPath": "C:\\owned\\b.dem",
+              "mapName": "de_nuke",
+              "source": "valve",
+              "output": ""
+            }
+          ]
+        },
+        {
+          "name": "analysis-status-changed",
+          "payload": {
+            "addedAt": "<time>",
+            "status": "analyzing",
+            "demoChecksum": "a",
+            "demoPath": "C:\\owned\\a.dem",
+            "mapName": "de_nuke",
+            "source": "valve",
+            "output": ""
+          }
+        }
+      ],
+      "started": [
+        "C:\\owned\\a.dem"
+      ]
+    },
+    {
+      "step": "disconnect",
+      "analyses": [
+        {
+          "addedAt": "<time>",
+          "status": "analyzing",
+          "demoChecksum": "a",
+          "demoPath": "C:\\owned\\a.dem",
+          "mapName": "de_nuke",
+          "source": "valve",
+          "output": ""
+        }
+      ],
+      "events": [
+        {
+          "name": "demos-added-to-analyses",
+          "payload": [
+            {
+              "addedAt": "<time>",
+              "status": "pending",
+              "demoChecksum": "a",
+              "demoPath": "C:\\owned\\a.dem",
+              "mapName": "de_nuke",
+              "source": "valve",
+              "output": ""
+            },
+            {
+              "addedAt": "<time>",
+              "status": "pending",
+              "demoChecksum": "b",
+              "demoPath": "C:\\owned\\b.dem",
+              "mapName": "de_nuke",
+              "source": "valve",
+              "output": ""
+            }
+          ]
+        },
+        {
+          "name": "analysis-status-changed",
+          "payload": {
+            "addedAt": "<time>",
+            "status": "analyzing",
+            "demoChecksum": "a",
+            "demoPath": "C:\\owned\\a.dem",
+            "mapName": "de_nuke",
+            "source": "valve",
+            "output": ""
+          }
+        },
+        {
+          "name": "demos-removed-from-analyses",
+          "payload": [
+            "b"
+          ]
+        }
+      ],
+      "started": [
+        "C:\\owned\\a.dem"
+      ]
+    },
+    {
+      "step": "finished",
+      "analyses": [],
+      "events": [
+        {
+          "name": "demos-added-to-analyses",
+          "payload": [
+            {
+              "addedAt": "<time>",
+              "status": "pending",
+              "demoChecksum": "a",
+              "demoPath": "C:\\owned\\a.dem",
+              "mapName": "de_nuke",
+              "source": "valve",
+              "output": ""
+            },
+            {
+              "addedAt": "<time>",
+              "status": "pending",
+              "demoChecksum": "b",
+              "demoPath": "C:\\owned\\b.dem",
+              "mapName": "de_nuke",
+              "source": "valve",
+              "output": ""
+            }
+          ]
+        },
+        {
+          "name": "analysis-status-changed",
+          "payload": {
+            "addedAt": "<time>",
+            "status": "analyzing",
+            "demoChecksum": "a",
+            "demoPath": "C:\\owned\\a.dem",
+            "mapName": "de_nuke",
+            "source": "valve",
+            "output": ""
+          }
+        },
+        {
+          "name": "demos-removed-from-analyses",
+          "payload": [
+            "b"
+          ]
+        },
+        {
+          "name": "analysis-status-changed",
+          "payload": {
+            "addedAt": "<time>",
+            "status": "analyze-success",
+            "demoChecksum": "a",
+            "demoPath": "C:\\owned\\a.dem",
+            "mapName": "de_nuke",
+            "source": "valve",
+            "output": ""
+          }
+        },
+        {
+          "name": "analysis-status-changed",
+          "payload": {
+            "addedAt": "<time>",
+            "status": "inserting-match",
+            "demoChecksum": "a",
+            "demoPath": "C:\\owned\\a.dem",
+            "mapName": "de_nuke",
+            "source": "valve",
+            "output": ""
+          }
+        },
+        {
+          "name": "analysis-status-changed",
+          "payload": {
+            "addedAt": "<time>",
+            "status": "insert-success",
+            "demoChecksum": "a",
+            "demoPath": "C:\\owned\\a.dem",
+            "mapName": "de_nuke",
+            "source": "valve",
+            "output": ""
+          }
+        },
+        {
+          "name": "match-inserted",
+          "payload": {
+            "checksum": "a"
+          }
+        }
+      ],
+      "started": [
+        "C:\\owned\\a.dem"
+      ]
+    }
+  ]
+}

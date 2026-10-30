@@ -1,0 +1,20 @@
+[
+  {
+    "name": "group",
+    "value": "4ce67ea7e082e55"
+  },
+  {
+    "name": "nested",
+    "value": "4ce67ea7e082e55"
+  },
+  {
+    "name": "mismatch",
+    "message": "invalid end group tag",
+    "code": null
+  },
+  {
+    "name": "unclosed",
+    "message": "premature EOF",
+    "code": null
+  }
+]

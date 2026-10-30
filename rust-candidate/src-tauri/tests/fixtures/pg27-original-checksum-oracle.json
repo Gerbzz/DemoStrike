@@ -1,0 +1,87 @@
+{
+  "source": {
+    "checksum": "82b7b4218ba9dad954558870828a62c21920913b85411717bbaaaedce2d01311",
+    "header": "39ae436521e47ca71f8c150aeeddfb8e4e5dd594109dc7bda41498c6c55d22b4",
+    "stats": "a53531759294666a3d1be1ff00a5dc27326a0d5b9b365d762d8b04067fb56c15"
+  },
+  "results": [
+    {
+      "name": "source_1_1.dem.data",
+      "size": 4459,
+      "sha256": "f83ddb23bb768d02e30b7fd08c3e9b0eea20c99173319296982a3f0fbf641a64",
+      "checksum": "6ba1b77cb7404aa"
+    },
+    {
+      "name": "source_1_2.dem.data",
+      "size": 4574,
+      "sha256": "3734228644ca37ab0b9908ec76760f2107326f1af957b6d2f8a602a5e3ca3e49",
+      "checksum": "f3de387320cc0e14"
+    },
+    {
+      "name": "source_1_3.dem.data",
+      "size": 4596,
+      "sha256": "16e0d019f757b1ee7d1f1420c3946234caf7077fc4c09dfe6c7db8f5a2fc58f3",
+      "checksum": "e29001e9a332055b"
+    },
+    {
+      "name": "source_1_4.dem.data",
+      "size": 4380,
+      "sha256": "908eb939a6c70726cbfbc86cda1715745491c940ebb1a745b76398931c9e19e9",
+      "checksum": "e5b0f44e04f79865"
+    },
+    {
+      "name": "source_2_1.dem.data",
+      "size": 4096,
+      "sha256": "a551e91a532e389d25be6a97ff2aa52337174acabe4d4f155630d4a5ff6286e0",
+      "checksum": "4ce67ea7e082e55"
+    },
+    {
+      "name": "source_2_2.dem.data",
+      "size": 4096,
+      "sha256": "8053ef26215cbe019ddeb7b3f4dc371e0d9d78f6ff175cd826e415d50edb99b1",
+      "checksum": "92938fb827413837"
+    },
+    {
+      "name": "source_2_3.dem.data",
+      "size": 4096,
+      "sha256": "1a4343a745beae5b0251a55d2ddd50515e2724bdfeefa968dcafd33b844bae2b",
+      "checksum": "b9c915fa4db7cdcc"
+    },
+    {
+      "name": "source_2_4.dem.data",
+      "size": 4096,
+      "sha256": "6e757e35148c3bc0d2b83c8dceda71e4eb23661488dc509e0f9f8fc501727929",
+      "checksum": "d01455e69bcdb2de"
+    },
+    {
+      "name": "source_2_5.dem.data",
+      "size": 4096,
+      "sha256": "1d94901d4fca99bbcae8f925a1a1c7f1f6f3a1737ef29cb557f5e9506f13aa0c",
+      "checksum": "e41afcdf1e3015b2"
+    },
+    {
+      "name": "source_2_6.dem.data",
+      "size": 4096,
+      "sha256": "a7a4290767508c77568567f45bd1e4044c2767d66380e04ac613beb1ab78496c",
+      "checksum": "f54257b89c289603"
+    },
+    {
+      "name": "source_2_7.dem.data",
+      "size": 4096,
+      "sha256": "3e4778ca42e85190887297a0d5336ee3c1c1aec4808c77029995d92ec7e4aa9b",
+      "checksum": "96cd8606f18a7a51"
+    },
+    {
+      "name": "source_2_8.dem.data",
+      "size": 4096,
+      "sha256": "da9d75ba30d5dc421252a301570dbdc769fb7c5706355bd81d644f5325fa32af",
+      "checksum": "deec63d68a1d3b4e"
+    },
+    {
+      "name": "source_2_9.dem.data",
+      "size": 4096,
+      "sha256": "d42cabba79c8aa8c5bfbba9be157b8170dcdcb31b8a2d3eeb4374b963a398c15",
+      "checksum": "a807b5b7f9b63946"
+    }
+  ]
+}

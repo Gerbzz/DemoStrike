@@ -1,0 +1,6 @@
+-- Derived from original CS Demo Manager v12.ts Kysely source operations and fixed upstream data.
+-- Original MIT source retained; caller owns transaction and marker.
+
+create or replace view "player_ban_per_match" as with "match_steam_ids_with_date" as (select "matches"."checksum", "demos"."date" as "match_date", "players"."steam_id" from "matches" inner join "demos" on "demos"."checksum" = "matches"."checksum" left join "players" on "matches"."checksum" = "players"."match_checksum") select "checksum" as "match_checksum", SUM(CASE WHEN steam_accounts.last_ban_date IS NULL THEN 0 ELSE 1 END) as "player_ban_count" from "match_steam_ids_with_date" left join "steam_accounts" on "steam_accounts"."steam_id" = "match_steam_ids_with_date"."steam_id" where "steam_accounts"."last_ban_date" >= "match_steam_ids_with_date"."match_date" and "steam_accounts"."steam_id" not in (select "steam_id" from "ignored_steam_accounts") group by "match_steam_ids_with_date"."checksum";
+
+alter table "matches" drop column "name", drop column "game", drop column "source", drop column "type", drop column "date", drop column "map_name", drop column "tick_count", drop column "tickrate", drop column "framerate", drop column "duration", drop column "server_name", drop column "client_name", drop column "network_protocol", drop column "build_number", drop column "share_code";

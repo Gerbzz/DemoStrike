@@ -1,0 +1,307 @@
+{
+  "sourceSha256": "6a873183919d68038e0c7431b5aaf9f09d326e0ec4f7b3b628e2aa2dd346a383",
+  "before": [
+    {
+      "addedAt": "<time>",
+      "status": "pending",
+      "demoChecksum": "c",
+      "demoPath": "C:\\owned\\c.dem",
+      "mapName": "de_mirage",
+      "source": "ebot",
+      "output": ""
+    },
+    {
+      "addedAt": "<time>",
+      "status": "pending",
+      "demoChecksum": "d",
+      "demoPath": "C:\\owned\\d.dem",
+      "mapName": "de_mirage",
+      "source": "ebot",
+      "output": ""
+    },
+    {
+      "addedAt": "<time>",
+      "status": "analyzing",
+      "demoChecksum": "a",
+      "demoPath": "C:\\owned\\a.dem",
+      "mapName": "de_mirage",
+      "source": "ebot",
+      "output": ""
+    },
+    {
+      "addedAt": "<time>",
+      "status": "analyzing",
+      "demoChecksum": "b",
+      "demoPath": "C:\\owned\\b.dem",
+      "mapName": "de_mirage",
+      "source": "ebot",
+      "output": ""
+    }
+  ],
+  "disconnected": [
+    {
+      "addedAt": "<time>",
+      "status": "pending",
+      "demoChecksum": "c",
+      "demoPath": "C:\\owned\\c.dem",
+      "mapName": "de_mirage",
+      "source": "ebot",
+      "output": ""
+    },
+    {
+      "addedAt": "<time>",
+      "status": "analyzing",
+      "demoChecksum": "a",
+      "demoPath": "C:\\owned\\a.dem",
+      "mapName": "de_mirage",
+      "source": "ebot",
+      "output": ""
+    },
+    {
+      "addedAt": "<time>",
+      "status": "analyzing",
+      "demoChecksum": "b",
+      "demoPath": "C:\\owned\\b.dem",
+      "mapName": "de_mirage",
+      "source": "ebot",
+      "output": ""
+    }
+  ],
+  "afterB": [
+    {
+      "addedAt": "<time>",
+      "status": "analyzing",
+      "demoChecksum": "a",
+      "demoPath": "C:\\owned\\a.dem",
+      "mapName": "de_mirage",
+      "source": "ebot",
+      "output": ""
+    },
+    {
+      "addedAt": "<time>",
+      "status": "analyzing",
+      "demoChecksum": "c",
+      "demoPath": "C:\\owned\\c.dem",
+      "mapName": "de_mirage",
+      "source": "ebot",
+      "output": ""
+    }
+  ],
+  "final": [],
+  "started": [
+    "C:\\owned\\a.dem",
+    "C:\\owned\\b.dem",
+    "C:\\owned\\c.dem"
+  ],
+  "events": [
+    {
+      "name": "demos-added-to-analyses",
+      "payload": [
+        {
+          "addedAt": "<time>",
+          "status": "pending",
+          "demoChecksum": "a",
+          "demoPath": "C:\\owned\\a.dem",
+          "mapName": "de_mirage",
+          "source": "ebot",
+          "output": ""
+        },
+        {
+          "addedAt": "<time>",
+          "status": "pending",
+          "demoChecksum": "b",
+          "demoPath": "C:\\owned\\b.dem",
+          "mapName": "de_mirage",
+          "source": "ebot",
+          "output": ""
+        },
+        {
+          "addedAt": "<time>",
+          "status": "pending",
+          "demoChecksum": "c",
+          "demoPath": "C:\\owned\\c.dem",
+          "mapName": "de_mirage",
+          "source": "ebot",
+          "output": ""
+        },
+        {
+          "addedAt": "<time>",
+          "status": "pending",
+          "demoChecksum": "d",
+          "demoPath": "C:\\owned\\d.dem",
+          "mapName": "de_mirage",
+          "source": "ebot",
+          "output": ""
+        }
+      ]
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "analyzing",
+        "demoChecksum": "a",
+        "demoPath": "C:\\owned\\a.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "analyzing",
+        "demoChecksum": "b",
+        "demoPath": "C:\\owned\\b.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "demos-removed-from-analyses",
+      "payload": [
+        "d"
+      ]
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "analyze-success",
+        "demoChecksum": "b",
+        "demoPath": "C:\\owned\\b.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "inserting-match",
+        "demoChecksum": "b",
+        "demoPath": "C:\\owned\\b.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "insert-success",
+        "demoChecksum": "b",
+        "demoPath": "C:\\owned\\b.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "match-inserted",
+      "payload": {
+        "checksum": "b"
+      }
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "analyzing",
+        "demoChecksum": "c",
+        "demoPath": "C:\\owned\\c.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "analyze-success",
+        "demoChecksum": "a",
+        "demoPath": "C:\\owned\\a.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "inserting-match",
+        "demoChecksum": "a",
+        "demoPath": "C:\\owned\\a.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "analyze-success",
+        "demoChecksum": "c",
+        "demoPath": "C:\\owned\\c.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "inserting-match",
+        "demoChecksum": "c",
+        "demoPath": "C:\\owned\\c.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "insert-success",
+        "demoChecksum": "a",
+        "demoPath": "C:\\owned\\a.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "match-inserted",
+      "payload": {
+        "checksum": "a"
+      }
+    },
+    {
+      "name": "analysis-status-changed",
+      "payload": {
+        "addedAt": "<time>",
+        "status": "insert-success",
+        "demoChecksum": "c",
+        "demoPath": "C:\\owned\\c.dem",
+        "mapName": "de_mirage",
+        "source": "ebot",
+        "output": ""
+      }
+    },
+    {
+      "name": "match-inserted",
+      "payload": {
+        "checksum": "c"
+      }
+    }
+  ]
+}

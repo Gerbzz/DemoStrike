@@ -1,0 +1,11 @@
+{
+  "sourceSha256": "3c471d6c22d31e33b1e59f08c4e057778edb878e692b4216efb2994c6198a4e7",
+  "trace": [
+    "listen",
+    "download-last",
+    "steam-check",
+    "interval:3600000",
+    "stop-listen",
+    "clear:7"
+  ]
+}

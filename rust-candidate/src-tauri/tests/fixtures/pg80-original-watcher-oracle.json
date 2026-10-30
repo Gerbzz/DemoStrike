@@ -1,0 +1,14 @@
+{
+  "sourceSha256": "00d69372edfd354cbb014f86739a005fc24093cd7ca000d7c9cf4353126b3e7e",
+  "trace": [
+    "interval:30000",
+    "running:true",
+    "clear",
+    "interval:5000",
+    "running:false",
+    "settings",
+    "clear",
+    "interval:30000",
+    "clear"
+  ]
+}
